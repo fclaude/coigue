@@ -64,9 +64,34 @@ Hidden files are included except `.git`; symlinks and special files are skipped.
 Nested and parent `.gitignore` files and repository `.git/info/exclude` rules
 are honored, including negations; ignored directories are pruned during discovery.
 Rules also work outside Git repositories. Global Git excludes and `.ignore` files
-are not read. Unreadable entries and ignore-file errors are counted and skipped. Save unsaved edits with
-`:w` before opening the picker. Canceling or a failed open preserves the buffer.
+are not read. Unreadable entries and ignore-file errors are counted and skipped.
+Browsing is allowed with unsaved edits. Selecting a file offers `s` to save and
+open, `d` to discard and open, or `c`/Esc to cancel the switch. Failed saves keep
+the choice open; failed opens preserve the original buffer and undo history.
 Opening a file returns to normal mode at its first character.
+
+Press **`-`** in normal mode or run **`:explore`** for a full-screen directory
+explorer. It opens at the current file's parent and selects that file, revealing
+it even if hidden or ignored. The process working directory is never changed,
+so Ctrl-P keeps searching from its original working-directory root.
+
+| Explorer keys | Action |
+| --- | --- |
+| `j` / `k`, Up / Down | Move through entries; directories sort first. |
+| Enter / `l` / Right | Enter a directory or open a file. |
+| `h` / Left / `-` | Go up and select the directory just left. |
+| Home / End, Page Up / Down | Jump or page through entries. |
+| `/` | Enter a fuzzy filter for names in this directory; type to narrow. |
+| Backspace while filtering | Edit the query; arrows and Enter still navigate/open. |
+| Esc while filtering | Clear the filter and restore the previous selection. |
+| `.` outside filtering | Toggle hidden and ignored entries. `.git` and symlinks stay excluded. |
+| Ctrl-P | Open the recursive picker; Esc returns to the explorer. |
+| Esc outside filtering | Return to the current file at its original cursor and scroll position. |
+
+The explorer remembers directory selection and scroll position for this session.
+Directory loading runs in the background. Opening a different file uses the same
+save/discard/cancel choices as Ctrl-P. Browsing, filtering, and canceling preserve
+edits and undo history. This version only browses and opens files.
 
 Lines scroll vertically and horizontally; terminal resize triggers a redraw.
 Screen updates are buffered and repaint only changed rows, with synchronized updates
