@@ -255,16 +255,25 @@ impl View {
         }
         let message = if e.mode == Mode::Command {
             format!(":{}", e.command)
+        } else if e.mode == Mode::Search {
+            format!("/{}", e.search)
         } else {
             e.message.clone()
         };
+        let prompt_mode = matches!(e.mode, Mode::Command | Mode::Search);
+        let prompt_width: usize = message.chars().map(|c| cell(c).1).sum();
+        let prompt_left = if prompt_mode {
+            prompt_width.saturating_add(1).saturating_sub(width)
+        } else {
+            0
+        };
         queue!(
             frame[usize::from(h - 1)],
-            Print(clipped(message.chars(), 0, width))
+            Print(clipped(message.chars(), prompt_left, width))
         )?;
-        let (x, y) = if e.mode == Mode::Command {
+        let (x, y) = if prompt_mode {
             (
-                e.command.chars().count().saturating_add(1).min(width - 1) as u16,
+                prompt_width.saturating_sub(prompt_left).min(width - 1) as u16,
                 h - 1,
             )
         } else {
@@ -301,7 +310,7 @@ impl View {
                         .map(|c| c.width().unwrap_or(0))
                         .sum()
                 } else {
-                    clipped(message.chars(), 0, width)
+                    clipped(message.chars(), prompt_left, width)
                         .chars()
                         .map(|c| c.width().unwrap_or(0))
                         .sum()
@@ -325,6 +334,29 @@ impl View {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn long_unicode_search_prompt_scrolls_and_cancel_restores_message_row() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let dir = tempfile::tempdir().unwrap();
+        let (file, _) = crate::file::File::open(dir.path().join("fixture")).unwrap();
+        let mut e = Editor::new(file, "text");
+        e.mode = Mode::Search;
+        e.search = "界éabcdefghijkl".into();
+        let mut view = View::default();
+        let mut out = Vec::new();
+        view.draw_to(&e, (6, 4), &mut out).unwrap();
+        let rendered = String::from_utf8_lossy(&out);
+        assert!(rendered.contains("hijkl"));
+        assert!(rendered.contains(&MoveTo(5, 3).to_string()));
+        e.key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE), 2);
+        out.clear();
+        view.draw_to(&e, (6, 4), &mut out).unwrap();
+        assert!(
+            String::from_utf8_lossy(&out).contains(&Clear(ClearType::UntilNewLine).to_string())
+        );
+        assert_eq!(e.mode, Mode::Normal);
+        assert_eq!(e.buffer.text(), "text");
+    }
     #[test]
     fn picker_cancel_and_file_switch_reset_rendering_correctly() {
         let dir = tempfile::tempdir().unwrap();

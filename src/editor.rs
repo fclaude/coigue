@@ -5,6 +5,12 @@ pub enum Mode {
     Normal,
     Insert,
     Command,
+    Search,
+}
+#[derive(Clone)]
+enum Register {
+    Line(Vec<char>, bool),
+    Chars(Vec<char>),
 }
 pub struct Editor {
     pub buffer: Buffer,
@@ -13,6 +19,9 @@ pub struct Editor {
     pub command: String,
     pub message: String,
     pending: Option<char>,
+    register: Option<Register>,
+    pub search: String,
+    last_search: String,
     pub picker: Option<crate::picker::Picker>,
     pub generation: u64,
 }
@@ -25,6 +34,9 @@ impl Editor {
             command: String::new(),
             message: String::new(),
             pending: None,
+            register: None,
+            search: String::new(),
+            last_search: String::new(),
             picker: None,
             generation: 0,
         }
@@ -34,7 +46,10 @@ impl Editor {
             self.picker_key(key, page_rows);
             return false;
         }
-        if key.modifiers == KeyModifiers::CONTROL && key.code == K::Char('p') {
+        if key.modifiers == KeyModifiers::CONTROL
+            && key.code == K::Char('p')
+            && matches!(self.mode, Mode::Normal | Mode::Insert)
+        {
             self.open_picker();
             return false;
         }
@@ -57,6 +72,7 @@ impl Editor {
             self.mode = Mode::Normal;
             self.pending = None;
             self.command.clear();
+            self.search.clear();
             self.buffer.clamp(false);
             return false;
         }
@@ -64,6 +80,40 @@ impl Editor {
             .modifiers
             .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER)
         {
+            return false;
+        }
+        if self.mode == Mode::Search {
+            match key.code {
+                K::Char(c) => self.search.push(c),
+                K::Backspace => {
+                    self.search.pop();
+                }
+                K::Enter => {
+                    let query = std::mem::take(&mut self.search);
+                    if !query.is_empty() {
+                        self.last_search = query;
+                    }
+                    self.mode = Mode::Normal;
+                    self.find(true);
+                }
+                _ => {}
+            }
+            return false;
+        }
+        // A replacement consumes its next key as data, even if it is normally
+        // a movement or command (for example rh replaces with h).
+        if self.mode == Mode::Normal && self.pending == Some('r') {
+            self.pending = None;
+            match key.code {
+                K::Char(c) => self.buffer.replace(c),
+                K::Tab => self.buffer.replace('\t'),
+                _ => {}
+            }
+            return false;
+        }
+        if self.mode == Mode::Normal && matches!(key.code, K::Char('n' | 'N')) {
+            self.pending = None;
+            self.find(key.code == K::Char('n'));
             return false;
         }
         if self.mode == Mode::Command {
@@ -93,13 +143,51 @@ impl Editor {
         } else {
             let pending = self.pending.take();
             match (pending, key.code) {
-                (Some('d'), K::Char('d')) => b.delete_line(),
+                (Some('d'), K::Char('d')) => {
+                    self.register = Some(Register::Line(
+                        b.lines[b.row].clone(),
+                        b.row + 1 < b.lines.len(),
+                    ));
+                    b.delete_line();
+                }
+                (Some('y'), K::Char('y')) => {
+                    self.register = Some(Register::Line(
+                        b.lines[b.row].clone(),
+                        b.row + 1 < b.lines.len(),
+                    ));
+                    self.message = "Line copied".into();
+                }
+                (Some('>'), K::Char('>')) => b.indent(true),
+                (Some('<'), K::Char('<')) => b.indent(false),
                 (Some('g'), K::Char('g')) => {
                     b.row = 0;
                     b.col = 0;
                 }
                 (_, K::Char('d')) => self.pending = Some('d'),
                 (_, K::Char('g')) => self.pending = Some('g'),
+                (_, K::Char(c @ ('y' | 'r' | '>' | '<'))) => self.pending = Some(c),
+                (_, K::Char('p' | 'P')) => {
+                    if let Some(register) = &self.register {
+                        let after = key.code == K::Char('p');
+                        match register {
+                            Register::Line(line, terminated) => {
+                                b.paste_line(line, after, *terminated)
+                            }
+                            Register::Chars(chars) => b.paste_chars(chars, after),
+                        }
+                    } else {
+                        self.message = "Nothing to paste".into();
+                    }
+                }
+                (_, K::Char('A')) => {
+                    b.col = b.lines[b.row].len();
+                    self.mode = Mode::Insert;
+                }
+                (_, K::Char('/')) => {
+                    self.search.clear();
+                    self.message.clear();
+                    self.mode = Mode::Search;
+                }
                 (_, K::Char('i')) => self.mode = Mode::Insert,
                 (_, K::Char('a')) => {
                     b.col = (b.col + 1).min(b.lines[b.row].len());
@@ -109,7 +197,12 @@ impl Editor {
                     b.open_line();
                     self.mode = Mode::Insert;
                 }
-                (_, K::Char('x')) => b.delete(),
+                (_, K::Char('x')) => {
+                    if let Some(&ch) = b.lines[b.row].get(b.col) {
+                        self.register = Some(Register::Chars(vec![ch]));
+                        b.delete();
+                    }
+                }
                 (_, K::Char('0')) => b.col = 0,
                 (_, K::Char('$')) => b.col = b.lines[b.row].len().saturating_sub(1),
                 (_, K::Char('G')) => {
@@ -145,6 +238,29 @@ impl Editor {
         }
         b.clamp(self.mode == Mode::Insert);
         false
+    }
+    fn find(&mut self, forward: bool) {
+        if self.last_search.is_empty() {
+            self.message = "No previous search; use / to find text".into();
+            return;
+        }
+        let query: Vec<_> = self.last_search.chars().collect();
+        if let Some((row, col)) = self.buffer.find(&query, forward) {
+            let wrapped = if forward {
+                (row, col) <= (self.buffer.row, self.buffer.col)
+            } else {
+                (row, col) >= (self.buffer.row, self.buffer.col)
+            };
+            self.buffer.row = row;
+            self.buffer.col = col;
+            self.message = format!(
+                "/{}{}",
+                self.last_search,
+                if wrapped { " (wrapped)" } else { "" }
+            );
+        } else {
+            self.message = format!("Not found: {}", self.last_search);
+        }
     }
     fn open_picker(&mut self) {
         if self.file.dirty(&self.buffer.text()) {
@@ -197,6 +313,7 @@ impl Editor {
                                 self.buffer = Buffer::new(&text);
                                 self.mode = Mode::Normal;
                                 self.command.clear();
+                                self.search.clear();
                                 self.message.clear();
                                 self.generation += 1;
                                 self.picker = None;
@@ -237,6 +354,154 @@ mod tests {
         for c in s.chars() {
             e.key(KeyEvent::new(K::Char(c), KeyModifiers::NONE), 22);
         }
+    }
+    fn editing_fixture(text: &str) -> (tempfile::TempDir, Editor) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("fixture");
+        std::fs::write(&path, text).unwrap();
+        let (file, text) = File::open(path).unwrap();
+        let editor = Editor::new(file, &text);
+        (dir, editor)
+    }
+    fn press(e: &mut Editor, code: K) {
+        e.key(KeyEvent::new(code, KeyModifiers::NONE), 22);
+    }
+    #[test]
+    fn copy_cut_and_repeat_paste_preserve_unicode_and_newlines() {
+        let (_dir, mut e) = editing_fixture("é界\nbeta\n");
+        send(&mut e, "yy");
+        assert_eq!(e.buffer.revision(), 0);
+        assert!(!e.file.dirty(&e.buffer.text()));
+        send(&mut e, "p");
+        assert_eq!(e.buffer.text(), "é界\né界\nbeta\n");
+        assert_eq!((e.buffer.row, e.buffer.col), (1, 0));
+        send(&mut e, "ddP");
+        assert_eq!(e.buffer.text(), "é界\né界\nbeta\n");
+        send(&mut e, "p");
+        assert_eq!(e.buffer.text(), "é界\né界\né界\nbeta\n");
+        send(&mut e, "0xP");
+        assert_eq!(e.buffer.text(), "é界\né界\né界\nbeta\n");
+        send(&mut e, "xp");
+        assert_eq!(e.buffer.lines[e.buffer.row], vec!['界', 'é']);
+        for text in ["only", "only\n", "é界\n"] {
+            let (_dir, mut sole) = editing_fixture(text);
+            send(&mut sole, "ddp");
+            assert_eq!(sole.buffer.text(), text);
+            assert!(!sole.file.dirty(&sole.buffer.text()));
+        }
+        let (_dir, mut empty) = editing_fixture("");
+        send(&mut empty, "p");
+        assert_eq!(empty.buffer.text(), "");
+        assert!(empty.message.contains("Nothing to paste"));
+    }
+    #[test]
+    fn replacement_consumes_command_characters_and_can_be_cancelled() {
+        let (_dir, mut e) = editing_fixture("é🦀\n\nlast");
+        send(&mut e, "rj");
+        assert_eq!(e.buffer.text(), "j🦀\n\nlast");
+        assert_eq!((e.buffer.row, e.buffer.col), (0, 0));
+        send(&mut e, "lr/");
+        assert_eq!(e.mode, Mode::Normal);
+        assert_eq!(e.buffer.lines[0], vec!['j', '/']);
+        send(&mut e, "r");
+        press(&mut e, K::Esc);
+        assert_eq!(e.buffer.lines[0], vec!['j', '/']);
+        send(&mut e, "r界");
+        assert_eq!(e.buffer.lines[0], vec!['j', '界']);
+        send(&mut e, "r");
+        press(&mut e, K::Tab);
+        assert_eq!(e.buffer.lines[0], vec!['j', '\t']);
+        send(&mut e, "jrX");
+        assert!(e.buffer.lines[1].is_empty());
+        assert_eq!(e.mode, Mode::Normal);
+    }
+    #[test]
+    fn uppercase_append_starts_after_last_character_even_on_empty_lines() {
+        let (_dir, mut e) = editing_fixture("abc\n\n界");
+        send(&mut e, "lAZ");
+        assert_eq!(e.buffer.lines[0], vec!['a', 'b', 'c', 'Z']);
+        assert_eq!(e.mode, Mode::Insert);
+        press(&mut e, K::Esc);
+        send(&mut e, "jAempty");
+        press(&mut e, K::Esc);
+        send(&mut e, "GAé");
+        press(&mut e, K::Esc);
+        assert_eq!(e.buffer.text(), "abcZ\nempty\n界é");
+        assert_eq!((e.buffer.row, e.buffer.col), (2, 1));
+    }
+    #[test]
+    fn indent_unindent_keeps_cursor_on_text_and_handles_mixed_whitespace() {
+        let (_dir, mut e) = editing_fixture("\t  é\n  x\nplain\n");
+        e.buffer.col = 3;
+        send(&mut e, ">>");
+        assert_eq!(e.buffer.lines[0], "    \t  é".chars().collect::<Vec<_>>());
+        assert_eq!(e.buffer.col, 7);
+        send(&mut e, "<<");
+        assert_eq!(e.buffer.col, 3);
+        assert!(!e.file.dirty(&e.buffer.text()));
+        send(&mut e, "<<");
+        assert_eq!(e.buffer.col, 2);
+        assert_eq!(e.buffer.lines[0], vec![' ', ' ', 'é']);
+        send(&mut e, "j<<");
+        assert_eq!(e.buffer.lines[1], vec!['x']);
+        send(&mut e, "j<<");
+        assert_eq!(e.buffer.lines[2], "plain".chars().collect::<Vec<_>>());
+        send(&mut e, "G>><<");
+        assert!(e.buffer.lines[3].is_empty());
+        assert_eq!(e.buffer.col, 0);
+    }
+    #[test]
+    fn search_repeats_wraps_cancels_and_leaves_text_unchanged() {
+        let original = "é界 first\n界.*界\nlast 界";
+        let (_dir, mut e) = editing_fixture(original);
+        send(&mut e, "/界");
+        assert_eq!(e.mode, Mode::Search);
+        assert_eq!((e.buffer.row, e.buffer.col), (0, 0));
+        press(&mut e, K::Enter);
+        assert_eq!((e.buffer.row, e.buffer.col), (0, 1));
+        send(&mut e, "n");
+        assert_eq!((e.buffer.row, e.buffer.col), (1, 0));
+        send(&mut e, "n");
+        assert_eq!((e.buffer.row, e.buffer.col), (1, 3));
+        send(&mut e, "N");
+        assert_eq!((e.buffer.row, e.buffer.col), (1, 0));
+        send(&mut e, "NN");
+        assert_eq!((e.buffer.row, e.buffer.col), (2, 5));
+        assert!(e.message.contains("wrapped"));
+        send(&mut e, "n");
+        assert_eq!((e.buffer.row, e.buffer.col), (0, 1));
+        assert!(e.message.contains("wrapped"));
+        send(&mut e, "/absent");
+        press(&mut e, K::Esc);
+        assert_eq!((e.buffer.row, e.buffer.col), (0, 1));
+        send(&mut e, "n");
+        assert_eq!((e.buffer.row, e.buffer.col), (1, 0));
+        send(&mut e, "/.*");
+        press(&mut e, K::Enter);
+        assert_eq!((e.buffer.row, e.buffer.col), (1, 1));
+        send(&mut e, "/absent");
+        press(&mut e, K::Enter);
+        assert_eq!((e.buffer.row, e.buffer.col), (1, 1));
+        assert!(e.message.contains("Not found"));
+        assert_eq!(e.buffer.text(), original);
+        assert_eq!(e.buffer.revision(), 0);
+        assert!(!e.file.dirty(original));
+        let (_dir, mut empty) = editing_fixture("");
+        send(&mut empty, "n");
+        assert!(empty.message.contains("No previous search"));
+        send(&mut empty, "/");
+        press(&mut empty, K::Enter);
+        assert!(empty.message.contains("No previous search"));
+    }
+    #[test]
+    fn register_survives_switching_files() {
+        let (dir, mut e) = editing_fixture("copied");
+        std::fs::write(dir.path().join("second"), "destination").unwrap();
+        send(&mut e, "yy");
+        ready_picker(&mut e, dir.path(), "second");
+        press(&mut e, K::Enter);
+        send(&mut e, "p");
+        assert_eq!(e.buffer.text(), "destination\ncopied");
     }
     fn ready_picker(e: &mut Editor, root: &std::path::Path, query: &str) {
         let mut picker = crate::picker::Picker::new(root.into());
