@@ -2,7 +2,7 @@ use crate::editor::{Editor, Mode};
 use crossterm::{
     cursor::{Hide, MoveTo, Show},
     queue,
-    style::Print,
+    style::{Color, Print, SetForegroundColor},
     terminal::{self, Clear, ClearType},
 };
 use std::io::{self, Write};
@@ -35,6 +35,50 @@ fn clipped(text: impl Iterator<Item = char>, left: usize, width: usize) -> Strin
     }
     out
 }
+fn color(style: crate::syntax::Style) -> Color {
+    use crate::syntax::Style::*;
+    match style {
+        Plain => Color::Reset,
+        Keyword => Color::Magenta,
+        Comment => Color::DarkGrey,
+        String => Color::Green,
+        Number => Color::Cyan,
+        Macro => Color::Yellow,
+        Punctuation => Color::Reset,
+        Lifetime => Color::Blue,
+    }
+}
+// Apply exactly the same cell clipping as plain text; ANSI bytes never count as cells.
+fn styled_line(
+    out: &mut impl Write,
+    line: &[char],
+    styles: &[crate::syntax::Style],
+    left: usize,
+    width: usize,
+) -> io::Result<()> {
+    let mut col = 0;
+    let mut previous = Color::Reset;
+    for (c, style) in line.iter().zip(styles) {
+        let (s, w) = cell(*c);
+        let visible = if col >= left && col + w <= left + width {
+            s
+        } else if col < left + width && col + w > left {
+            " ".repeat((col + w).min(left + width) - col.max(left))
+        } else {
+            String::new()
+        };
+        if !visible.is_empty() {
+            let next = color(*style);
+            if next != previous {
+                queue!(out, SetForegroundColor(next))?;
+                previous = next;
+            }
+            queue!(out, Print(visible))?;
+        }
+        col += w;
+    }
+    queue!(out, SetForegroundColor(Color::Reset))
+}
 impl View {
     pub fn draw(&mut self, e: &Editor) -> io::Result<()> {
         let (w, h) = terminal::size()?;
@@ -56,15 +100,28 @@ impl View {
             self.left = col + 1 - width;
         }
         let mut out = io::stdout();
-        queue!(out, Hide, MoveTo(0, 0), Clear(ClearType::All))?;
+        queue!(
+            out,
+            SetForegroundColor(Color::Reset),
+            Hide,
+            MoveTo(0, 0),
+            Clear(ClearType::All)
+        )?;
+        let styles = (e.file.path.extension().is_some_and(|ext| ext == "rs"))
+            .then(|| crate::syntax::rust(&b.lines));
         for y in 0..rows {
-            let line = b
-                .lines
-                .get(self.top + y)
-                .map(|l| clipped(l.iter().copied(), self.left, width))
-                .unwrap_or_else(|| "~".into());
-            queue!(out, MoveTo(0, y as u16), Print(line))?;
+            queue!(out, MoveTo(0, y as u16))?;
+            if let Some(line) = b.lines.get(self.top + y) {
+                if let Some(styles) = &styles {
+                    styled_line(&mut out, line, &styles[self.top + y], self.left, width)?;
+                } else {
+                    queue!(out, Print(clipped(line.iter().copied(), self.left, width)))?;
+                }
+            } else {
+                queue!(out, Print("~"))?;
+            }
         }
+
         let status = format!(
             "{:?} {}{}  {}:{}",
             e.mode,
@@ -112,5 +169,26 @@ mod tests {
     fn clipping_controls_and_wide() {
         assert_eq!(clipped("a界b".chars(), 2, 2), " b");
         assert_eq!(clipped("\u{1b}".chars(), 0, 10), "�");
+    }
+}
+
+#[cfg(test)]
+mod styled_tests {
+    use super::*;
+    #[test]
+    fn styled_clipping_preserves_cells_and_resets() {
+        let line: Vec<char> = "\t界é\u{1b}".chars().collect();
+        let mut out = Vec::new();
+        styled_line(
+            &mut out,
+            &line,
+            &vec![crate::syntax::Style::Keyword; line.len()],
+            5,
+            4,
+        )
+        .unwrap();
+        let rendered = String::from_utf8(out).unwrap();
+        assert!(rendered.contains(" é�"));
+        assert!(rendered.ends_with(&SetForegroundColor(Color::Reset).to_string()));
     }
 }

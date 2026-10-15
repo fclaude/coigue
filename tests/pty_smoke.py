@@ -18,7 +18,9 @@ def session(path, steps, command=None):
     master, slave = pty.openpty()
     original = termios.tcgetattr(slave)
     fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 24, 80, 0, 0))
-    proc = subprocess.Popen(command or [binary, str(path)], stdin=slave, stdout=slave, stderr=slave)
+    env = dict(os.environ)
+    env.pop('NO_COLOR', None)  # Exercise color output even in color-disabled CI hosts.
+    proc = subprocess.Popen(command or [binary, str(path)], stdin=slave, stdout=slave, stderr=slave, env=env)
     output = bytearray()
     def drain():
         deadline = time.monotonic() + .15
@@ -67,6 +69,17 @@ with tempfile.TemporaryDirectory() as directory:
     lines = before.split('\n')
     lines[-2] += '!'
     assert path.read_text() == '\n'.join(lines)
+    rust_path = pathlib.Path(directory) / 'fixture.rs'
+    rust_path.write_text('fn main() {\n\tlet café = r#"界"#; // comment\n}\n' + '// scrolling\n' * 40)
+    rust_out = session(rust_path, [b'j$a!', b'\x1b', b'G', None, b'gg', b':wq\r'])
+    assert b'\x1b[38;5;13mfn\x1b[39m main() {' in rust_out, 'incorrect rendered keyword text'
+    assert '    \x1b[38;5;13mlet\x1b[39m café = \x1b[38;5;10mr#"界"#'.encode() in rust_out, 'incorrect tab/Unicode/string rendering'
+    assert b'\x1b[39m' in rust_out, 'missing foreground reset'
+    assert b'\x1b[1;1H' in rust_out, 'cursor did not return to first cell'
+    assert 'comment!' in rust_path.read_text()
+    print('Rust PTY: colored fn/let/raw string, four-cell tab and Unicode text verified')
+    plain_out = session(path, [b':q\r'])
+    assert b'\x1b[38;5;' not in plain_out, 'plain file was highlighted'
     if pathlib.Path("/dev/full").exists():
         # A write-only failure during alternate-screen entry must restore raw mode.
         master, slave = pty.openpty()

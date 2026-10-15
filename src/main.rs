@@ -2,6 +2,7 @@ mod buffer;
 mod editor;
 mod file;
 mod render;
+mod syntax;
 use crossterm::{
     cursor::Show,
     event::{self, Event, KeyEventKind},
