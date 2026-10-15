@@ -99,7 +99,9 @@ impl Explorer {
                 .parents(!show_all)
                 .require_git(false)
                 .follow_links(false)
-                .filter_entry(|e| e.file_name() != ".git");
+                .filter_entry(|e| {
+                    e.file_name() != ".git" && e.file_name() != crate::fileops::TRASH
+                });
             for entry in walk.build() {
                 if stop.load(Ordering::Relaxed) {
                     return;
@@ -130,7 +132,9 @@ impl Explorer {
             if let Some(path) = reveal
                 && path.parent() == Some(directory.as_path())
                 && !entries.iter().any(|e| e.path == path)
-                && path.file_name().is_some_and(|name| name != ".git")
+                && path
+                    .file_name()
+                    .is_some_and(|name| name != ".git" && name != crate::fileops::TRASH)
                 && let Ok(meta) = std::fs::symlink_metadata(&path)
                 && (meta.is_file() || meta.is_dir())
             {
@@ -204,6 +208,13 @@ impl Explorer {
             self.navigate(parent.into(), Some(self.directory.clone()));
         }
     }
+    pub fn refresh(&mut self, focus: Option<PathBuf>) {
+        self.remember();
+        self.query.clear();
+        self.filtering = false;
+        self.filter_origin = None;
+        self.load(focus);
+    }
     pub fn toggle_visibility(&mut self) {
         self.remember();
         self.memory.show_all = !self.memory.show_all;
@@ -213,6 +224,18 @@ impl Explorer {
         self.filter_origin = Some((self.entry(self.selected).map(|e| e.path.clone()), self.top));
         self.filtering = true;
         self.query.clear();
+    }
+    pub fn accept_filter(&mut self) {
+        let path = self.entry(self.selected).map(|entry| entry.path.clone());
+        self.cancel_filter();
+        if let Some(path) = path
+            && let Some(index) = self
+                .matches
+                .iter()
+                .position(|&i| self.entries[i].path == path)
+        {
+            self.selected = index;
+        }
     }
     pub fn cancel_filter(&mut self) {
         self.query.clear();
@@ -299,6 +322,7 @@ mod tests {
         let root = dir.path().canonicalize().unwrap();
         std::fs::create_dir(root.join("nested")).unwrap();
         std::fs::create_dir(root.join(".git")).unwrap();
+        std::fs::create_dir(root.join(crate::fileops::TRASH)).unwrap();
         for name in ["alpha", "café.rs", ".secret", "generated"] {
             std::fs::write(root.join(name), "").unwrap();
         }
@@ -320,6 +344,7 @@ mod tests {
         ready(&mut view);
         assert!(names(&view).contains(&".secret"));
         assert!(!names(&view).contains(&".git"));
+        assert!(!names(&view).contains(&crate::fileops::TRASH));
         assert!(!names(&view).contains(&"loop"));
         view.toggle_visibility();
         ready(&mut view);

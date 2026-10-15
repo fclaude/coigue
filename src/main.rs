@@ -2,6 +2,7 @@ mod buffer;
 mod editor;
 mod explorer;
 mod file;
+mod fileops;
 mod picker;
 mod render;
 mod syntax;

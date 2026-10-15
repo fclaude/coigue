@@ -164,6 +164,28 @@ with tempfile.TemporaryDirectory() as directory:
     cancel_out = session(explorer_start, [b'-', b'/absent', None, b'\x1b', b'\x1b', b':q\r'], cwd=explorer_root)
     assert b'No matches' in cancel_out
     print('Explorer PTY: directory navigation, filter, resize, visibility, save/discard/cancel verified')
+    ops_root = pathlib.Path(directory) / 'ops-root'
+    ops_root.mkdir()
+    ops_active = ops_root / 'active.txt'
+    ops_active.write_text('active')
+    ops_out = session(ops_active, [
+        b'\x0f', b'Abox', b'\r', b'a', 'café.txt'.encode(), b'\r',
+        b'r', b'\x15', b'box/moved.txt', b'\r',
+        b'/box', b'\t', b'd', b'\r', b'n', b'd', b'y', b'\x1b', b':q\r',
+    ], cwd=ops_root)
+    assert not ops_root.joinpath('box').exists()
+    assert list(ops_root.joinpath('.coigue-trash').glob('entry-*/item/moved.txt'))
+    # Restart: restoration is discovered from persistent records.
+    session(ops_active, [b'\x0f', b'u', b'\x1b', b':q\r'], cwd=ops_root)
+    assert ops_root.joinpath('box/moved.txt').read_text() == ''
+    assert not ops_root.joinpath('café.txt').exists()
+    # Rename the active file while dirty, save to the new path, then undo.
+    session(ops_active, [b'A!', b'\x1b', b'\x0f', b'r', b'\x15', b'new.rs', b'\r',
+                         b'\x1b', b':w\r', b'u', b':wq\r'], cwd=ops_root)
+    assert not ops_active.exists()
+    assert ops_root.joinpath('new.rs').read_text() == 'active'
+    assert b'\x1b[2J' not in ops_out
+    print('Filesystem PTY: shortcut, create, move, delete confirmation, persistent restore, active rename/save/undo verified')
     rust_path = pathlib.Path(directory) / 'fixture.rs'
     rust_path.write_text('fn main() {\n\tlet café = r#"界"#; // comment\n}\n' + '// scrolling\n' * 40)
     rust_out = session(rust_path, [b'j$a!', b'\x1b', b'G', None, b'gg', b':wq\r'])

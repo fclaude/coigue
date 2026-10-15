@@ -12,6 +12,30 @@ enum Register {
     Line(Vec<char>, bool),
     Chars(Vec<char>),
 }
+#[derive(Clone)]
+pub enum FilesystemAction {
+    CreateFile,
+    CreateDirectory,
+    Rename(std::path::PathBuf),
+    Delete(std::path::PathBuf),
+}
+#[derive(Clone)]
+pub struct FilesystemPrompt {
+    pub action: FilesystemAction,
+    pub input: String,
+}
+impl FilesystemPrompt {
+    pub fn display(&self) -> String {
+        match &self.action {
+            FilesystemAction::CreateFile => format!("New file: {}", self.input),
+            FilesystemAction::CreateDirectory => format!("New directory: {}", self.input),
+            FilesystemAction::Rename(_) => format!("Rename/move (Ctrl-U clears): {}", self.input),
+            FilesystemAction::Delete(path) => {
+                format!("Trash? [y] yes [Esc/n] cancel | {}", path.display())
+            }
+        }
+    }
+}
 pub struct Editor {
     pub buffer: Buffer,
     pub file: File,
@@ -27,6 +51,7 @@ pub struct Editor {
     pub explorer: Option<crate::explorer::Explorer>,
     explorer_memory: crate::explorer::Memory,
     pub switch_prompt: Option<std::path::PathBuf>,
+    pub filesystem_prompt: Option<FilesystemPrompt>,
 }
 impl Editor {
     pub fn new(file: File, text: &str) -> Self {
@@ -45,6 +70,7 @@ impl Editor {
             explorer: None,
             explorer_memory: crate::explorer::Memory::default(),
             switch_prompt: None,
+            filesystem_prompt: None,
         }
     }
     pub fn key(&mut self, key: KeyEvent, page_rows: usize) -> bool {
@@ -58,6 +84,22 @@ impl Editor {
     fn key_inner(&mut self, mut key: KeyEvent, page_rows: usize) -> bool {
         if self.switch_prompt.is_some() {
             self.switch_key(key);
+            return false;
+        }
+        if self.filesystem_prompt.is_some() {
+            self.filesystem_key(key);
+            return false;
+        }
+        if key.modifiers == KeyModifiers::CONTROL
+            && key.code == K::Char('o')
+            && self.picker.is_none()
+            && matches!(self.mode, Mode::Normal | Mode::Insert)
+        {
+            if self.explorer.is_some() {
+                self.close_explorer();
+            } else {
+                self.open_explorer();
+            }
             return false;
         }
         if self.explorer.is_some() && self.picker.is_none() {
@@ -311,17 +353,28 @@ impl Editor {
             self.message = format!("Not found: {}", self.last_search);
         }
     }
-    fn open_explorer(&mut self) {
-        self.message.clear();
+    fn active_path(&self) -> std::io::Result<std::path::PathBuf> {
         let path = if self.file.path.is_absolute() {
             self.file.path.clone()
         } else {
-            match std::env::current_dir() {
-                Ok(cwd) => cwd.join(&self.file.path),
-                Err(err) => {
-                    self.message = err.to_string();
-                    return;
-                }
+            std::env::current_dir()?.join(&self.file.path)
+        };
+        let parent = path
+            .parent()
+            .ok_or_else(|| std::io::Error::other("No parent directory"))?
+            .canonicalize()?;
+        let name = path
+            .file_name()
+            .ok_or_else(|| std::io::Error::other("No file name"))?;
+        Ok(parent.join(name))
+    }
+    fn open_explorer(&mut self) {
+        self.message.clear();
+        let path = match self.active_path() {
+            Ok(path) => path,
+            Err(err) => {
+                self.message = err.to_string();
+                return;
             }
         };
         let Some(parent) = path.parent() else {
@@ -356,6 +409,7 @@ impl Editor {
         if explorer.filtering {
             match key.code {
                 K::Esc => explorer.cancel_filter(),
+                K::Tab => explorer.accept_filter(),
                 K::Backspace => {
                     explorer.query.pop();
                     explorer.filter();
@@ -372,11 +426,137 @@ impl Editor {
             K::Esc => self.close_explorer(),
             K::Char('/') => explorer.start_filter(),
             K::Char('.') => explorer.toggle_visibility(),
+            K::Char(c @ ('a' | 'A' | 'r' | 'd')) => self.start_filesystem_action(c),
+            K::Char('u') => self.restore_deleted(),
             K::Char('h' | '-') | K::Left => explorer.parent(),
             K::Char('j') => explorer.move_by(1),
             K::Char('k') => explorer.move_by(-1),
             K::Char('l') | K::Right => self.explorer_navigation(K::Enter, page_rows),
             _ => self.explorer_navigation(key.code, page_rows),
+        }
+    }
+    fn start_filesystem_action(&mut self, key: char) {
+        let explorer = self.explorer.as_ref().unwrap();
+        let (action, input) = match key {
+            'a' => (FilesystemAction::CreateFile, String::new()),
+            'A' => (FilesystemAction::CreateDirectory, String::new()),
+            'r' | 'd' => {
+                let Some(entry) = explorer.entry(explorer.selected) else {
+                    return;
+                };
+                if entry.name == ".." {
+                    self.message =
+                        "Select a child entry; the parent entry cannot be changed".into();
+                    return;
+                }
+                if key == 'r' {
+                    (
+                        FilesystemAction::Rename(entry.path.clone()),
+                        entry.name.clone(),
+                    )
+                } else {
+                    (FilesystemAction::Delete(entry.path.clone()), String::new())
+                }
+            }
+            _ => return,
+        };
+        self.filesystem_prompt = Some(FilesystemPrompt { action, input });
+    }
+    fn filesystem_key(&mut self, key: KeyEvent) {
+        if key.code == K::Esc {
+            self.filesystem_prompt = None;
+            self.message.clear();
+            return;
+        }
+        let prompt = self.filesystem_prompt.as_mut().unwrap();
+        if matches!(prompt.action, FilesystemAction::Delete(_)) {
+            match key.code {
+                K::Char('y') if key.modifiers.is_empty() => self.apply_filesystem_action(),
+                K::Char('n') => {
+                    self.filesystem_prompt = None;
+                    self.message.clear();
+                }
+                _ => {}
+            }
+            return;
+        }
+        if key.modifiers == KeyModifiers::CONTROL && key.code == K::Char('u') {
+            prompt.input.clear();
+            return;
+        }
+        if key
+            .modifiers
+            .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER)
+        {
+            return;
+        }
+        match key.code {
+            K::Char(c) => prompt.input.push(c),
+            K::Backspace => {
+                prompt.input.pop();
+            }
+            K::Enter => self.apply_filesystem_action(),
+            _ => {}
+        }
+    }
+    fn apply_filesystem_action(&mut self) {
+        let prompt = self.filesystem_prompt.as_ref().unwrap().clone();
+        let directory = self.explorer.as_ref().unwrap().directory.clone();
+        let result = (|| -> std::io::Result<Option<std::path::PathBuf>> {
+            match &prompt.action {
+                FilesystemAction::CreateFile | FilesystemAction::CreateDirectory => {
+                    let target = crate::fileops::destination(&directory, &prompt.input)?;
+                    crate::fileops::create(
+                        &target,
+                        matches!(prompt.action, FilesystemAction::CreateDirectory),
+                    )?;
+                    Ok(Some(target))
+                }
+                FilesystemAction::Rename(source) => {
+                    let target = crate::fileops::destination(&directory, &prompt.input)?;
+                    let active = self.active_path()?;
+                    crate::fileops::move_entry(source, &target)?;
+                    if let Ok(suffix) = active.strip_prefix(source) {
+                        self.file.path = if suffix.as_os_str().is_empty() {
+                            target.clone()
+                        } else {
+                            target.join(suffix)
+                        };
+                    }
+                    Ok(Some(target))
+                }
+                FilesystemAction::Delete(source) => {
+                    let active = self.active_path()?;
+                    if active.starts_with(source) {
+                        return Err(std::io::Error::other(
+                            "Open another file before deleting the current file or its parent",
+                        ));
+                    }
+                    crate::fileops::trash(source)?;
+                    Ok(None)
+                }
+            }
+        })();
+        match result {
+            Ok(focus) => {
+                self.filesystem_prompt = None;
+                self.explorer.as_mut().unwrap().refresh(focus.clone());
+                self.message = focus.map_or_else(
+                    || "Moved to recovery storage; u restores the latest deletion here".into(),
+                    |path| format!("Done: {}", path.display()),
+                );
+            }
+            Err(err) => self.message = format!("Operation failed: {err}"),
+        }
+    }
+    fn restore_deleted(&mut self) {
+        let directory = &self.explorer.as_ref().unwrap().directory;
+        match crate::fileops::restore_latest(directory) {
+            Ok(path) => {
+                self.explorer.as_mut().unwrap().refresh(Some(path.clone()));
+                self.message = format!("Restored: {}", path.display());
+            }
+            Err(err) => self.message = format!("Restore failed: {err}"),
         }
     }
     fn explorer_navigation(&mut self, code: K, page_rows: usize) {
@@ -554,6 +734,125 @@ mod tests {
             std::thread::yield_now();
         }
         view.fit(4);
+    }
+    fn ctrl(e: &mut Editor, c: char) {
+        e.key(KeyEvent::new(K::Char(c), KeyModifiers::CONTROL), 22);
+    }
+    fn explorer_select(e: &mut Editor, query: &str) {
+        send(e, "/");
+        send(e, query);
+        press(e, K::Tab);
+    }
+    #[test]
+    fn explorer_creates_renames_and_moves_open_file_without_losing_edits() {
+        let (dir, mut e) = editing_fixture("abc");
+        send(&mut e, "rx");
+        ctrl(&mut e, 'o');
+        ready_explorer(&mut e);
+        send(&mut e, "aunused");
+        press(&mut e, K::Esc);
+        assert!(!dir.path().join("unused").exists());
+        send(&mut e, "aother");
+        press(&mut e, K::Enter);
+        ready_explorer(&mut e);
+        assert!(dir.path().join("other").is_file());
+        send(&mut e, "Abucket");
+        press(&mut e, K::Enter);
+        ready_explorer(&mut e);
+        assert!(dir.path().join("bucket").is_dir());
+        explorer_select(&mut e, "fixture");
+        send(&mut e, "r");
+        ctrl(&mut e, 'u');
+        send(&mut e, "bucket/renamed.rs");
+        press(&mut e, K::Enter);
+        ready_explorer(&mut e);
+        assert!(e.file.path.ends_with("bucket/renamed.rs"));
+        assert_eq!(e.buffer.text(), "xbc");
+        assert!(e.file.dirty(&e.buffer.text()));
+        assert!(!dir.path().join("fixture").exists());
+        press(&mut e, K::Esc);
+        send(&mut e, "u");
+        assert_eq!(e.buffer.text(), "abc");
+        redo(&mut e);
+        e.execute("w");
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("bucket/renamed.rs")).unwrap(),
+            "xbc"
+        );
+        ctrl(&mut e, 'o');
+        ready_explorer(&mut e);
+        send(&mut e, "h");
+        ready_explorer(&mut e);
+        // The parent containing the active buffer can be renamed as well.
+        send(&mut e, "r");
+        ctrl(&mut e, 'u');
+        send(&mut e, "moved");
+        press(&mut e, K::Enter);
+        ready_explorer(&mut e);
+        assert!(e.file.path.ends_with("moved/renamed.rs"));
+        assert_eq!(e.buffer.text(), "xbc");
+        assert_eq!(std::fs::read_to_string(&e.file.path).unwrap(), "xbc");
+    }
+    #[test]
+    fn explorer_delete_confirmation_restore_conflict_and_active_file_protection() {
+        let (dir, mut e) = editing_fixture("active");
+        std::fs::write(dir.path().join("victim"), "recover me").unwrap();
+        ctrl(&mut e, 'o');
+        ready_explorer(&mut e);
+        send(&mut e, "dy");
+        assert!(e.message.contains("Open another file"));
+        assert!(e.file.path.is_file());
+        press(&mut e, K::Esc);
+        explorer_select(&mut e, "victim");
+        send(&mut e, "d");
+        press(&mut e, K::Enter); // Enter never confirms deletion.
+        assert!(dir.path().join("victim").is_file());
+        press(&mut e, K::Esc);
+        send(&mut e, "dyn");
+        ready_explorer(&mut e);
+        assert!(!dir.path().join("victim").exists());
+        std::fs::write(dir.path().join("victim"), "occupied").unwrap();
+        send(&mut e, "u");
+        assert!(e.message.contains("Restore failed"));
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("victim")).unwrap(),
+            "occupied"
+        );
+        std::fs::remove_file(dir.path().join("victim")).unwrap();
+        send(&mut e, "u");
+        ready_explorer(&mut e);
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("victim")).unwrap(),
+            "recover me"
+        );
+        assert_eq!(e.buffer.text(), "active");
+    }
+    #[test]
+    fn explorer_shortcut_keeps_ctrl_e_and_file_operations_cannot_overwrite() {
+        let (dir, mut e) = editing_fixture("active");
+        ctrl(&mut e, 'e');
+        assert_eq!(e.buffer.col, 5);
+        send(&mut e, "i");
+        ctrl(&mut e, 'o');
+        ready_explorer(&mut e);
+        ctrl(&mut e, 'o');
+        assert!(e.explorer.is_none());
+        assert_eq!(e.mode, Mode::Insert);
+        press(&mut e, K::Esc);
+        ctrl(&mut e, 'o');
+        ready_explorer(&mut e);
+        send(&mut e, "afixture");
+        press(&mut e, K::Enter);
+        assert!(e.filesystem_prompt.is_some());
+        assert!(e.message.contains("Operation failed"));
+        press(&mut e, K::Esc);
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("fixture")).unwrap(),
+            "active"
+        );
+        press(&mut e, K::Home);
+        send(&mut e, "d");
+        assert!(e.filesystem_prompt.is_none()); // ../ is not a mutable entry.
     }
     #[test]
     fn explorer_browses_dirty_buffer_and_cancel_preserves_cursor_history_and_cwd() {
