@@ -234,6 +234,16 @@ impl Editor {
         } else {
             let pending = self.pending.take();
             match (pending, key.code) {
+                (Some(op @ ('d' | 'c' | 'y')), K::Char('w')) => {
+                    let chars = b.word_range(op != 'y', op == 'c');
+                    if !chars.is_empty() {
+                        self.register = Some(Register::Chars(chars));
+                    }
+                    if op == 'c' {
+                        self.mode = Mode::Insert;
+                    }
+                }
+                (_, K::Char(motion @ ('w' | 'b' | 'e'))) => b.word_motion(motion),
                 (Some('d'), K::Char('d')) => {
                     self.register = Some(Register::Line(
                         b.lines[b.row].clone(),
@@ -256,7 +266,7 @@ impl Editor {
                 }
                 (_, K::Char('d')) => self.pending = Some('d'),
                 (_, K::Char('g')) => self.pending = Some('g'),
-                (_, K::Char(c @ ('y' | 'r' | '>' | '<'))) => self.pending = Some(c),
+                (_, K::Char(c @ ('c' | 'y' | 'r' | '>' | '<'))) => self.pending = Some(c),
                 (_, K::Char('p' | 'P')) => {
                     if let Some(register) = &self.register {
                         let after = key.code == K::Char('p');
@@ -742,6 +752,87 @@ mod tests {
         send(e, "/");
         send(e, query);
         press(e, K::Tab);
+    }
+    #[test]
+    fn word_edits_register_history_and_modes() {
+        let (_dir, mut e) = editing_fixture("café_2!! \t\r\n\n界 end");
+        send(&mut e, "we");
+        assert_eq!((e.buffer.row, e.buffer.col), (0, 7));
+        send(&mut e, "wb");
+        assert_eq!((e.buffer.row, e.buffer.col), (0, 6));
+        send(&mut e, "ggyw");
+        assert!(
+            matches!(&e.register, Some(Register::Chars(c)) if c.iter().collect::<String>() == "café_2")
+        );
+        send(&mut e, "u");
+        assert!(e.message.contains("Nothing to undo"));
+        send(&mut e, "wwdw");
+        assert_eq!(e.buffer.text(), "café_2!! \t\r\n\nend");
+        assert!(
+            matches!(&e.register, Some(Register::Chars(c)) if c.iter().collect::<String>() == "界 ")
+        );
+        send(&mut e, "u");
+        send(&mut e, "ggwdw");
+        assert!(
+            matches!(&e.register, Some(Register::Chars(c)) if c.iter().collect::<String>() == "!! \t\r\n\n")
+        );
+        send(&mut e, "P");
+        assert_eq!(e.buffer.text(), "café_2!! \t\r\n\n界 end");
+        send(&mut e, "ggcwnew");
+        press(&mut e, K::Esc);
+        assert_eq!(e.buffer.text(), "new!! \t\r\n\n界 end");
+        send(&mut e, "u");
+        assert_eq!(e.buffer.text(), "café_2!! \t\r\n\n界 end");
+        redo(&mut e);
+        assert_eq!(e.buffer.text(), "new!! \t\r\n\n界 end");
+        send(&mut e, "G$dw");
+        assert_eq!(e.buffer.text(), "new!! \t\r\n\n界 en");
+        send(&mut e, "icwbywe");
+        press(&mut e, K::Esc);
+        assert!(e.buffer.text().contains("cwbywe"));
+        send(&mut e, ":dwcwbywe");
+        assert_eq!(e.command, "dwcwbywe");
+        press(&mut e, K::Esc);
+        send(&mut e, "/dwcwbywe");
+        assert_eq!(e.search, "dwcwbywe");
+    }
+    #[test]
+    fn word_bindings_stay_out_of_explorer_and_prompts() {
+        let (_dir, mut e) = editing_fixture("original words");
+        ctrl(&mut e, 'o');
+        ready_explorer(&mut e);
+        send(&mut e, "wbecw");
+        assert_eq!(e.buffer.text(), "original words");
+        assert_eq!(e.mode, Mode::Normal);
+        send(&mut e, "/dwcwbywe");
+        assert_eq!(e.explorer.as_ref().unwrap().query, "dwcwbywe");
+        press(&mut e, K::Esc);
+        press(&mut e, K::Esc);
+        e.filesystem_prompt = Some(FilesystemPrompt {
+            action: FilesystemAction::CreateFile,
+            input: String::new(),
+        });
+        send(&mut e, "dwcwbywe");
+        assert_eq!(e.filesystem_prompt.as_ref().unwrap().input, "dwcwbywe");
+        assert_eq!(e.buffer.text(), "original words");
+        assert!(e.register.is_none());
+        assert_eq!(e.buffer.revision(), 0);
+    }
+    #[test]
+    fn word_empty_whitespace_and_change_spacing() {
+        for text in ["", "\n", "  \n\n", "é", "!!"] {
+            let (_dir, mut e) = editing_fixture(text);
+            send(&mut e, "webwebggdw");
+            send(&mut e, "u");
+            assert_eq!(e.buffer.text(), text);
+        }
+        let (_dir, mut e) = editing_fixture("one  two");
+        send(&mut e, "cwX");
+        press(&mut e, K::Esc);
+        assert_eq!(e.buffer.text(), "X  two");
+        send(&mut e, "lcwY");
+        press(&mut e, K::Esc);
+        assert_eq!(e.buffer.text(), "XYtwo");
     }
     #[test]
     fn explorer_creates_renames_and_moves_open_file_without_losing_edits() {

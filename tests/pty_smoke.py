@@ -197,6 +197,15 @@ with tempfile.TemporaryDirectory() as directory:
     print('Rust PTY: colored fn/let/raw string, four-cell tab and Unicode text verified')
     plain_out = session(path, [b':q\r'])
     assert b'\x1b[38;5;' not in plain_out, 'plain file was highlighted'
+    path.write_bytes('café_2!! \t\r\n\n界 end'.encode())
+    session(path, [b'wyw', b'u', b'dwP', b'ggcwNEW', b'\x1b', b'u', b'\x12', b':wq\r'])
+    assert path.read_bytes() == 'NEW!! \t\r\n\n界 end'.encode()
+    session(path, [b'G$dw', b'u', b'ggwwbew', b':wq\r'])
+    assert path.read_bytes() == 'NEW!! \t\r\n\n界 end'.encode()
+    session(path, [b'\x0f', b'wbecw', b'/dwcwbywe', b'\x1b',
+                   b'acwbywe', b'\x1b', b'\x1b', b':wq\r'], cwd=directory)
+    assert path.read_bytes() == 'NEW!! \t\r\n\n界 end'.encode()
+    print('Word PTY: Unicode, punctuation, cross-line register, EOF and grouped undo/redo verified')
     if pathlib.Path("/dev/full").exists():
         # A write-only failure during alternate-screen entry must restore raw mode.
         master, slave = pty.openpty()

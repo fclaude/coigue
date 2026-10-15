@@ -28,15 +28,29 @@ Additional normal-mode editing commands:
 | Keys | Action |
 | --- | --- |
 | `u` / Ctrl-R | Undo / redo the last edit group. |
+| `w` / `b` / `e` | Next word beginning / previous word beginning / current or next word end. |
+| `dw` / `yw` | Cut / copy through the next word beginning (exclusive), or EOF. |
+| `cw` | Change the current run and enter insert mode. |
 | `yy` | Copy the current line into the internal register. |
 | `dd` | Cut the current line into the register. |
 | `x` | Cut the character under the cursor into the register. |
-| `p` / `P` | Paste a copied/cut line below/above, or a cut character after/before the cursor. |
+| `p` / `P` | Paste a copied/cut line below/above, or characterwise text after/before the cursor. |
 | `r` then a character | Replace the character under the cursor; Esc cancels. Tab is also accepted. |
 | `/` then text, Enter | Find the next literal, case-sensitive match in the file. Esc cancels. |
 | `n` / `N` | Find the next/previous occurrence of the last search, wrapping at the file boundaries. |
 | `>>` / `<<` | Indent by four spaces / remove one leading tab or up to four leading spaces. |
 | `A` | Enter insert mode after the last character of the current line. |
+
+Words are Unicode letters/numbers and underscores; punctuation forms separate
+runs and Unicode whitespace separates runs. Word motions cross empty lines.
+`cw` on a word or punctuation run removes its remainder, retaining following
+whitespace; on whitespace it removes through the next word beginning. Its cut
+and following insert session undo together. Characterwise word registers retain
+exact whitespace and LF/CRLF bytes, including across lines; `p`/`P` paste them
+after/before the cursor. At EOF operators stop; an empty cut keeps the register.
+These bindings apply only to normal editing, not explorer, filters, or prompts.
+Word operations scan a scalar-value copy of the buffer; very large files may
+notice a delay. Combining marks remain separate scalar values, as in other edits.
 
 The register persists across file switches and supports repeated pastes; it is
 internal to this session and does not access the system clipboard. Searches stay
