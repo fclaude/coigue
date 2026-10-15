@@ -35,14 +35,22 @@ impl Drop for Terminal {
 }
 fn run() -> io::Result<()> {
     let mut args = std::env::args_os().skip(1);
-    let path = args
-        .next()
-        .ok_or_else(|| io::Error::other("usage: coigue <file>"))?;
+    let path = args.next();
     if args.next().is_some() {
-        return Err(io::Error::other("exactly one initial file is required"));
+        return Err(io::Error::other("usage: coigue [file]"));
     }
-    let (file, text) = file::File::open(PathBuf::from(path))?;
-    let mut editor = editor::Editor::new(file, &text);
+    if path.as_deref().is_some_and(|p| p == "--help" || p == "-h") {
+        println!(
+            "Usage: coigue [file]\nWithout a file, welcome opens in the current directory.\nCtrl-O / - / :explore browse; Ctrl-P / :open find files; :q quit."
+        );
+        return Ok(());
+    }
+    let mut editor = if let Some(path) = path {
+        let (file, text) = file::File::open(PathBuf::from(path))?;
+        editor::Editor::new(file, &text)
+    } else {
+        editor::Editor::welcome(std::env::current_dir()?)
+    };
     let _terminal = Terminal::enter()?;
     let mut view = render::View::default();
     loop {

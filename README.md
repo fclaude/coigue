@@ -7,12 +7,22 @@ Install a current stable Rust toolchain (Rust 2024 edition), then:
 ```sh
 git clone https://github.com/fclaude/coigue.git
 cd coigue
+cargo run --                 # welcome in the current directory
 cargo run -- path/to/file
 ```
 
 Linux and macOS terminals are the intended platforms. The Rust code uses portable standard-library, crossterm, tempfile and unicode-width APIs; Unix-specific permission/symlink tests are gated with `cfg(unix)`. This first version was built and exercised on Linux; macOS compilation and PTY integration checks have also been exercised.
 
-A nonexistent path starts an empty buffer. Parent directories must already exist.
+Run `coigue` without arguments to see a welcome screen rooted in the directory
+where you launched it. Use `Ctrl-O`, `-`, or `:explore` to browse that directory,
+or `Ctrl-P` / `:open` to find files recursively. In the explorer, `a` creates a
+file; Enter opens the selected file for editing. Esc (or Ctrl-O in the explorer)
+returns to welcome until a file is opened. `:q` exits. Welcome does not accept
+text edits or save a placeholder; `:w` / `:wq` report that no file is open.
+The current directory and key hints appear on the welcome screen; small terminals
+clip the display and resizing redraws it. `coigue --help` shows startup usage.
+
+A nonexistent explicit path starts an empty buffer. Parent directories must already exist.
 
 Bindings:
 
@@ -85,7 +95,7 @@ the choice open; failed opens preserve the original buffer and undo history.
 Opening a file returns to normal mode at its first character.
 
 Press **Ctrl-O** in normal or insert mode, **`-`** in normal mode, or run **`:explore`** for a full-screen directory
-explorer. It opens at the current file's parent and selects that file, revealing
+explorer. It opens at the launch directory on welcome, or the current file's parent and selects that file, revealing
 it even if hidden or ignored. The process working directory is never changed,
 so Ctrl-P keeps searching from its original working-directory root.
 

@@ -16,6 +16,15 @@ fn read(path: &Path) -> io::Result<Option<Vec<u8>>> {
     }
 }
 impl File {
+    // An unattached session has no filesystem target, even if saved accidentally.
+    pub fn unattached() -> Self {
+        Self {
+            path: PathBuf::new(),
+            original: None,
+            revision: 0,
+        }
+    }
+
     pub fn open(path: PathBuf) -> io::Result<(Self, String)> {
         // Resolve existing symlinks so an atomic save updates their target.
         let path = if path.exists() {
@@ -42,6 +51,9 @@ impl File {
         self.original.as_deref().unwrap_or_default() != text.as_bytes()
     }
     pub fn save(&mut self, text: &str) -> io::Result<()> {
+        if self.path.as_os_str().is_empty() {
+            return Err(io::Error::other("No file open; use :explore or :open"));
+        }
         self.save_with(text, |file, bytes| file.write_all(bytes))
     }
     fn save_with(

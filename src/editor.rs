@@ -37,6 +37,7 @@ impl FilesystemPrompt {
     }
 }
 pub struct Editor {
+    pub welcome: Option<std::path::PathBuf>,
     pub buffer: Buffer,
     pub file: File,
     pub mode: Mode,
@@ -56,6 +57,7 @@ pub struct Editor {
 impl Editor {
     pub fn new(file: File, text: &str) -> Self {
         Self {
+            welcome: None,
             buffer: Buffer::new(text),
             file,
             mode: Mode::Normal,
@@ -72,6 +74,11 @@ impl Editor {
             switch_prompt: None,
             filesystem_prompt: None,
         }
+    }
+    pub fn welcome(directory: std::path::PathBuf) -> Self {
+        let mut editor = Self::new(File::unattached(), "");
+        editor.welcome = Some(directory);
+        editor
     }
     pub fn key(&mut self, key: KeyEvent, page_rows: usize) -> bool {
         self.buffer.begin_edit();
@@ -115,6 +122,19 @@ impl Editor {
             && matches!(self.mode, Mode::Normal | Mode::Insert)
         {
             self.open_picker();
+            return false;
+        }
+        if self.welcome.is_some() && self.mode == Mode::Normal {
+            if key.modifiers.is_empty() {
+                match key.code {
+                    K::Char('-') => self.open_explorer(),
+                    K::Char(':') => {
+                        self.command.clear();
+                        self.mode = Mode::Command;
+                    }
+                    _ => {}
+                }
+            }
             return false;
         }
         if self.mode == Mode::Normal
@@ -380,6 +400,15 @@ impl Editor {
     }
     fn open_explorer(&mut self) {
         self.message.clear();
+        if let Some(directory) = &self.welcome {
+            self.explorer = Some(crate::explorer::Explorer::new(
+                directory.clone(),
+                None,
+                std::mem::take(&mut self.explorer_memory),
+            ));
+            self.pending = None;
+            return;
+        }
         let path = match self.active_path() {
             Ok(path) => path,
             Err(err) => {
@@ -524,9 +553,15 @@ impl Editor {
                 }
                 FilesystemAction::Rename(source) => {
                     let target = crate::fileops::destination(&directory, &prompt.input)?;
-                    let active = self.active_path()?;
+                    let active = if self.welcome.is_none() {
+                        Some(self.active_path()?)
+                    } else {
+                        None
+                    };
                     crate::fileops::move_entry(source, &target)?;
-                    if let Ok(suffix) = active.strip_prefix(source) {
+                    if let Some(active) = active
+                        && let Ok(suffix) = active.strip_prefix(source)
+                    {
                         self.file.path = if suffix.as_os_str().is_empty() {
                             target.clone()
                         } else {
@@ -536,8 +571,12 @@ impl Editor {
                     Ok(Some(target))
                 }
                 FilesystemAction::Delete(source) => {
-                    let active = self.active_path()?;
-                    if active.starts_with(source) {
+                    let active = if self.welcome.is_none() {
+                        Some(self.active_path()?)
+                    } else {
+                        None
+                    };
+                    if active.is_some_and(|path| path.starts_with(source)) {
                         return Err(std::io::Error::other(
                             "Open another file before deleting the current file or its parent",
                         ));
@@ -611,6 +650,7 @@ impl Editor {
         });
         match opened {
             Ok((file, text)) => {
+                self.welcome = None;
                 self.file = file;
                 self.buffer = Buffer::new(&text);
                 self.mode = Mode::Normal;
@@ -720,6 +760,77 @@ mod tests {
         for c in s.chars() {
             e.key(KeyEvent::new(K::Char(c), KeyModifiers::NONE), 22);
         }
+    }
+    #[test]
+    fn welcome_is_inert_and_browses_launch_directory_until_file_opens() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("space café 界");
+        std::fs::create_dir(&root).unwrap();
+        let path = root.join("hello.txt");
+        std::fs::write(&path, "hello").unwrap();
+        let mut e = Editor::welcome(root.clone());
+        send(&mut e, "iword dwxpu");
+        assert_eq!(e.buffer.text(), "");
+        assert_eq!(e.mode, Mode::Normal);
+        assert!(!e.execute("w"));
+        assert!(e.message.contains("No file open"));
+        assert_eq!(std::fs::read_dir(&root).unwrap().count(), 1);
+        e.open_explorer();
+        assert_eq!(e.explorer.as_ref().unwrap().directory, root);
+        e.close_explorer();
+        assert!(e.welcome.is_some());
+        e.request_open(root.join("missing"));
+        assert!(e.welcome.is_some());
+        e.request_open(path.clone());
+        assert!(e.welcome.is_none());
+        assert!(e.switch_prompt.is_none());
+        assert_eq!(e.buffer.text(), "hello");
+        send(&mut e, "i!");
+        e.key(KeyEvent::new(K::Esc, KeyModifiers::NONE), 22);
+        assert!(!e.execute("q"));
+        assert!(e.execute("wq"));
+        assert_eq!(std::fs::read_to_string(path).unwrap(), "!hello");
+    }
+    #[test]
+    fn welcome_commands_cancel_and_quit_without_a_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut e = Editor::welcome(dir.path().into());
+        send(&mut e, ":wq");
+        assert!(!e.key(KeyEvent::new(K::Enter, KeyModifiers::NONE), 1));
+        assert_eq!(e.mode, Mode::Normal);
+        send(&mut e, ":q");
+        e.key(KeyEvent::new(K::Esc, KeyModifiers::NONE), 1);
+        assert_eq!(e.mode, Mode::Normal);
+        assert_eq!(e.command, "");
+        send(&mut e, ":q");
+        assert!(e.key(KeyEvent::new(K::Enter, KeyModifiers::NONE), 1));
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
+    }
+    #[test]
+    fn welcome_filesystem_actions_have_no_active_file_to_protect() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("old");
+        let target = dir.path().join("new");
+        std::fs::write(&source, "contents").unwrap();
+        let mut e = Editor::welcome(dir.path().into());
+        e.open_explorer();
+        e.filesystem_prompt = Some(FilesystemPrompt {
+            action: FilesystemAction::Rename(source.clone()),
+            input: "new".into(),
+        });
+        e.apply_filesystem_action();
+        assert!(!source.exists());
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "contents");
+        assert!(e.file.path.as_os_str().is_empty());
+        e.filesystem_prompt = Some(FilesystemPrompt {
+            action: FilesystemAction::Delete(target.clone()),
+            input: String::new(),
+        });
+        e.apply_filesystem_action();
+        assert!(!target.exists());
+        e.restore_deleted();
+        assert_eq!(std::fs::read_to_string(target).unwrap(), "contents");
+        assert!(e.welcome.is_some());
     }
     fn editing_fixture(text: &str) -> (tempfile::TempDir, Editor) {
         let dir = tempfile::tempdir().unwrap();
