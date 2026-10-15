@@ -135,10 +135,35 @@ with tempfile.TemporaryDirectory() as directory:
     assert 'nested/café.rs'.encode() in picker_out
     assert b'\x1b[2J' not in picker_out
     session(picked, [b'\x10', b'no-match', b'\r', b'\x7f', b'\x1b', b':open\r', None,
-                     b'\x1b', b'0iX', b'\x1b', b'\x10', b':wq\r'], cwd=picker_root)
+                     b'\x1b', b'0iX', b'\x1b', b'\x10', b'\x1b', b':wq\r'], cwd=picker_root)
     assert picked.read_text() == 'Xfn picked() {}!'
     print('Picker PTY: cwd recursion, fuzzy query, open/save, cancel, resize and unsaved protection verified')
     print('Navigation PTY: Home/End, Page Up/Down, Ctrl-A/E/B/F and resize verified')
+    explorer_root = pathlib.Path(directory) / 'explorer-root'
+    explorer_root.joinpath('nested').mkdir(parents=True)
+    explorer_start = explorer_root / 'start.txt'
+    explorer_target = explorer_root / 'nested' / 'café.rs'
+    explorer_start.write_text('start')
+    explorer_target.write_text('fn target() {}')
+    explorer_root.joinpath('.gitignore').write_text('ignored.txt\n')
+    explorer_root.joinpath('ignored.txt').write_text('hidden')
+    explorer_out = session(explorer_start, [
+        b'A!', b'\x1b', b'-', b'/nested', b'\r', b'h', b'l',
+        b'/cf', b'\r', b'c', b'\r', b's', b'A!', b'\x1b', b':wq\r',
+    ], cwd=explorer_root)
+    assert explorer_start.read_text() == 'start!'
+    assert explorer_target.read_text() == 'fn target() {}!'
+    assert b'Unsaved |' in explorer_out
+    assert b'\x1b[2J' not in explorer_out
+    discard_out = session(explorer_start, [
+        b'A-discard', b'\x1b', b':explore\r', b'.', b'.', b'/nested', b'\r',
+        b'/cf', b'\r', b'd', b':q\r',
+    ], cwd=explorer_root)
+    assert explorer_start.read_text() == 'start!'
+    assert b'ignored.txt' in discard_out
+    cancel_out = session(explorer_start, [b'-', b'/absent', None, b'\x1b', b'\x1b', b':q\r'], cwd=explorer_root)
+    assert b'No matches' in cancel_out
+    print('Explorer PTY: directory navigation, filter, resize, visibility, save/discard/cancel verified')
     rust_path = pathlib.Path(directory) / 'fixture.rs'
     rust_path.write_text('fn main() {\n\tlet café = r#"界"#; // comment\n}\n' + '// scrolling\n' * 40)
     rust_out = session(rust_path, [b'j$a!', b'\x1b', b'G', None, b'gg', b':wq\r'])

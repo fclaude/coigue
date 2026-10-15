@@ -24,6 +24,9 @@ pub struct Editor {
     last_search: String,
     pub picker: Option<crate::picker::Picker>,
     pub generation: u64,
+    pub explorer: Option<crate::explorer::Explorer>,
+    explorer_memory: crate::explorer::Memory,
+    pub switch_prompt: Option<std::path::PathBuf>,
 }
 impl Editor {
     pub fn new(file: File, text: &str) -> Self {
@@ -39,17 +42,28 @@ impl Editor {
             last_search: String::new(),
             picker: None,
             generation: 0,
+            explorer: None,
+            explorer_memory: crate::explorer::Memory::default(),
+            switch_prompt: None,
         }
     }
     pub fn key(&mut self, key: KeyEvent, page_rows: usize) -> bool {
         self.buffer.begin_edit();
         let quit = self.key_inner(key, page_rows);
-        if self.mode != Mode::Insert || self.picker.is_some() {
+        if self.mode != Mode::Insert || self.picker.is_some() || self.explorer.is_some() {
             self.buffer.finish_edit();
         }
         quit
     }
     fn key_inner(&mut self, mut key: KeyEvent, page_rows: usize) -> bool {
+        if self.switch_prompt.is_some() {
+            self.switch_key(key);
+            return false;
+        }
+        if self.explorer.is_some() && self.picker.is_none() {
+            self.explorer_key(key, page_rows);
+            return false;
+        }
         if self.picker.is_some() {
             self.picker_key(key, page_rows);
             return false;
@@ -130,6 +144,10 @@ impl Editor {
                 K::Tab => self.buffer.replace('\t'),
                 _ => {}
             }
+            return false;
+        }
+        if self.mode == Mode::Normal && key.code == K::Char('-') {
+            self.open_explorer();
             return false;
         }
         if self.mode == Mode::Normal && key.code == K::Char('u') {
@@ -293,11 +311,157 @@ impl Editor {
             self.message = format!("Not found: {}", self.last_search);
         }
     }
-    fn open_picker(&mut self) {
-        if self.file.dirty(&self.buffer.text()) {
-            self.message = "Unsaved changes; use :w before opening another file".into();
+    fn open_explorer(&mut self) {
+        self.message.clear();
+        let path = if self.file.path.is_absolute() {
+            self.file.path.clone()
+        } else {
+            match std::env::current_dir() {
+                Ok(cwd) => cwd.join(&self.file.path),
+                Err(err) => {
+                    self.message = err.to_string();
+                    return;
+                }
+            }
+        };
+        let Some(parent) = path.parent() else {
+            return;
+        };
+        self.explorer = Some(crate::explorer::Explorer::new(
+            parent.into(),
+            Some(path),
+            std::mem::take(&mut self.explorer_memory),
+        ));
+        self.pending = None;
+    }
+    fn close_explorer(&mut self) {
+        if let Some(mut explorer) = self.explorer.take() {
+            explorer.remember();
+            self.explorer_memory = std::mem::take(&mut explorer.memory);
+        }
+    }
+    fn explorer_key(&mut self, key: KeyEvent, page_rows: usize) {
+        self.message.clear();
+        if key.modifiers == KeyModifiers::CONTROL && key.code == K::Char('p') {
+            self.open_picker();
             return;
         }
+        if key
+            .modifiers
+            .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER)
+        {
+            return;
+        }
+        let explorer = self.explorer.as_mut().unwrap();
+        if explorer.filtering {
+            match key.code {
+                K::Esc => explorer.cancel_filter(),
+                K::Backspace => {
+                    explorer.query.pop();
+                    explorer.filter();
+                }
+                K::Char(c) => {
+                    explorer.query.push(c);
+                    explorer.filter();
+                }
+                _ => self.explorer_navigation(key.code, page_rows),
+            }
+            return;
+        }
+        match key.code {
+            K::Esc => self.close_explorer(),
+            K::Char('/') => explorer.start_filter(),
+            K::Char('.') => explorer.toggle_visibility(),
+            K::Char('h' | '-') | K::Left => explorer.parent(),
+            K::Char('j') => explorer.move_by(1),
+            K::Char('k') => explorer.move_by(-1),
+            K::Char('l') | K::Right => self.explorer_navigation(K::Enter, page_rows),
+            _ => self.explorer_navigation(key.code, page_rows),
+        }
+    }
+    fn explorer_navigation(&mut self, code: K, page_rows: usize) {
+        let explorer = self.explorer.as_mut().unwrap();
+        match code {
+            K::Up => explorer.move_by(-1),
+            K::Down => explorer.move_by(1),
+            K::PageUp => explorer.move_by(-(page_rows as isize)),
+            K::PageDown => explorer.move_by(page_rows as isize),
+            K::Home => explorer.selected = 0,
+            K::End => explorer.selected = explorer.len().saturating_sub(1),
+            K::Enter => {
+                if let Some(entry) = explorer.entry(explorer.selected) {
+                    let path = entry.path.clone();
+                    if entry.name == ".." {
+                        explorer.parent();
+                    } else if entry.directory {
+                        explorer.navigate(path, None);
+                    } else {
+                        self.request_open(path);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    fn request_open(&mut self, path: std::path::PathBuf) {
+        self.message.clear();
+        if self.file.dirty(&self.buffer.text()) {
+            self.switch_prompt = Some(path);
+        } else {
+            self.open_path(path);
+        }
+    }
+    fn open_path(&mut self, path: std::path::PathBuf) {
+        // Validate before replacing the live buffer, even after choosing discard.
+        let opened = std::fs::metadata(&path).and_then(|meta| {
+            if !meta.is_file() {
+                return Err(std::io::Error::other("not a regular file"));
+            }
+            File::open(path)
+        });
+        match opened {
+            Ok((file, text)) => {
+                self.file = file;
+                self.buffer = Buffer::new(&text);
+                self.mode = Mode::Normal;
+                self.command.clear();
+                self.search.clear();
+                self.pending = None;
+                self.message.clear();
+                self.generation += 1;
+                self.picker = None;
+                self.close_explorer();
+            }
+            Err(err) => self.message = format!("Cannot open file: {err}"),
+        }
+    }
+    fn switch_key(&mut self, key: KeyEvent) {
+        if key
+            .modifiers
+            .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER)
+        {
+            return;
+        }
+        match key.code {
+            K::Esc | K::Char('c') => {
+                self.switch_prompt = None;
+                self.message.clear();
+            }
+            K::Char('s' | 'd') => {
+                if key.code == K::Char('s')
+                    && let Err(err) = self.file.save(&self.buffer.text())
+                {
+                    self.message = format!("Save failed: {err}");
+                    return;
+                }
+                let path = self.switch_prompt.take().unwrap();
+                self.open_path(path);
+            }
+            _ => {}
+        }
+    }
+    fn open_picker(&mut self) {
+        self.message.clear();
         match std::env::current_dir() {
             Ok(root) => self.picker = Some(crate::picker::Picker::new(root)),
             Err(err) => self.message = format!("Cannot open picker: {err}"),
@@ -305,6 +469,7 @@ impl Editor {
         self.pending = None;
     }
     fn picker_key(&mut self, key: KeyEvent, page_rows: usize) {
+        self.message.clear();
         if key.code == K::Esc {
             self.picker = None;
             return;
@@ -333,28 +498,7 @@ impl Editor {
             K::End => picker.selected = picker.len().saturating_sub(1),
             K::Enter => {
                 if let Some(path) = picker.path().map(std::path::Path::to_path_buf) {
-                    // Recheck rather than allowing an overlay to discard a dirty buffer.
-                    if self.file.dirty(&self.buffer.text()) {
-                        self.message = "Unsaved changes; use :w before opening another file".into();
-                        self.picker = None;
-                    } else {
-                        match File::open(path) {
-                            Ok((file, text)) => {
-                                self.file = file;
-                                self.buffer = Buffer::new(&text);
-                                self.mode = Mode::Normal;
-                                self.command.clear();
-                                self.search.clear();
-                                self.message.clear();
-                                self.generation += 1;
-                                self.picker = None;
-                            }
-                            Err(err) => {
-                                self.message = format!("Cannot open file: {err}");
-                                self.picker = None;
-                            }
-                        }
-                    }
+                    self.request_open(path);
                 }
             }
             _ => {}
@@ -364,6 +508,7 @@ impl Editor {
         let text = self.buffer.text();
         match cmd {
             "open" => self.open_picker(),
+            "explore" => self.open_explorer(),
             "w" | "wq" => match self.file.save(&text) {
                 Ok(()) => {
                     self.message = "Written".into();
@@ -399,6 +544,105 @@ mod tests {
     }
     fn redo(e: &mut Editor) {
         e.key(KeyEvent::new(K::Char('r'), KeyModifiers::CONTROL), 22);
+    }
+    fn ready_explorer(e: &mut Editor) {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+        let view = e.explorer.as_mut().unwrap();
+        while view.loading {
+            view.poll();
+            assert!(std::time::Instant::now() < deadline);
+            std::thread::yield_now();
+        }
+        view.fit(4);
+    }
+    #[test]
+    fn explorer_browses_dirty_buffer_and_cancel_preserves_cursor_history_and_cwd() {
+        let (_dir, mut e) = editing_fixture("abc\nnext");
+        let cwd = std::env::current_dir().unwrap();
+        send(&mut e, "lrx-");
+        ready_explorer(&mut e);
+        assert_eq!(e.buffer.text(), "axc\nnext");
+        assert_eq!(
+            e.explorer
+                .as_ref()
+                .unwrap()
+                .entry(e.explorer.as_ref().unwrap().selected)
+                .unwrap()
+                .path,
+            e.file.path
+        );
+        press(&mut e, K::Enter);
+        assert!(e.switch_prompt.is_some());
+        send(&mut e, "c");
+        assert!(e.explorer.is_some());
+        send(&mut e, "/no-match");
+        assert_eq!(e.explorer.as_ref().unwrap().len(), 0);
+        press(&mut e, K::Esc);
+        assert!(e.explorer.is_some());
+        press(&mut e, K::Esc);
+        assert!(e.explorer.is_none());
+        assert_eq!((e.buffer.row, e.buffer.col), (0, 1));
+        assert_eq!(std::env::current_dir().unwrap(), cwd);
+        send(&mut e, "u");
+        assert_eq!(e.buffer.text(), "abc\nnext");
+        e.execute("explore");
+        ready_explorer(&mut e);
+        e.key(KeyEvent::new(K::Char('p'), KeyModifiers::CONTROL), 22);
+        assert!(e.picker.is_some());
+        assert_eq!(e.picker.as_ref().unwrap().root, cwd);
+        press(&mut e, K::Esc);
+        assert!(e.explorer.is_some());
+        assert!(e.picker.is_none());
+    }
+    #[test]
+    fn explorer_saves_or_discards_only_after_explicit_choice() {
+        for choice in ['s', 'd'] {
+            let (dir, mut e) = editing_fixture("old");
+            let source = e.file.path.clone();
+            let destination = dir.path().join("destination");
+            std::fs::write(&destination, "new").unwrap();
+            send(&mut e, "rx-");
+            ready_explorer(&mut e);
+            send(&mut e, "/destination");
+            press(&mut e, K::Enter);
+            assert_eq!(e.buffer.text(), "xld");
+            assert!(e.switch_prompt.is_some());
+            assert_eq!(std::fs::read_to_string(&source).unwrap(), "old");
+            send(&mut e, &choice.to_string());
+            assert_eq!(e.buffer.text(), "new");
+            assert_eq!(
+                std::fs::read_to_string(&source).unwrap(),
+                if choice == 's' { "xld" } else { "old" }
+            );
+            assert!(e.explorer.is_none());
+            assert!(e.switch_prompt.is_none());
+            send(&mut e, "u");
+            assert_eq!(e.buffer.text(), "new");
+        }
+    }
+    #[test]
+    fn failed_save_or_discard_open_keeps_original_edits_and_history() {
+        let (dir, mut e) = editing_fixture("old");
+        let destination = dir.path().join("binary");
+        std::fs::write(&destination, [0xff]).unwrap();
+        send(&mut e, "rx-");
+        ready_explorer(&mut e);
+        send(&mut e, "/binary");
+        press(&mut e, K::Enter);
+        std::fs::write(&e.file.path, "external").unwrap();
+        send(&mut e, "s");
+        assert!(e.switch_prompt.is_some());
+        assert!(e.message.contains("Save failed"));
+        assert_eq!(e.buffer.text(), "xld");
+        send(&mut e, "d");
+        assert!(e.message.contains("not UTF-8"));
+        assert!(e.explorer.is_some());
+        assert_eq!(e.buffer.text(), "xld");
+        press(&mut e, K::Esc); // Leave filter.
+        press(&mut e, K::Esc); // Return to file.
+        send(&mut e, "u");
+        assert_eq!(e.buffer.text(), "old");
+        assert_eq!(std::fs::read_to_string(&e.file.path).unwrap(), "external");
     }
     #[test]
     fn undo_groups_insert_sessions_including_open_append_and_newlines() {
@@ -703,11 +947,13 @@ mod tests {
         assert!(e.picker.is_none());
         e.buffer.insert('x');
         e.key(KeyEvent::new(K::Char('p'), KeyModifiers::CONTROL), 22);
-        assert!(e.picker.is_none());
-        assert!(e.message.contains("Unsaved"));
+        assert!(e.picker.is_some());
         ready_picker(&mut e, dir.path(), "old");
         e.key(KeyEvent::new(K::Enter, KeyModifiers::NONE), 22);
         assert_eq!(e.buffer.text(), "xfn main() {}");
+        assert!(e.switch_prompt.is_some());
+        press(&mut e, K::Esc);
+        assert!(e.switch_prompt.is_none());
         assert!(e.file.path.ends_with("new.rs"));
     }
     #[test]

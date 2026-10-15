@@ -165,7 +165,7 @@ impl Drop for Picker {
 
 // Ordered subsequences, rewarded for consecutive characters, word boundaries,
 // and basename matches. Shorter paths win otherwise comparable matches.
-fn score(label: &str, query: &str) -> Option<i64> {
+pub(crate) fn score(label: &str, query: &str) -> Option<i64> {
     if query.is_empty() {
         return Some(0);
     }

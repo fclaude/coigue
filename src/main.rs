@@ -1,5 +1,6 @@
 mod buffer;
 mod editor;
+mod explorer;
 mod file;
 mod picker;
 mod render;
@@ -47,8 +48,14 @@ fn run() -> io::Result<()> {
         if let Some(picker) = &mut editor.picker {
             picker.poll();
         }
+        if let Some(explorer) = &mut editor.explorer {
+            explorer.poll();
+            explorer.fit(view.page_rows());
+        }
         view.draw(&editor)?;
-        if editor.picker.is_some() && !event::poll(std::time::Duration::from_millis(50))? {
+        if (editor.picker.is_some() || editor.explorer.is_some())
+            && !event::poll(std::time::Duration::from_millis(50))?
+        {
             continue;
         }
         match event::read()? {

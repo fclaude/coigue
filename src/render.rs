@@ -85,6 +85,12 @@ fn styled_line(
     }
     queue!(out, SetForegroundColor(Color::Reset))
 }
+fn switch_prompt(e: &Editor) -> String {
+    format!(
+        "Unsaved | [s] save/open  [d] discard/open  [c/Esc] cancel | {}",
+        e.switch_prompt.as_ref().unwrap().display()
+    )
+}
 impl View {
     pub fn page_rows(&self) -> usize {
         usize::from(self.size.1.saturating_sub(2)).max(1)
@@ -93,13 +99,9 @@ impl View {
         let mut out = io::stdout().lock();
         self.draw_to(e, terminal::size()?, &mut out)
     }
-    fn draw_picker(
-        &mut self,
-        picker: &crate::picker::Picker,
-        out: &mut impl Write,
-    ) -> io::Result<()> {
-        let (w, h) = self.size;
-        let width = usize::from(w);
+    fn draw_picker(&mut self, e: &Editor, out: &mut impl Write) -> io::Result<()> {
+        let picker = e.picker.as_ref().unwrap();
+        let (_, h) = self.size;
         let rows = usize::from(h.saturating_sub(2));
         let top = picker.selected.saturating_sub(rows.saturating_sub(1));
         let mut lines = Vec::with_capacity(usize::from(h));
@@ -130,13 +132,82 @@ impl View {
                 None => String::new(),
             });
         }
-        let prompt = format!("Open: {}", picker.query);
+        if !e.message.is_empty() {
+            lines[0] = e.message.clone();
+        }
+        let prompt = if e.switch_prompt.is_some() {
+            switch_prompt(e)
+        } else {
+            format!("Open: {}", picker.query)
+        };
         if h == 1 {
             lines.clear();
         } else {
             lines.truncate(usize::from(h - 1));
         }
         lines.push(prompt.clone());
+        self.draw_browser_lines(lines, out)
+    }
+    fn draw_explorer(&mut self, e: &Editor, out: &mut impl Write) -> io::Result<()> {
+        let explorer = e.explorer.as_ref().unwrap();
+        let (_, h) = self.size;
+        let rows = usize::from(h.saturating_sub(2));
+        let top = explorer
+            .top
+            .min(explorer.selected)
+            .max(explorer.selected.saturating_sub(rows.saturating_sub(1)))
+            .min(explorer.len().saturating_sub(rows));
+        let mut lines = vec![format!(
+            "{} | {} entries{}{}",
+            explorer.directory.display(),
+            explorer.len(),
+            if explorer.loading {
+                " | loading..."
+            } else {
+                ""
+            },
+            if explorer.memory.show_all {
+                " | show all"
+            } else {
+                ""
+            }
+        )];
+        if !e.message.is_empty() {
+            lines[0] = e.message.clone();
+        }
+        for i in top..top + rows {
+            lines.push(match explorer.entry(i) {
+                Some(entry) => format!(
+                    "{} {}{}",
+                    if i == explorer.selected { ">" } else { " " },
+                    entry.name,
+                    if entry.directory { "/" } else { "" }
+                ),
+                None if i == top && !explorer.loading => "No matches".into(),
+                None => String::new(),
+            });
+        }
+        let prompt = if e.switch_prompt.is_some() {
+            switch_prompt(e)
+        } else if explorer.filtering {
+            format!("/{}", explorer.query)
+        } else if !explorer.message.is_empty() {
+            explorer.message.clone()
+        } else {
+            "/ filter  Enter open  h parent  . show all  Esc return".into()
+        };
+        if h == 1 {
+            lines.clear();
+        } else {
+            lines.truncate(usize::from(h - 1));
+        }
+        lines.push(prompt);
+        self.draw_browser_lines(lines, out)
+    }
+    fn draw_browser_lines(&mut self, lines: Vec<String>, out: &mut impl Write) -> io::Result<()> {
+        let (w, h) = self.size;
+        let width = usize::from(w);
+        let prompt = lines.last().unwrap();
         let mut frame = Vec::new();
         let mut update = Vec::new();
         queue!(
@@ -147,7 +218,9 @@ impl View {
         )?;
         for (y, line) in lines.iter().enumerate() {
             // Keep the end of a long query visible while typing.
-            let left = if y == usize::from(h - 1) {
+            let left = if y == usize::from(h - 1)
+                && (line.starts_with('/') || line.starts_with("Open:"))
+            {
                 line.chars()
                     .map(|c| cell(c).1)
                     .sum::<usize>()
@@ -197,8 +270,11 @@ impl View {
             self.revision = None;
             self.generation = e.generation;
         }
-        if let Some(picker) = &e.picker {
-            return self.draw_picker(picker, out);
+        if e.picker.is_some() {
+            return self.draw_picker(e, out);
+        }
+        if e.explorer.is_some() {
+            return self.draw_explorer(e, out);
         }
         let rows = usize::from(h.saturating_sub(2));
         let width = usize::from(w);
@@ -334,6 +410,46 @@ impl View {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn explorer_resize_confirmation_and_cancel_preserve_file_viewport() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("current");
+        let text = "long line with characters to scroll\n".repeat(12);
+        std::fs::write(&path, &text).unwrap();
+        let (file, text) = crate::file::File::open(path).unwrap();
+        let mut e = Editor::new(file, &text);
+        e.buffer.row = 5;
+        e.buffer.col = 20;
+        let mut view = View::default();
+        view.draw_to(&e, (10, 4), &mut Vec::new()).unwrap();
+        let position = (view.top, view.left);
+        for c in ['r', 'Z', '-'] {
+            e.key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE), 2);
+        }
+        let explorer = e.explorer.as_mut().unwrap();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+        while explorer.loading {
+            explorer.poll();
+            assert!(std::time::Instant::now() < deadline);
+            std::thread::yield_now();
+        }
+        for size in [(0, 0), (1, 1), (16, 2), (80, 6)] {
+            let mut out = Vec::new();
+            view.draw_to(&e, size, &mut out).unwrap();
+            assert!(!String::from_utf8_lossy(&out).contains(&Clear(ClearType::All).to_string()));
+        }
+        e.key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE), 2);
+        let mut out = Vec::new();
+        view.draw_to(&e, (80, 6), &mut out).unwrap();
+        assert!(String::from_utf8_lossy(&out).contains("[s] save/open"));
+        e.key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::NONE), 2);
+        e.key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE), 2);
+        view.draw_to(&e, (10, 4), &mut Vec::new()).unwrap();
+        assert_eq!((view.top, view.left), position);
+        assert_eq!((e.buffer.row, e.buffer.col), (5, 20));
+        assert!(view.dirty);
+    }
     #[test]
     fn undo_redo_invalidates_multiline_highlighting_and_dirty_status() {
         use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
