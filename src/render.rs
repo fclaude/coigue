@@ -335,6 +335,39 @@ impl View {
 mod tests {
     use super::*;
     #[test]
+    fn undo_redo_invalidates_multiline_highlighting_and_dirty_status() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("history.rs");
+        std::fs::write(&path, "/*\nfn main() {}").unwrap();
+        let (file, text) = crate::file::File::open(path).unwrap();
+        let mut e = Editor::new(file, &text);
+        let mut view = View::default();
+        view.draw_to(&e, (80, 4), &mut Vec::new()).unwrap();
+        assert!(!view.dirty);
+        e.key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE), 2);
+        view.draw_to(&e, (80, 4), &mut Vec::new()).unwrap();
+        assert_eq!(
+            view.styles.as_ref().unwrap()[1][0],
+            crate::syntax::Style::Keyword
+        );
+        assert!(view.dirty);
+        e.key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::NONE), 2);
+        view.draw_to(&e, (80, 4), &mut Vec::new()).unwrap();
+        assert_eq!(
+            view.styles.as_ref().unwrap()[1][0],
+            crate::syntax::Style::Comment
+        );
+        assert!(!view.dirty);
+        e.key(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::CONTROL), 2);
+        view.draw_to(&e, (80, 4), &mut Vec::new()).unwrap();
+        assert_eq!(
+            view.styles.as_ref().unwrap()[1][0],
+            crate::syntax::Style::Keyword
+        );
+        assert!(view.dirty);
+    }
+    #[test]
     fn long_unicode_search_prompt_scrolls_and_cancel_restores_message_row() {
         use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
         let dir = tempfile::tempdir().unwrap();

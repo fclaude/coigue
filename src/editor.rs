@@ -41,7 +41,15 @@ impl Editor {
             generation: 0,
         }
     }
-    pub fn key(&mut self, mut key: KeyEvent, page_rows: usize) -> bool {
+    pub fn key(&mut self, key: KeyEvent, page_rows: usize) -> bool {
+        self.buffer.begin_edit();
+        let quit = self.key_inner(key, page_rows);
+        if self.mode != Mode::Insert || self.picker.is_some() {
+            self.buffer.finish_edit();
+        }
+        quit
+    }
+    fn key_inner(&mut self, mut key: KeyEvent, page_rows: usize) -> bool {
         if self.picker.is_some() {
             self.picker_key(key, page_rows);
             return false;
@@ -51,6 +59,19 @@ impl Editor {
             && matches!(self.mode, Mode::Normal | Mode::Insert)
         {
             self.open_picker();
+            return false;
+        }
+        if self.mode == Mode::Normal
+            && key.modifiers == KeyModifiers::CONTROL
+            && key.code == K::Char('r')
+        {
+            self.pending = None;
+            self.message = if self.buffer.redo() {
+                "Redone"
+            } else {
+                "Nothing to redo"
+            }
+            .into();
             return false;
         }
         if key.modifiers == KeyModifiers::CONTROL {
@@ -109,6 +130,16 @@ impl Editor {
                 K::Tab => self.buffer.replace('\t'),
                 _ => {}
             }
+            return false;
+        }
+        if self.mode == Mode::Normal && key.code == K::Char('u') {
+            self.pending = None;
+            self.message = if self.buffer.undo() {
+                "Undone"
+            } else {
+                "Nothing to undo"
+            }
+            .into();
             return false;
         }
         if self.mode == Mode::Normal && matches!(key.code, K::Char('n' | 'N')) {
@@ -365,6 +396,130 @@ mod tests {
     }
     fn press(e: &mut Editor, code: K) {
         e.key(KeyEvent::new(code, KeyModifiers::NONE), 22);
+    }
+    fn redo(e: &mut Editor) {
+        e.key(KeyEvent::new(K::Char('r'), KeyModifiers::CONTROL), 22);
+    }
+    #[test]
+    fn undo_groups_insert_sessions_including_open_append_and_newlines() {
+        let (_dir, mut e) = editing_fixture("é界\n");
+        send(&mut e, "lAhello");
+        press(&mut e, K::Enter);
+        send(&mut e, "world");
+        press(&mut e, K::Backspace);
+        press(&mut e, K::Esc);
+        assert_eq!(e.buffer.text(), "é界hello\nworl\n");
+        let edited = e.buffer.text();
+        send(&mut e, "u");
+        assert_eq!(e.buffer.text(), "é界\n");
+        assert_eq!((e.buffer.row, e.buffer.col), (0, 1));
+        assert!(!e.file.dirty(&e.buffer.text()));
+        redo(&mut e);
+        assert_eq!(e.buffer.text(), edited);
+        send(&mut e, "u");
+        send(&mut e, "oopened");
+        press(&mut e, K::Esc);
+        assert_eq!(e.buffer.text(), "é界\nopened\n");
+        send(&mut e, "u");
+        assert_eq!(e.buffer.text(), "é界\n");
+        assert_eq!((e.buffer.row, e.buffer.col), (0, 1));
+        redo(&mut e);
+        assert_eq!(e.buffer.text(), "é界\nopened\n");
+    }
+    #[test]
+    fn undo_redo_each_normal_edit_and_register_remains_usable() {
+        let (_dir, mut e) = editing_fixture("é🦀\nsecond\n");
+        let mut states = vec![e.buffer.text()];
+        for command in ["x", "rQ", ">>", "<<", "dd", "P", "p"] {
+            send(&mut e, command);
+            states.push(e.buffer.text());
+        }
+        for text in states[..states.len() - 1].iter().rev() {
+            send(&mut e, "u");
+            assert_eq!(&e.buffer.text(), text);
+        }
+        send(&mut e, "u");
+        assert!(e.message.contains("Nothing to undo"));
+        for text in &states[1..] {
+            redo(&mut e);
+            assert_eq!(&e.buffer.text(), text);
+        }
+        redo(&mut e);
+        assert!(e.message.contains("Nothing to redo"));
+        // Undo does not discard the cut line in the register.
+        send(&mut e, "up");
+        assert_eq!(e.buffer.text(), states.last().unwrap().as_str());
+    }
+    #[test]
+    fn redo_survives_non_edits_but_is_cleared_by_a_new_edit() {
+        let (_dir, mut e) = editing_fixture("abc");
+        send(&mut e, "xu");
+        send(&mut e, "yyj0/abc");
+        press(&mut e, K::Enter);
+        send(&mut e, "r");
+        press(&mut e, K::Esc);
+        send(&mut e, "ra<<"); // Replacement and unindent both leave text unchanged.
+        send(&mut e, "iZ");
+        press(&mut e, K::Backspace); // A net-zero insert session creates no history entry.
+        press(&mut e, K::Esc);
+        redo(&mut e);
+        assert_eq!(e.buffer.text(), "bc");
+        send(&mut e, "u");
+        send(&mut e, "rQ");
+        redo(&mut e);
+        assert_eq!(e.buffer.text(), "Qbc");
+        assert!(e.message.contains("Nothing to redo"));
+        // The literal replacement key u must not trigger undo.
+        send(&mut e, "ru");
+        assert_eq!(e.buffer.text(), "ubc");
+    }
+    #[test]
+    fn save_preserves_history_and_dirty_checks_follow_restored_contents() {
+        let (_dir, mut e) = editing_fixture("original\n");
+        send(&mut e, "A!");
+        press(&mut e, K::Esc);
+        assert!(!e.execute("w"));
+        assert!(!e.file.dirty(&e.buffer.text()));
+        send(&mut e, "u");
+        assert_eq!(e.buffer.text(), "original\n");
+        assert!(e.file.dirty(&e.buffer.text()));
+        assert!(!e.execute("q"));
+        assert_eq!(
+            std::fs::read_to_string(&e.file.path).unwrap(),
+            "original!\n"
+        );
+        redo(&mut e);
+        assert!(!e.file.dirty(&e.buffer.text()));
+        send(&mut e, "u");
+        assert!(!e.execute("w"));
+        redo(&mut e);
+        assert!(e.file.dirty(&e.buffer.text()));
+        send(&mut e, "u");
+        assert!(e.execute("q"));
+    }
+    #[test]
+    fn file_switch_resets_history_and_picker_cancel_keeps_it() {
+        let (dir, mut e) = editing_fixture("old");
+        std::fs::write(dir.path().join("second"), "new").unwrap();
+        send(&mut e, "x");
+        e.execute("w");
+        ready_picker(&mut e, dir.path(), "second");
+        press(&mut e, K::Esc);
+        send(&mut e, "u");
+        assert_eq!(e.buffer.text(), "old");
+        redo(&mut e);
+        ready_picker(&mut e, dir.path(), "second");
+        press(&mut e, K::Enter);
+        send(&mut e, "u");
+        assert_eq!(e.buffer.text(), "new");
+        assert!(e.message.contains("Nothing to undo"));
+        redo(&mut e);
+        assert!(e.message.contains("Nothing to redo"));
+        send(&mut e, "ix");
+        redo(&mut e); // Ctrl-R has no history action in insert mode.
+        press(&mut e, K::Esc);
+        send(&mut e, "u");
+        assert_eq!(e.buffer.text(), "new");
     }
     #[test]
     fn copy_cut_and_repeat_paste_preserve_unicode_and_newlines() {

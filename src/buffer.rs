@@ -1,9 +1,22 @@
+const HISTORY_LIMIT: usize = 100;
+
+#[derive(Debug)]
+struct Snapshot {
+    lines: Vec<Vec<char>>,
+    row: usize,
+    col: usize,
+}
+
 #[derive(Debug)]
 pub struct Buffer {
     pub lines: Vec<Vec<char>>,
     pub row: usize,
     pub col: usize,
     revision: u64,
+    undo: Vec<Snapshot>,
+    redo: Vec<Snapshot>,
+    edit_origin: Option<(usize, usize)>,
+    before_edit: Option<Snapshot>,
 }
 impl Buffer {
     pub fn new(text: &str) -> Self {
@@ -12,13 +25,78 @@ impl Buffer {
             row: 0,
             col: 0,
             revision: 0,
+            undo: Vec::new(),
+            redo: Vec::new(),
+            edit_origin: None,
+            before_edit: None,
         }
+    }
+    pub fn begin_edit(&mut self) {
+        self.edit_origin.get_or_insert((self.row, self.col));
+    }
+    fn snapshot(&self) -> Snapshot {
+        Snapshot {
+            lines: self.lines.clone(),
+            row: self.row,
+            col: self.col,
+        }
+    }
+    // Capture lazily: navigation, copying, and search never copy the buffer.
+    fn change(&mut self) {
+        if self.before_edit.is_none() {
+            let mut snapshot = self.snapshot();
+            if let Some((row, col)) = self.edit_origin {
+                snapshot.row = row;
+                snapshot.col = col;
+            }
+            self.before_edit = Some(snapshot);
+        }
+        self.revision += 1;
+    }
+    pub fn finish_edit(&mut self) {
+        self.edit_origin = None;
+        if let Some(snapshot) = self.before_edit.take()
+            && snapshot.lines != self.lines
+        {
+            self.undo.push(snapshot);
+            if self.undo.len() > HISTORY_LIMIT {
+                self.undo.remove(0);
+            }
+            self.redo.clear();
+        }
+    }
+    fn restore(&mut self, snapshot: Snapshot) {
+        self.lines = snapshot.lines;
+        self.row = snapshot.row;
+        self.col = snapshot.col;
+        // Revisions must increase even when restoring older contents, so the
+        // renderer invalidates highlighting and its cached dirty status.
+        self.revision += 1;
+        self.clamp(false);
+    }
+    pub fn undo(&mut self) -> bool {
+        self.finish_edit();
+        let Some(snapshot) = self.undo.pop() else {
+            return false;
+        };
+        self.redo.push(self.snapshot());
+        self.restore(snapshot);
+        true
+    }
+    pub fn redo(&mut self) -> bool {
+        self.finish_edit();
+        let Some(snapshot) = self.redo.pop() else {
+            return false;
+        };
+        self.undo.push(self.snapshot());
+        self.restore(snapshot);
+        true
     }
     pub fn revision(&self) -> u64 {
         self.revision
     }
     pub fn open_line(&mut self) {
-        self.revision += 1;
+        self.change();
         self.row += 1;
         self.lines.insert(self.row, vec![]);
         self.col = 0;
@@ -39,7 +117,7 @@ impl Buffer {
         );
     }
     pub fn insert(&mut self, ch: char) {
-        self.revision += 1;
+        self.change();
         if ch == '\n' {
             let tail = self.lines[self.row].split_off(self.col);
             self.row += 1;
@@ -52,11 +130,11 @@ impl Buffer {
     }
     pub fn backspace(&mut self) {
         if self.col > 0 {
-            self.revision += 1;
+            self.change();
             self.col -= 1;
             self.lines[self.row].remove(self.col);
         } else if self.row > 0 {
-            self.revision += 1;
+            self.change();
             let line = self.lines.remove(self.row);
             self.row -= 1;
             self.col = self.lines[self.row].len();
@@ -65,21 +143,22 @@ impl Buffer {
     }
     pub fn delete(&mut self) {
         if self.col < self.lines[self.row].len() {
-            self.revision += 1;
+            self.change();
             self.lines[self.row].remove(self.col);
         }
         self.clamp(false);
     }
     pub fn replace(&mut self, ch: char) {
-        if let Some(current) = self.lines[self.row].get_mut(self.col)
-            && *current != ch
+        if self.lines[self.row]
+            .get(self.col)
+            .is_some_and(|&current| current != ch)
         {
-            *current = ch;
-            self.revision += 1;
+            self.change();
+            self.lines[self.row][self.col] = ch;
         }
     }
     pub fn paste_line(&mut self, line: &[char], after: bool, terminated: bool) {
-        self.revision += 1;
+        self.change();
         if self.lines.len() == 1 && self.lines[0].is_empty() {
             self.lines[0] = line.to_vec();
             // An empty buffer is represented by one placeholder line. Restore
@@ -97,27 +176,27 @@ impl Buffer {
         if chars.is_empty() {
             return;
         }
-        self.revision += 1;
+        self.change();
         let start = (self.col + usize::from(after)).min(self.lines[self.row].len());
         self.lines[self.row].splice(start..start, chars.iter().copied());
         self.col = start + chars.len() - 1;
     }
     pub fn indent(&mut self, right: bool) {
-        let line = &mut self.lines[self.row];
         if right {
-            line.splice(0..0, [' '; 4]);
+            self.change();
+            self.lines[self.row].splice(0..0, [' '; 4]);
             self.col += 4;
-            self.revision += 1;
         } else {
+            let line = &self.lines[self.row];
             let count = if line.first() == Some(&'\t') {
                 1
             } else {
                 line.iter().take(4).take_while(|&&c| c == ' ').count()
             };
             if count > 0 {
-                line.drain(..count);
+                self.change();
+                self.lines[self.row].drain(..count);
                 self.col = self.col.saturating_sub(count);
-                self.revision += 1;
             }
         }
         self.clamp(false);
@@ -154,7 +233,7 @@ impl Buffer {
         if forward { before } else { before.or(after) }
     }
     pub fn delete_line(&mut self) {
-        self.revision += 1;
+        self.change();
         self.lines.remove(self.row);
         if self.lines.is_empty() {
             self.lines.push(vec![]);
@@ -165,6 +244,28 @@ impl Buffer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn history_limit_and_monotonic_revisions() {
+        let mut buffer = Buffer::new("");
+        for _ in 0..HISTORY_LIMIT + 5 {
+            buffer.begin_edit();
+            buffer.insert('界');
+            buffer.finish_edit();
+        }
+        let mut revision = buffer.revision();
+        for _ in 0..HISTORY_LIMIT {
+            assert!(buffer.undo());
+            assert!(buffer.revision() > revision);
+            revision = buffer.revision();
+        }
+        assert!(!buffer.undo());
+        assert_eq!(buffer.lines[0].len(), 5);
+        for _ in 0..HISTORY_LIMIT {
+            assert!(buffer.redo());
+        }
+        assert!(!buffer.redo());
+        assert_eq!(buffer.lines[0].len(), HISTORY_LIMIT + 5);
+    }
     #[test]
     fn unicode_split_join() {
         let mut b = Buffer::new("é🦀\n");

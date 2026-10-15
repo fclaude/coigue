@@ -106,6 +106,17 @@ with tempfile.TemporaryDirectory() as directory:
     assert b'/omega' in edit_out and b'Not found: omega' in edit_out
     assert b'\x1b[2J' not in edit_out
     print('Editing PTY: copy/cut/paste, replacement, literal search, indentation and append verified')
+    history_path = pathlib.Path(directory) / 'history.rs'
+    history_path.write_text('é界\n')
+    history_out = session(history_path, [b'A!', b'\x1b', b':w\r', b'u', b':q\r', b'\x12', b':q\r'])
+    assert b'Unsaved changes' in history_out
+    assert history_path.read_text() == 'é界!\n'
+    session(history_path, [b'ohello\rworld', b'\x7f', b'\x1b', b'u', b'\x12', b'u', b':wq\r'])
+    assert history_path.read_text() == 'é界!\n'
+    branch_out = session(history_path, [b'x', b'u', b'ru', b'\x12', b':wq\r'])
+    assert b'Nothing to redo' in branch_out
+    assert history_path.read_text() == 'u界!\n'
+    print('History PTY: insert grouping, undo/redo, save/quit safeguards and branching verified')
     picker_root = pathlib.Path(directory) / 'picker-root'
     picker_root.joinpath('nested').mkdir(parents=True)
     picked = picker_root / 'nested' / 'café.rs'
