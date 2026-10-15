@@ -37,3 +37,10 @@ python3 tests/pty_smoke.py target/debug/coigue
 ```
 
 The Unix PTY smoke test uses only disposable files and checks save/reopen, repeated edits, resize, quit safeguards and terminal restoration after errors and unwinding. The additional `/dev/full` output-failure test runs on Linux and is skipped when that device is unavailable (including macOS).
+
+Rust files (`.rs`) receive lightweight lexical highlighting for keywords, comments,
+strings, characters, lifetimes, numbers, and macros. Nested block comments and
+multiline/raw strings retain state across lines. Other extensions remain plain.
+The lexer runs over the buffer on each redraw to keep edits and scrolling correct;
+this favors simplicity over performance on very large files. It does not perform
+semantic analysis or use an LSP. Colors use the terminal's ANSI palette.
