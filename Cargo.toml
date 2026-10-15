@@ -5,5 +5,6 @@ edition = "2024"
 
 [dependencies]
 crossterm = "0.29"
+ignore = "0.4"
 tempfile = "3"
 unicode-width = "0.2"

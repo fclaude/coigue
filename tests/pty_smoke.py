@@ -110,6 +110,12 @@ with tempfile.TemporaryDirectory() as directory:
     picker_root.joinpath('nested').mkdir(parents=True)
     picked = picker_root / 'nested' / 'café.rs'
     picked.write_text('fn picked() {}')
+    picker_root.joinpath('.gitignore').write_text('ignored-only.rs\n')
+    ignored = picker_root / 'ignored-only.rs'
+    ignored.write_text('excluded')
+    ignored_out = session(path, [b'\x10', b'ignored-only', b'\r', b'\x1b', b':q\r'], cwd=picker_root)
+    assert b'No matches' in ignored_out
+    assert ignored.read_text() == 'excluded'
     # The initial file is outside cwd: discovery must use cwd, not its parent.
     original = path.read_text()
     picker_out = session(path, [b'\x10', b'n/cf', b'\r', b'$a!', b'\x1b', b':wq\r'], cwd=picker_root)

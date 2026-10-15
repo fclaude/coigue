@@ -51,8 +51,10 @@ to select, Enter to open, and Esc to cancel. Matching is case-insensitive and
 favors consecutive characters, word boundaries, basenames, and shorter paths.
 Files appear while discovery runs in the background; reopening rescans the tree.
 Hidden files are included except `.git`; symlinks and special files are skipped.
-Unreadable entries are counted and skipped. Other directories, including build
-outputs, are searched; `.gitignore` is not interpreted. Save unsaved edits with
+Nested and parent `.gitignore` files and repository `.git/info/exclude` rules
+are honored, including negations; ignored directories are pruned during discovery.
+Rules also work outside Git repositories. Global Git excludes and `.ignore` files
+are not read. Unreadable entries and ignore-file errors are counted and skipped. Save unsaved edits with
 `:w` before opening the picker. Canceling or a failed open preserves the buffer.
 Opening a file returns to normal mode at its first character.
 
