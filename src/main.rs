@@ -1,6 +1,7 @@
 mod buffer;
 mod editor;
 mod file;
+mod picker;
 mod render;
 mod syntax;
 use crossterm::{
@@ -36,14 +37,20 @@ fn run() -> io::Result<()> {
         .next()
         .ok_or_else(|| io::Error::other("usage: coigue <file>"))?;
     if args.next().is_some() {
-        return Err(io::Error::other("exactly one file per session"));
+        return Err(io::Error::other("exactly one initial file is required"));
     }
     let (file, text) = file::File::open(PathBuf::from(path))?;
     let mut editor = editor::Editor::new(file, &text);
     let _terminal = Terminal::enter()?;
     let mut view = render::View::default();
     loop {
+        if let Some(picker) = &mut editor.picker {
+            picker.poll();
+        }
         view.draw(&editor)?;
+        if editor.picker.is_some() && !event::poll(std::time::Duration::from_millis(50))? {
+            continue;
+        }
         match event::read()? {
             Event::Key(k) if k.kind != KeyEventKind::Release => {
                 if editor.key(k, view.page_rows()) {
