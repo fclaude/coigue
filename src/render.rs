@@ -16,6 +16,7 @@ pub struct View {
     revision: Option<(u64, u64)>,
     styles: Option<Vec<Vec<crate::syntax::Style>>>,
     dirty: bool,
+    generation: u64,
 }
 fn cell(c: char) -> (String, usize) {
     if c == '\t' {
@@ -92,6 +93,95 @@ impl View {
         let mut out = io::stdout().lock();
         self.draw_to(e, terminal::size()?, &mut out)
     }
+    fn draw_picker(
+        &mut self,
+        picker: &crate::picker::Picker,
+        out: &mut impl Write,
+    ) -> io::Result<()> {
+        let (w, h) = self.size;
+        let width = usize::from(w);
+        let rows = usize::from(h.saturating_sub(2));
+        let top = picker.selected.saturating_sub(rows.saturating_sub(1));
+        let mut lines = Vec::with_capacity(usize::from(h));
+        lines.push(format!(
+            "Files {}/{}{}{} | Enter open, Esc cancel | {}",
+            picker.len(),
+            picker.total(),
+            if picker.scanning {
+                " | scanning..."
+            } else {
+                ""
+            },
+            if picker.skipped > 0 {
+                format!(" | {} unreadable entries skipped", picker.skipped)
+            } else {
+                String::new()
+            },
+            picker.root.display()
+        ));
+        for index in top..top + rows {
+            lines.push(match picker.label(index) {
+                Some(label) => format!(
+                    "{} {}",
+                    if index == picker.selected { ">" } else { " " },
+                    label
+                ),
+                None if index == top => "No matches".into(),
+                None => String::new(),
+            });
+        }
+        let prompt = format!("Open: {}", picker.query);
+        if h == 1 {
+            lines.clear();
+        } else {
+            lines.truncate(usize::from(h - 1));
+        }
+        lines.push(prompt.clone());
+        let mut frame = Vec::new();
+        let mut update = Vec::new();
+        queue!(
+            update,
+            BeginSynchronizedUpdate,
+            Hide,
+            SetForegroundColor(Color::Reset)
+        )?;
+        for (y, line) in lines.iter().enumerate() {
+            // Keep the end of a long query visible while typing.
+            let left = if y == usize::from(h - 1) {
+                line.chars()
+                    .map(|c| cell(c).1)
+                    .sum::<usize>()
+                    .saturating_add(1)
+                    .saturating_sub(width)
+            } else {
+                0
+            };
+            let visible = clipped(line.chars(), left, width);
+            let bytes = visible.as_bytes().to_vec();
+            if self.previous.get(y) != Some(&bytes) {
+                queue!(update, MoveTo(0, y as u16), Print(&visible))?;
+                let cells: usize = visible.chars().map(|c| c.width().unwrap_or(0)).sum();
+                if cells < width {
+                    queue!(
+                        update,
+                        MoveTo(cells as u16, y as u16),
+                        Clear(ClearType::UntilNewLine)
+                    )?;
+                }
+            }
+            frame.push(bytes);
+        }
+        let x = prompt
+            .chars()
+            .map(|c| cell(c).1)
+            .sum::<usize>()
+            .min(width - 1) as u16;
+        queue!(update, MoveTo(x, h - 1), Show, EndSynchronizedUpdate)?;
+        out.write_all(&update)?;
+        out.flush()?;
+        self.previous = frame;
+        Ok(())
+    }
     fn draw_to(&mut self, e: &Editor, size: (u16, u16), out: &mut impl Write) -> io::Result<()> {
         let (w, h) = size;
         if self.size != size {
@@ -100,6 +190,15 @@ impl View {
         }
         if w == 0 || h == 0 {
             return Ok(());
+        }
+        if self.generation != e.generation {
+            self.top = 0;
+            self.left = 0;
+            self.revision = None;
+            self.generation = e.generation;
+        }
+        if let Some(picker) = &e.picker {
+            return self.draw_picker(picker, out);
         }
         let rows = usize::from(h.saturating_sub(2));
         let width = usize::from(w);
@@ -226,6 +325,36 @@ impl View {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn picker_cancel_and_file_switch_reset_rendering_correctly() {
+        let dir = tempfile::tempdir().unwrap();
+        let (file, _) = crate::file::File::open(dir.path().join("old.rs")).unwrap();
+        let mut e = Editor::new(file, "/*\ncomment\nstill comment");
+        e.buffer.row = 2;
+        let mut view = View::default();
+        view.draw_to(&e, (80, 4), &mut Vec::new()).unwrap();
+        assert_eq!(view.top, 1);
+        e.picker = Some(crate::picker::Picker::new(dir.path().into()));
+        e.picker.as_mut().unwrap().query = "absent".into();
+        for size in [(80, 4), (1, 1), (16, 2), (0, 0), (80, 4)] {
+            view.draw_to(&e, size, &mut Vec::new()).unwrap();
+        }
+        let mut out = Vec::new();
+        e.picker = None;
+        view.draw_to(&e, (80, 4), &mut out).unwrap();
+        assert_eq!(view.top, 1);
+        assert!(String::from_utf8_lossy(&out).contains("still comment"));
+        e.generation += 1;
+        e.buffer = crate::buffer::Buffer::new("fn new() {}");
+        out.clear();
+        view.draw_to(&e, (80, 4), &mut out).unwrap();
+        assert_eq!(view.top, 0);
+        assert_eq!(
+            view.styles.as_ref().unwrap()[0][0],
+            crate::syntax::Style::Keyword
+        );
+        assert!(String::from_utf8_lossy(&out).contains("new()"));
+    }
     #[test]
     fn redraws_only_changed_rows_and_clears_stale_tails() {
         let dir = tempfile::tempdir().unwrap();

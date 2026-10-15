@@ -13,6 +13,8 @@ pub struct Editor {
     pub command: String,
     pub message: String,
     pending: Option<char>,
+    pub picker: Option<crate::picker::Picker>,
+    pub generation: u64,
 }
 impl Editor {
     pub fn new(file: File, text: &str) -> Self {
@@ -23,9 +25,19 @@ impl Editor {
             command: String::new(),
             message: String::new(),
             pending: None,
+            picker: None,
+            generation: 0,
         }
     }
     pub fn key(&mut self, mut key: KeyEvent, page_rows: usize) -> bool {
+        if self.picker.is_some() {
+            self.picker_key(key, page_rows);
+            return false;
+        }
+        if key.modifiers == KeyModifiers::CONTROL && key.code == K::Char('p') {
+            self.open_picker();
+            return false;
+        }
         if key.modifiers == KeyModifiers::CONTROL {
             key.code = match key.code {
                 K::Char('a') => K::Home,
@@ -134,9 +146,76 @@ impl Editor {
         b.clamp(self.mode == Mode::Insert);
         false
     }
+    fn open_picker(&mut self) {
+        if self.file.dirty(&self.buffer.text()) {
+            self.message = "Unsaved changes; use :w before opening another file".into();
+            return;
+        }
+        match std::env::current_dir() {
+            Ok(root) => self.picker = Some(crate::picker::Picker::new(root)),
+            Err(err) => self.message = format!("Cannot open picker: {err}"),
+        }
+        self.pending = None;
+    }
+    fn picker_key(&mut self, key: KeyEvent, page_rows: usize) {
+        if key.code == K::Esc {
+            self.picker = None;
+            return;
+        }
+        if key
+            .modifiers
+            .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER)
+        {
+            return;
+        }
+        let picker = self.picker.as_mut().unwrap();
+        match key.code {
+            K::Char(c) => {
+                picker.query.push(c);
+                picker.query_changed();
+            }
+            K::Backspace => {
+                picker.query.pop();
+                picker.query_changed();
+            }
+            K::Up => picker.move_by(-1),
+            K::Down => picker.move_by(1),
+            K::PageUp => picker.move_by(-(page_rows.max(1) as isize)),
+            K::PageDown => picker.move_by(page_rows.max(1) as isize),
+            K::Home => picker.selected = 0,
+            K::End => picker.selected = picker.len().saturating_sub(1),
+            K::Enter => {
+                if let Some(path) = picker.path().map(std::path::Path::to_path_buf) {
+                    // Recheck rather than allowing an overlay to discard a dirty buffer.
+                    if self.file.dirty(&self.buffer.text()) {
+                        self.message = "Unsaved changes; use :w before opening another file".into();
+                        self.picker = None;
+                    } else {
+                        match File::open(path) {
+                            Ok((file, text)) => {
+                                self.file = file;
+                                self.buffer = Buffer::new(&text);
+                                self.mode = Mode::Normal;
+                                self.command.clear();
+                                self.message.clear();
+                                self.generation += 1;
+                                self.picker = None;
+                            }
+                            Err(err) => {
+                                self.message = format!("Cannot open file: {err}");
+                                self.picker = None;
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
     fn execute(&mut self, cmd: &str) -> bool {
         let text = self.buffer.text();
         match cmd {
+            "open" => self.open_picker(),
             "w" | "wq" => match self.file.save(&text) {
                 Ok(()) => {
                     self.message = "Written".into();
@@ -158,6 +237,76 @@ mod tests {
         for c in s.chars() {
             e.key(KeyEvent::new(K::Char(c), KeyModifiers::NONE), 22);
         }
+    }
+    fn ready_picker(e: &mut Editor, root: &std::path::Path, query: &str) {
+        let mut picker = crate::picker::Picker::new(root.into());
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+        while picker.scanning {
+            picker.poll();
+            assert!(std::time::Instant::now() < deadline);
+            std::thread::yield_now();
+        }
+        picker.query = query.into();
+        picker.query_changed();
+        e.picker = Some(picker);
+    }
+    #[test]
+    fn picker_opens_files_and_preserves_buffer_on_cancel_or_failure() {
+        let dir = tempfile::tempdir().unwrap();
+        let old = dir.path().join("old");
+        std::fs::write(&old, "old text").unwrap();
+        std::fs::write(dir.path().join("new.rs"), "fn main() {}").unwrap();
+        std::fs::write(dir.path().join("binary"), [0xff]).unwrap();
+        let (f, text) = File::open(old.clone()).unwrap();
+        let mut e = Editor::new(f, &text);
+        e.buffer.col = 3;
+        e.mode = Mode::Insert;
+        ready_picker(&mut e, dir.path(), "newrs");
+        e.key(KeyEvent::new(K::Esc, KeyModifiers::NONE), 22);
+        assert_eq!(e.mode, Mode::Insert);
+        assert_eq!(e.buffer.col, 3);
+        assert_eq!(e.buffer.text(), "old text");
+        ready_picker(&mut e, dir.path(), "binary");
+        e.key(KeyEvent::new(K::Enter, KeyModifiers::NONE), 22);
+        assert_eq!(e.buffer.text(), "old text");
+        assert_eq!(e.file.path, old.canonicalize().unwrap());
+        assert!(e.message.contains("not UTF-8"));
+        ready_picker(&mut e, dir.path(), "newrs");
+        e.key(KeyEvent::new(K::Enter, KeyModifiers::NONE), 22);
+        assert_eq!(e.buffer.text(), "fn main() {}");
+        assert_eq!(
+            e.file.path,
+            dir.path().join("new.rs").canonicalize().unwrap()
+        );
+        assert_eq!(e.mode, Mode::Normal);
+        assert_eq!(e.generation, 1);
+        assert!(e.picker.is_none());
+        e.buffer.insert('x');
+        e.key(KeyEvent::new(K::Char('p'), KeyModifiers::CONTROL), 22);
+        assert!(e.picker.is_none());
+        assert!(e.message.contains("Unsaved"));
+        ready_picker(&mut e, dir.path(), "old");
+        e.key(KeyEvent::new(K::Enter, KeyModifiers::NONE), 22);
+        assert_eq!(e.buffer.text(), "xfn main() {}");
+        assert!(e.file.path.ends_with("new.rs"));
+    }
+    #[test]
+    fn picker_root_is_process_working_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let (file, text) = File::open(dir.path().join("outside-working-directory")).unwrap();
+        let mut e = Editor::new(file, &text);
+        e.key(KeyEvent::new(K::Char('p'), KeyModifiers::CONTROL), 22);
+        assert_eq!(
+            e.picker.as_ref().unwrap().root,
+            std::env::current_dir().unwrap()
+        );
+        e.key(KeyEvent::new(K::Esc, KeyModifiers::NONE), 22);
+        assert!(e.picker.is_none());
+        e.execute("open");
+        assert_eq!(
+            e.picker.as_ref().unwrap().root,
+            std::env::current_dir().unwrap()
+        );
     }
     #[test]
     fn line_and_page_navigation_in_both_modes() {

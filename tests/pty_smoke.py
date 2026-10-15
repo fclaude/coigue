@@ -14,13 +14,13 @@ import time
 
 binary = str(pathlib.Path(sys.argv[1]).resolve())
 
-def session(path, steps, command=None):
+def session(path, steps, command=None, cwd=None):
     master, slave = pty.openpty()
     original = termios.tcgetattr(slave)
     fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 24, 80, 0, 0))
     env = dict(os.environ)
     env.pop('NO_COLOR', None)  # Exercise color output even in color-disabled CI hosts.
-    proc = subprocess.Popen(command or [binary, str(path)], stdin=slave, stdout=slave, stderr=slave, env=env)
+    proc = subprocess.Popen(command or [binary, str(path)], stdin=slave, stdout=slave, stderr=slave, env=env, cwd=cwd)
     output = bytearray()
     def drain():
         deadline = time.monotonic() + .15
@@ -95,6 +95,21 @@ with tempfile.TemporaryDirectory() as directory:
     assert nav_path.read_text() == '\n'.join(expected), nav_path.read_text()
     assert b'\x1b[2J' not in nav_out, 'navigation cleared the entire screen'
     assert b'\x1b[?2026h' in nav_out and b'\x1b[?2026l' in nav_out
+    picker_root = pathlib.Path(directory) / 'picker-root'
+    picker_root.joinpath('nested').mkdir(parents=True)
+    picked = picker_root / 'nested' / 'café.rs'
+    picked.write_text('fn picked() {}')
+    # The initial file is outside cwd: discovery must use cwd, not its parent.
+    original = path.read_text()
+    picker_out = session(path, [b'\x10', b'n/cf', b'\r', b'$a!', b'\x1b', b':wq\r'], cwd=picker_root)
+    assert picked.read_text() == 'fn picked() {}!'
+    assert path.read_text() == original
+    assert 'nested/café.rs'.encode() in picker_out
+    assert b'\x1b[2J' not in picker_out
+    session(picked, [b'\x10', b'no-match', b'\r', b'\x7f', b'\x1b', b':open\r', None,
+                     b'\x1b', b'0iX', b'\x1b', b'\x10', b':wq\r'], cwd=picker_root)
+    assert picked.read_text() == 'Xfn picked() {}!'
+    print('Picker PTY: cwd recursion, fuzzy query, open/save, cancel, resize and unsaved protection verified')
     print('Navigation PTY: Home/End, Page Up/Down, Ctrl-A/E/B/F and resize verified')
     rust_path = pathlib.Path(directory) / 'fixture.rs'
     rust_path.write_text('fn main() {\n\tlet café = r#"界"#; // comment\n}\n' + '// scrolling\n' * 40)
