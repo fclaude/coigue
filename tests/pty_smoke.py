@@ -61,7 +61,7 @@ def session(path, steps, command=None, cwd=None):
 with tempfile.TemporaryDirectory() as directory:
     path = pathlib.Path(directory) / 'fixture'
     out = session(path, [b'ihello', b'\x1b', b':q\r', None,
-                         b'A', b'0i', 'é'.encode(), b'\x1b', b':w\r',
+                         b'Z', b'0i', 'é'.encode(), b'\x1b', b':w\r',
                          b'oagain', b'\x1b', b':wq\r'])
     assert b'Unsaved' in out
     assert path.read_text() == 'éhello\nagain', path.read_bytes()
@@ -95,6 +95,17 @@ with tempfile.TemporaryDirectory() as directory:
     assert nav_path.read_text() == '\n'.join(expected), nav_path.read_text()
     assert b'\x1b[2J' not in nav_out, 'navigation cleared the entire screen'
     assert b'\x1b[?2026h' in nav_out and b'\x1b[?2026l' in nav_out
+    editing_path = pathlib.Path(directory) / 'editing.rs'
+    editing_path.write_text('alpha\né界\nomega')
+    edit_out = session(editing_path, [
+        b'yy', b'p', b'dd', b'P', b'>>', b'<<', b'A!', b'\x1b',
+        b'/omega\r', b'rO', b'n', b'/alpha\r', b'n', b'N',
+        b'/cancel', b'\x1b', b'j', b'x', b'P', b':wq\r',
+    ])
+    assert editing_path.read_text() == 'alpha\nalpha!\né界\nOmega', editing_path.read_text()
+    assert b'/omega' in edit_out and b'Not found: omega' in edit_out
+    assert b'\x1b[2J' not in edit_out
+    print('Editing PTY: copy/cut/paste, replacement, literal search, indentation and append verified')
     picker_root = pathlib.Path(directory) / 'picker-root'
     picker_root.joinpath('nested').mkdir(parents=True)
     picked = picker_root / 'nested' / 'café.rs'

@@ -23,6 +23,25 @@ Bindings:
   move by the current viewport height, excluding the two status/message rows.
 - Command mode: `:w`, `:q`, `:wq`, `:q!`, Enter to execute; Esc cancels. `:q` refuses unsaved changes; failed writes never quit.
 
+Additional normal-mode editing commands:
+
+| Keys | Action |
+| --- | --- |
+| `yy` | Copy the current line into the internal register. |
+| `dd` | Cut the current line into the register. |
+| `x` | Cut the character under the cursor into the register. |
+| `p` / `P` | Paste a copied/cut line below/above, or a cut character after/before the cursor. |
+| `r` then a character | Replace the character under the cursor; Esc cancels. Tab is also accepted. |
+| `/` then text, Enter | Find the next literal, case-sensitive match in the file. Esc cancels. |
+| `n` / `N` | Find the next/previous occurrence of the last search, wrapping at the file boundaries. |
+| `>>` / `<<` | Indent by four spaces / remove one leading tab or up to four leading spaces. |
+| `A` | Enter insert mode after the last character of the current line. |
+
+The register persists across file switches and supports repeated pastes; it is
+internal to this session and does not access the system clipboard. Searches stay
+within a line and report missing matches without moving the cursor. An empty
+search reuses the previous query. The register and search are not saved to disk.
+
 Press **Ctrl-P** (normal or insert mode) or run **`:open`** to pick another file.
 The picker recursively searches the process's working directory, rather than the
 current file's parent directory. It uses built-in filesystem discovery and fuzzy
@@ -43,7 +62,7 @@ on terminals that support them. LF and existing trailing newlines are preserved 
 
 Saving compares the file's bytes with the last loaded/saved snapshot, writes and syncs a same-directory temporary file, then atomically replaces the destination. Failed writes leave existing contents intact. New files are created without clobbering an existing destination. Existing symlinks are resolved at opening, so later changes to the original link do not redirect the session. Saves refuse read-only destinations or a resolved target replaced by a symlink. Unix permission bits are preserved; new files use private temporary-file permissions (0600 on Unix). Atomic replacement changes inode identity (including hard-link relationships); ownership, ACLs and extended attributes are not preserved. If another program writes after the final byte comparison but before the atomic rename, its update can still be overwritten without detection; this is not a locking editor. Use one writer per file. No force-write command bypasses conflicts.
 
-Limits: in-memory files, scalar-value rather than grapheme-cluster editing (combining marks may be edited independently), fixed four-column tabs, terminal-dependent emoji/combining display width. No undo, counts, clipboard, in-file search, multiple buffers or configuration yet. Raw mode, cursor and alternate screen are restored on normal exits, returned errors and Rust panics; uncatchable termination cannot run cleanup.
+Limits: in-memory files, scalar-value rather than grapheme-cluster editing (combining marks may be edited independently), fixed four-column tabs, terminal-dependent emoji/combining display width. No undo, counts, system clipboard, multiple buffers or configuration yet. Raw mode, cursor and alternate screen are restored on normal exits, returned errors and Rust panics; uncatchable termination cannot run cleanup.
 
 Development checks:
 
