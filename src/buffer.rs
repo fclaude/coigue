@@ -176,10 +176,104 @@ impl Buffer {
         if chars.is_empty() {
             return;
         }
+        let start = self.offset() + usize::from(after && self.col < self.lines[self.row].len());
         self.change();
-        let start = (self.col + usize::from(after)).min(self.lines[self.row].len());
-        self.lines[self.row].splice(start..start, chars.iter().copied());
-        self.col = start + chars.len() - 1;
+        let mut text: Vec<_> = self.text().chars().collect();
+        text.splice(start..start, chars.iter().copied());
+        self.lines = text.split(|&c| c == '\n').map(<[char]>::to_vec).collect();
+        self.set_offset(start + chars.len() - 1);
+        self.clamp(false);
+    }
+    fn offset(&self) -> usize {
+        self.lines[..self.row]
+            .iter()
+            .map(|line| line.len() + 1)
+            .sum::<usize>()
+            + self.col
+    }
+    fn set_offset(&mut self, mut offset: usize) {
+        self.row = 0;
+        while self.row + 1 < self.lines.len() && offset > self.lines[self.row].len() {
+            offset -= self.lines[self.row].len() + 1;
+            self.row += 1;
+        }
+        self.col = offset.min(self.lines[self.row].len());
+    }
+    fn word_class(c: char) -> u8 {
+        if c.is_whitespace() {
+            0
+        } else if c.is_alphanumeric() || c == '_' {
+            1
+        } else {
+            2
+        }
+    }
+    fn next_word(chars: &[char], mut at: usize) -> usize {
+        if let Some(&c) = chars.get(at) {
+            let class = Self::word_class(c);
+            while at < chars.len() && Self::word_class(chars[at]) == class {
+                at += 1;
+            }
+            while at < chars.len() && Self::word_class(chars[at]) == 0 {
+                at += 1;
+            }
+        }
+        at
+    }
+    pub fn word_motion(&mut self, motion: char) {
+        let chars: Vec<_> = self.text().chars().collect();
+        let mut at = self.offset();
+        match motion {
+            'w' => at = Self::next_word(&chars, at),
+            'b' => {
+                at = at.saturating_sub(1);
+                while at > 0 && Self::word_class(chars[at]) == 0 {
+                    at -= 1;
+                }
+                while at > 0 && Self::word_class(chars[at - 1]) == Self::word_class(chars[at]) {
+                    at -= 1;
+                }
+            }
+            'e' => {
+                if at < chars.len() {
+                    at += 1;
+                }
+                while at < chars.len() && Self::word_class(chars[at]) == 0 {
+                    at += 1;
+                }
+                while at + 1 < chars.len()
+                    && Self::word_class(chars[at + 1]) == Self::word_class(chars[at])
+                {
+                    at += 1;
+                }
+            }
+            _ => return,
+        }
+        self.set_offset(at);
+        self.clamp(false);
+    }
+    /// Characterwise range, including literal line separators. Change retains
+    /// trailing whitespace when starting on a non-whitespace run.
+    pub fn word_range(&mut self, cut: bool, change: bool) -> Vec<char> {
+        let mut chars: Vec<_> = self.text().chars().collect();
+        let start = self.offset();
+        let mut end = Self::next_word(&chars, start);
+        if change && chars.get(start).is_some_and(|c| Self::word_class(*c) != 0) {
+            end = start + 1;
+            while end < chars.len()
+                && Self::word_class(chars[end]) == Self::word_class(chars[start])
+            {
+                end += 1;
+            }
+        }
+        let copied = chars[start..end].to_vec();
+        if cut && start < end {
+            self.change();
+            chars.drain(start..end);
+            self.lines = chars.split(|&c| c == '\n').map(<[char]>::to_vec).collect();
+            self.set_offset(start);
+        }
+        copied
     }
     pub fn indent(&mut self, right: bool) {
         if right {
@@ -244,6 +338,35 @@ impl Buffer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn word_boundaries_and_multiline_paste() {
+        let mut b = Buffer::new("é_2!!\u{2003}\n\n界9");
+        for (motion, position) in [
+            ('e', (0, 2)),
+            ('w', (0, 3)),
+            ('e', (0, 4)),
+            ('w', (2, 0)),
+            ('e', (2, 1)),
+            ('w', (2, 1)),
+            ('b', (2, 0)),
+            ('b', (0, 3)),
+            ('b', (0, 0)),
+        ] {
+            b.word_motion(motion);
+            assert_eq!((b.row, b.col), position);
+        }
+        assert_eq!(b.revision(), 0);
+        b.col = 3;
+        let cut = b.word_range(true, false);
+        assert_eq!(cut.iter().collect::<String>(), "!!\u{2003}\n\n");
+        b.clamp(false);
+        b.col = 2;
+        b.paste_chars(&cut, true);
+        assert_eq!(b.text(), "é_2!!\u{2003}\n\n界9");
+        let mut empty = Buffer::new("");
+        assert!(empty.word_range(true, false).is_empty());
+        assert_eq!(empty.revision(), 0);
+    }
     #[test]
     fn history_limit_and_monotonic_revisions() {
         let mut buffer = Buffer::new("");
