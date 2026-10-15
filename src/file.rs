@@ -6,6 +6,7 @@ use std::{
 pub struct File {
     pub path: PathBuf,
     original: Option<Vec<u8>>,
+    revision: u64,
 }
 fn read(path: &Path) -> io::Result<Option<Vec<u8>>> {
     match fs::read(path) {
@@ -25,7 +26,17 @@ impl File {
         let original = read(&path)?;
         let text = String::from_utf8(original.clone().unwrap_or_default())
             .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "file is not UTF-8"))?;
-        Ok((Self { path, original }, text))
+        Ok((
+            Self {
+                path,
+                original,
+                revision: 0,
+            },
+            text,
+        ))
+    }
+    pub fn revision(&self) -> u64 {
+        self.revision
     }
     pub fn dirty(&self, text: &str) -> bool {
         self.original.as_deref().unwrap_or_default() != text.as_bytes()
@@ -73,6 +84,7 @@ impl File {
             temp.persist(&self.path).map_err(|e| e.error)?;
         }
         self.original = Some(text.as_bytes().to_vec());
+        self.revision += 1;
         Ok(())
     }
 }

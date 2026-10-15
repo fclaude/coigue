@@ -10,7 +10,7 @@ cd coigue
 cargo run -- path/to/file
 ```
 
-Linux and macOS terminals are the intended platforms. The Rust code uses portable standard-library, crossterm, tempfile and unicode-width APIs; Unix-specific permission/symlink tests are gated with `cfg(unix)`. This first version was built and exercised on Linux; macOS compilation and runtime have not been tested.
+Linux and macOS terminals are the intended platforms. The Rust code uses portable standard-library, crossterm, tempfile and unicode-width APIs; Unix-specific permission/symlink tests are gated with `cfg(unix)`. This first version was built and exercised on Linux; macOS compilation and PTY integration checks have also been exercised.
 
 A nonexistent path starts an empty buffer. Parent directories must already exist.
 
@@ -18,9 +18,14 @@ Bindings:
 
 - Normal mode: `h j k l`, arrows, `0`, `$`, `gg`, `G`; `i` insert, `a` append, `o` open a line below; `x` delete a character, `dd` delete a line.
 - Insert mode: text, Enter, Tab, Backspace, arrows. Esc returns to normal mode.
+- Normal and insert modes: Home / Ctrl-A begins a line; End / Ctrl-E ends a line
+  (after the last character in insert mode). Page Up / Ctrl-B and Page Down / Ctrl-F
+  move by the current viewport height, excluding the two status/message rows.
 - Command mode: `:w`, `:q`, `:wq`, `:q!`, Enter to execute; Esc cancels. `:q` refuses unsaved changes; failed writes never quit.
 
-Lines scroll vertically and horizontally; terminal resize triggers a redraw. LF and existing trailing newlines are preserved exactly; opening a file does not add a newline. CRLF bytes round-trip unchanged, but CR is displayed as a replacement glyph and newly inserted line breaks use LF.
+Lines scroll vertically and horizontally; terminal resize triggers a redraw.
+Screen updates are buffered and repaint only changed rows, with synchronized updates
+on terminals that support them. LF and existing trailing newlines are preserved exactly; opening a file does not add a newline. CRLF bytes round-trip unchanged, but CR is displayed as a replacement glyph and newly inserted line breaks use LF.
 
 Saving compares the file's bytes with the last loaded/saved snapshot, writes and syncs a same-directory temporary file, then atomically replaces the destination. Failed writes leave existing contents intact. New files are created without clobbering an existing destination. Existing symlinks are resolved at opening, so later changes to the original link do not redirect the session. Saves refuse read-only destinations or a resolved target replaced by a symlink. Unix permission bits are preserved; new files use private temporary-file permissions (0600 on Unix). Atomic replacement changes inode identity (including hard-link relationships); ownership, ACLs and extended attributes are not preserved. If another program writes after the final byte comparison but before the atomic rename, its update can still be overwritten without detection; this is not a locking editor. Use one writer per file. No force-write command bypasses conflicts.
 
@@ -41,6 +46,6 @@ The Unix PTY smoke test uses only disposable files and checks save/reopen, repea
 Rust files (`.rs`) receive lightweight lexical highlighting for keywords, comments,
 strings, characters, lifetimes, numbers, and macros. Nested block comments and
 multiline/raw strings retain state across lines. Other extensions remain plain.
-The lexer runs over the buffer on each redraw to keep edits and scrolling correct;
+The lexer runs over the buffer after edits and caches the result while navigating;
 this favors simplicity over performance on very large files. It does not perform
 semantic analysis or use an LSP. Colors use the terminal's ANSI palette.

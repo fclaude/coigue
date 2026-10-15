@@ -25,7 +25,19 @@ impl Editor {
             pending: None,
         }
     }
-    pub fn key(&mut self, key: KeyEvent) -> bool {
+    pub fn key(&mut self, mut key: KeyEvent, page_rows: usize) -> bool {
+        if key.modifiers == KeyModifiers::CONTROL {
+            key.code = match key.code {
+                K::Char('a') => K::Home,
+                K::Char('e') => K::End,
+                K::Char('f') => K::PageDown,
+                K::Char('b') => K::PageUp,
+                _ => key.code,
+            };
+            if matches!(key.code, K::Home | K::End | K::PageDown | K::PageUp) {
+                key.modifiers = KeyModifiers::NONE;
+            }
+        }
         if key.code == K::Esc {
             if self.mode == Mode::Insert {
                 self.buffer.col = self.buffer.col.saturating_sub(1);
@@ -82,9 +94,7 @@ impl Editor {
                     self.mode = Mode::Insert;
                 }
                 (_, K::Char('o')) => {
-                    b.row += 1;
-                    b.lines.insert(b.row, vec![]);
-                    b.col = 0;
+                    b.open_line();
                     self.mode = Mode::Insert;
                 }
                 (_, K::Char('x')) => b.delete(),
@@ -102,6 +112,15 @@ impl Editor {
             }
         }
         match key.code {
+            K::Home => b.col = 0,
+            K::End => b.col = b.lines[b.row].len(),
+            K::PageUp => b.row = b.row.saturating_sub(page_rows.max(1)),
+            K::PageDown => {
+                b.row = b
+                    .row
+                    .saturating_add(page_rows.max(1))
+                    .min(b.lines.len() - 1)
+            }
             K::Left => b.col = b.col.saturating_sub(1),
             K::Right => b.col += 1,
             K::Up => b.row = b.row.saturating_sub(1),
@@ -137,8 +156,54 @@ mod tests {
     use super::*;
     fn send(e: &mut Editor, s: &str) {
         for c in s.chars() {
-            e.key(KeyEvent::new(K::Char(c), KeyModifiers::NONE));
+            e.key(KeyEvent::new(K::Char(c), KeyModifiers::NONE), 22);
         }
+    }
+    #[test]
+    fn line_and_page_navigation_in_both_modes() {
+        let dir = tempfile::tempdir().unwrap();
+        let (f, _) = File::open(dir.path().join("new")).unwrap();
+        let mut e = Editor::new(f, &"é界abc\n".repeat(60));
+        for mode in [Mode::Normal, Mode::Insert] {
+            e.mode = mode;
+            let end = if e.mode == Mode::Insert { 5 } else { 4 };
+            for (home, end_key, modifiers) in [
+                (K::Home, K::End, KeyModifiers::NONE),
+                (K::Char('a'), K::Char('e'), KeyModifiers::CONTROL),
+            ] {
+                e.key(KeyEvent::new(end_key, modifiers), 22);
+                assert_eq!(e.buffer.col, end);
+                e.key(KeyEvent::new(home, modifiers), 22);
+                assert_eq!(e.buffer.col, 0);
+            }
+            for (down, up, modifiers) in [
+                (K::PageDown, K::PageUp, KeyModifiers::NONE),
+                (K::Char('f'), K::Char('b'), KeyModifiers::CONTROL),
+            ] {
+                e.buffer.row = 0;
+                e.buffer.col = 2;
+                e.key(KeyEvent::new(down, modifiers), 22);
+                assert_eq!((e.buffer.row, e.buffer.col), (22, 2));
+                e.key(KeyEvent::new(up, modifiers), 6);
+                assert_eq!(e.buffer.row, 16);
+                e.key(KeyEvent::new(up, modifiers), 22);
+                assert_eq!(e.buffer.row, 0);
+                e.key(KeyEvent::new(down, modifiers), usize::MAX);
+                assert_eq!((e.buffer.row, e.buffer.col), (60, 0));
+                e.key(KeyEvent::new(up, modifiers), 0);
+                assert_eq!(e.buffer.row, 59);
+                e.buffer.row = 0;
+            }
+        }
+        let original = e.buffer.text();
+        e.mode = Mode::Command;
+        e.command = "w".into();
+        for code in [K::Home, K::End, K::PageDown, K::PageUp] {
+            e.key(KeyEvent::new(code, KeyModifiers::NONE), 22);
+        }
+        assert_eq!(e.command, "w");
+        assert_eq!(e.buffer.text(), original);
+        assert_eq!(e.buffer.row, 0);
     }
     #[test]
     fn modes_edits_and_quit() {
@@ -147,14 +212,14 @@ mod tests {
         let mut e = Editor::new(f, &s);
         send(&mut e, "ié🦀");
         assert_eq!(e.mode, Mode::Insert);
-        e.key(KeyEvent::new(K::Esc, KeyModifiers::NONE));
+        e.key(KeyEvent::new(K::Esc, KeyModifiers::NONE), 22);
         assert_eq!(e.buffer.col, 1);
         assert!(!e.execute("q"));
         assert!(e.message.contains("Unsaved"));
         send(&mut e, "0x");
         assert_eq!(e.buffer.text(), "🦀");
         send(&mut e, "ohello");
-        e.key(KeyEvent::new(K::Esc, KeyModifiers::NONE));
+        e.key(KeyEvent::new(K::Esc, KeyModifiers::NONE), 22);
         send(&mut e, "ggdd");
         assert_eq!(e.buffer.text(), "hello");
         assert!(e.execute("wq"));
@@ -168,7 +233,7 @@ mod tests {
         let mut e = Editor::new(f, &s);
         send(&mut e, ":w");
         assert_eq!(e.mode, Mode::Command);
-        e.key(KeyEvent::new(K::Enter, KeyModifiers::NONE));
+        e.key(KeyEvent::new(K::Enter, KeyModifiers::NONE), 22);
         assert!(path.exists());
         send(&mut e, "ia");
         std::fs::write(&path, "external").unwrap();
@@ -186,17 +251,17 @@ mod tests {
         assert_eq!((e.buffer.row, e.buffer.col), (2, 1));
         send(&mut e, "ggllh");
         assert_eq!((e.buffer.row, e.buffer.col), (0, 1));
-        e.key(KeyEvent::new(K::Down, KeyModifiers::NONE));
+        e.key(KeyEvent::new(K::Down, KeyModifiers::NONE), 22);
         assert_eq!((e.buffer.row, e.buffer.col), (1, 0));
         send(&mut e, "aé");
-        e.key(KeyEvent::new(K::Enter, KeyModifiers::NONE));
+        e.key(KeyEvent::new(K::Enter, KeyModifiers::NONE), 22);
         send(&mut e, "🦀");
-        e.key(KeyEvent::new(K::Backspace, KeyModifiers::NONE));
-        e.key(KeyEvent::new(K::Backspace, KeyModifiers::NONE));
+        e.key(KeyEvent::new(K::Backspace, KeyModifiers::NONE), 22);
+        e.key(KeyEvent::new(K::Backspace, KeyModifiers::NONE), 22);
         assert_eq!(e.buffer.text(), "abc\né\né界");
-        e.key(KeyEvent::new(K::Esc, KeyModifiers::NONE));
+        e.key(KeyEvent::new(K::Esc, KeyModifiers::NONE), 22);
         send(&mut e, ":q!");
-        e.key(KeyEvent::new(K::Esc, KeyModifiers::NONE));
+        e.key(KeyEvent::new(K::Esc, KeyModifiers::NONE), 22);
         assert_eq!(e.mode, Mode::Normal);
         assert!(e.command.is_empty());
         assert!(!e.execute("q"));

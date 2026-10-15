@@ -42,7 +42,13 @@ def session(path, steps, command=None):
             drain()
         assert proc.wait(timeout=3) == 0, output
         drain()
-        assert termios.tcgetattr(slave) == original, 'terminal attributes not restored'
+        restored = termios.tcgetattr(slave)
+        # macOS can set PENDIN while replaying input after raw mode. It is a
+        # transient kernel flag, not a changed terminal setting.
+        pending_input = getattr(termios, 'PENDIN', 0)
+        restored[3] &= ~pending_input
+        original[3] &= ~pending_input
+        assert restored == original, 'terminal attributes not restored'
         assert b'\x1b[?1049l' in output, 'alternate screen not restored'
         return output
     finally:
@@ -69,6 +75,27 @@ with tempfile.TemporaryDirectory() as directory:
     lines = before.split('\n')
     lines[-2] += '!'
     assert path.read_text() == '\n'.join(lines)
+    nav_path = pathlib.Path(directory) / 'navigation'
+    nav_path.write_text('\n'.join(f'row{n:02d}' for n in range(60)))
+    nav_out = session(nav_path, [
+        b'\x1b[6~',          # Page Down: row 22 in the 22-row viewport.
+        b'\x1b[F', b'a!', b'\x1b',
+        b'\x1b[5~',          # Page Up: back to row 0.
+        b'\x1b[H', b'i^', b'\x1b',
+        b'\x06',             # Ctrl-F: row 22.
+        b'\x01', b'i@', b'\x05', b'?', b'\x1b',
+        None,                # Resize: six file rows in the final viewport.
+        b'\x1b[6~', b'\x1b[H', b'i#', b'\x1b',
+        b'\x02', b'\x1b[F', b'a+', b'\x1b', b':wq\r',
+    ])
+    expected = [f'row{n:02d}' for n in range(60)]
+    expected[0] = '^row00'
+    expected[22] = '@row22!?+'
+    expected[28] = '#row28'
+    assert nav_path.read_text() == '\n'.join(expected), nav_path.read_text()
+    assert b'\x1b[2J' not in nav_out, 'navigation cleared the entire screen'
+    assert b'\x1b[?2026h' in nav_out and b'\x1b[?2026l' in nav_out
+    print('Navigation PTY: Home/End, Page Up/Down, Ctrl-A/E/B/F and resize verified')
     rust_path = pathlib.Path(directory) / 'fixture.rs'
     rust_path.write_text('fn main() {\n\tlet café = r#"界"#; // comment\n}\n' + '// scrolling\n' * 40)
     rust_out = session(rust_path, [b'j$a!', b'\x1b', b'G', None, b'gg', b':wq\r'])
