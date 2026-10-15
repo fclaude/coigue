@@ -20,7 +20,7 @@ def session(path, steps, command=None, cwd=None):
     fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 24, 80, 0, 0))
     env = dict(os.environ)
     env.pop('NO_COLOR', None)  # Exercise color output even in color-disabled CI hosts.
-    proc = subprocess.Popen(command or [binary, str(path)], stdin=slave, stdout=slave, stderr=slave, env=env, cwd=cwd)
+    proc = subprocess.Popen(command or ([binary] if path is None else [binary, str(path)]), stdin=slave, stdout=slave, stderr=slave, env=env, cwd=cwd)
     output = bytearray()
     def drain():
         deadline = time.monotonic() + .15
@@ -57,6 +57,26 @@ def session(path, steps, command=None, cwd=None):
             proc.wait()
         os.close(master)
         os.close(slave)
+
+with tempfile.TemporaryDirectory() as directory:
+    root = pathlib.Path(directory) / 'launch space café 界'
+    root.mkdir()
+    out = session(None, [b'iaccidental', b':w\r', None, b':q\r'], cwd=root)
+    for expected in ['Coigüe', 'Welcome', str(root), 'Ctrl-O', 'Ctrl-P', 'No file open']:
+        assert expected.encode() in out, (expected, out)
+    assert list(root.iterdir()) == [], 'welcome created a file'
+    path = root / 'hello café.txt'
+    path.write_text('hello')
+    out = session(None, [b'-', b'/hello', b'\r', b'i!', b'\x1b', b':wq\r'], cwd=root)
+    assert path.read_text() == '!hello'
+    assert str(root).encode() in out
+    out = session(None, [b'\x10', b'hello', b'\x1b', b'\x0f', b'\x1b',
+                         b':explore\r', b'a', 'new 界.txt'.encode(), b'\r',
+                         b'\r', b'iNEW', b'\x1b', b':wq\r'], cwd=root)
+    assert (root / 'new 界.txt').read_text() == 'NEW'
+    assert b'Welcome' in out
+    assert sorted(p.name for p in root.iterdir()) == ['hello café.txt', 'new 界.txt']
+    print('Welcome PTY: launch cwd, Unicode/spaces, no writes, browsers, creation and save verified')
 
 with tempfile.TemporaryDirectory() as directory:
     path = pathlib.Path(directory) / 'fixture'

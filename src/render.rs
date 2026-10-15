@@ -229,6 +229,7 @@ impl View {
             // Keep the end of a long query visible while typing.
             let left = if y == usize::from(h - 1)
                 && (line.starts_with('/')
+                    || line.starts_with(':')
                     || line.starts_with("Open:")
                     || line.starts_with("New ")
                     || line.starts_with("Rename/move"))
@@ -287,6 +288,30 @@ impl View {
         }
         if e.explorer.is_some() {
             return self.draw_explorer(e, out);
+        }
+        if let Some(directory) = &e.welcome {
+            let mut lines = vec![String::new(); usize::from(h)];
+            let content = [
+                "Coigüe".to_owned(),
+                "Welcome".to_owned(),
+                format!("Directory: {}", directory.display()),
+                "Ctrl-O / - / :explore   Browse and create files".to_owned(),
+                "Ctrl-P / :open         Find a file".to_owned(),
+                ":q                     Quit".to_owned(),
+            ];
+            let available = usize::from(h.saturating_sub(1));
+            let start = available.saturating_sub(content.len()) / 2;
+            for (line, text) in lines.iter_mut().skip(start).take(available).zip(content) {
+                *line = text;
+            }
+            lines[usize::from(h - 1)] = if e.mode == Mode::Command {
+                format!(":{}", e.command)
+            } else if !e.message.is_empty() {
+                e.message.clone()
+            } else {
+                "Ctrl-O browse | Ctrl-P find | :q quit".into()
+            };
+            return self.draw_browser_lines(lines, out);
         }
         let rows = usize::from(h.saturating_sub(2));
         let width = usize::from(w);
@@ -424,6 +449,33 @@ impl View {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn welcome_renders_directory_hints_and_commands_across_resizes() {
+        let mut e = Editor::welcome(std::path::PathBuf::from("/tmp/space café 界"));
+        let mut view = View::default();
+        let mut out = Vec::new();
+        view.draw_to(&e, (80, 24), &mut out).unwrap();
+        let text = String::from_utf8_lossy(&out);
+        for expected in [
+            "Coigüe",
+            "Welcome",
+            "/tmp/space café 界",
+            "Ctrl-O",
+            "Ctrl-P",
+            ":q",
+        ] {
+            assert!(text.contains(expected), "{expected}");
+        }
+        for size in [(0, 0), (1, 1), (12, 2), (80, 24)] {
+            view.draw_to(&e, size, &mut Vec::new()).unwrap();
+        }
+        e.mode = Mode::Command;
+        e.command = "explore".into();
+        out.clear();
+        view.draw_to(&e, (80, 24), &mut out).unwrap();
+        assert!(String::from_utf8_lossy(&out).contains(":explore"));
+        assert_eq!(e.buffer.text(), "");
+    }
     #[test]
     fn explorer_rename_updates_syntax_without_resetting_cursor_or_viewport() {
         use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
