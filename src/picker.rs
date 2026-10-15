@@ -32,51 +32,44 @@ impl Picker {
         let stop = cancelled.clone();
         let scan_root = root.clone();
         thread::spawn(move || {
-            let mut directories = vec![scan_root];
-            while let Some(dir) = directories.pop() {
+            let mut walker = ignore::WalkBuilder::new(scan_root);
+            walker
+                .hidden(false)
+                .ignore(false)
+                .git_global(false)
+                .require_git(false)
+                .follow_links(false)
+                .filter_entry(|entry| entry.file_name() != ".git");
+            let mut batch = Batch {
+                files: Vec::new(),
+                skipped: 0,
+            };
+            for entry in walker.build() {
                 if stop.load(Ordering::Relaxed) {
                     return;
                 }
-                let mut batch = Batch {
-                    files: Vec::new(),
-                    skipped: 0,
-                };
-                match std::fs::read_dir(dir) {
-                    Ok(entries) => {
-                        for entry in entries {
-                            if stop.load(Ordering::Relaxed) {
-                                return;
-                            }
-                            let Ok(entry) = entry else {
-                                batch.skipped += 1;
-                                continue;
-                            };
-                            if entry.file_name() == ".git" {
-                                continue;
-                            }
-                            match entry.file_type() {
-                                Ok(kind) if kind.is_dir() => directories.push(entry.path()),
-                                Ok(kind) if kind.is_file() => batch.files.push(entry.path()),
-                                Ok(_) => {} // Never follow symlinks or open special devices.
-                                Err(_) => batch.skipped += 1,
-                            }
-                            if batch.files.len() >= 128 {
-                                if sender.send(batch).is_err() {
-                                    return;
-                                }
-                                batch = Batch {
-                                    files: Vec::new(),
-                                    skipped: 0,
-                                };
-                            }
+                match entry {
+                    Ok(entry) => {
+                        if entry.error().is_some() {
+                            batch.skipped += 1;
+                        }
+                        if entry.file_type().is_some_and(|kind| kind.is_file()) {
+                            batch.files.push(entry.into_path());
                         }
                     }
                     Err(_) => batch.skipped += 1,
                 }
-                if sender.send(batch).is_err() {
-                    return;
+                if batch.files.len() >= 128 {
+                    if sender.send(batch).is_err() {
+                        return;
+                    }
+                    batch = Batch {
+                        files: Vec::new(),
+                        skipped: 0,
+                    };
                 }
             }
+            let _ = sender.send(batch);
         });
         Self {
             root,
@@ -218,6 +211,85 @@ fn score(label: &str, query: &str) -> Option<i64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn discovered(root: &Path) -> std::collections::BTreeSet<String> {
+        let mut picker = Picker::new(root.into());
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+        while picker.scanning {
+            picker.poll();
+            assert!(std::time::Instant::now() < deadline);
+            thread::yield_now();
+        }
+        picker.labels.iter().cloned().collect()
+    }
+    #[test]
+    fn gitignore_patterns_nested_overrides_and_excluded_directories() {
+        let dir = tempfile::tempdir().unwrap();
+        for name in [".git/info", "src/deep", "target", "cache"] {
+            std::fs::create_dir_all(dir.path().join(name)).unwrap();
+        }
+        std::fs::write(dir.path().join(".gitignore"),
+            "*.log\n!keep.log\n/root.txt\ntarget/\ncache/*\n!cache/keep.txt\n**/generated-*.rs\n\\#literal\n\\!literal\nwith space.txt\n").unwrap();
+        std::fs::write(
+            dir.path().join("src/.gitignore"),
+            "!local.log\nprivate.rs\n",
+        )
+        .unwrap();
+        std::fs::write(dir.path().join(".git/info/exclude"), "local-only\n").unwrap();
+        for name in [
+            "debug.log",
+            "keep.log",
+            "root.txt",
+            "src/root.txt",
+            "src/local.log",
+            "src/deep/debug.log",
+            "src/private.rs",
+            "src/main.rs",
+            "src/generated-code.rs",
+            "target/artifact",
+            "cache/drop.txt",
+            "cache/keep.txt",
+            "#literal",
+            "!literal",
+            "with space.txt",
+            "local-only",
+            ".hidden",
+            "visible",
+        ] {
+            std::fs::write(dir.path().join(name), "").unwrap();
+        }
+        let expected: std::collections::BTreeSet<_> = [
+            ".gitignore",
+            "src/.gitignore",
+            "keep.log",
+            "src/root.txt",
+            "src/local.log",
+            "src/main.rs",
+            "cache/keep.txt",
+            ".hidden",
+            "visible",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+        assert_eq!(discovered(dir.path()), expected);
+        // Starting below the repo root still honors parent rules, but returns
+        // only descendants of the working directory.
+        let nested: std::collections::BTreeSet<_> =
+            [".gitignore", "root.txt", "local.log", "main.rs"]
+                .into_iter()
+                .map(String::from)
+                .collect();
+        assert_eq!(discovered(&dir.path().join("src")), nested);
+    }
+    #[test]
+    fn gitignore_works_without_a_repository_and_reloads_on_reopen() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join(".gitignore"), "excluded\n").unwrap();
+        std::fs::write(dir.path().join("excluded"), "").unwrap();
+        assert!(!discovered(dir.path()).contains("excluded"));
+        std::fs::write(dir.path().join(".gitignore"), "").unwrap();
+        assert!(discovered(dir.path()).contains("excluded"));
+    }
     #[test]
     fn fuzzy_paths_unicode_and_ranking() {
         assert!(score("src/editor.rs", "s/edr").is_some());
