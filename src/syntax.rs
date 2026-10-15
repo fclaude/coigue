@@ -1,5 +1,5 @@
 //! Lightweight Rust lexer. Character-indexed styles match the editor buffer.
-//! Relex from the beginning on each draw so edits cannot leave stale line state.
+//! Relex from the beginning after edits so multiline state stays correct.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Style {
     Plain,

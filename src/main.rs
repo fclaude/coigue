@@ -7,12 +7,9 @@ use crossterm::{
     cursor::Show,
     event::{self, Event, KeyEventKind},
     execute,
-    terminal::{self, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{self, EndSynchronizedUpdate, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use std::{
-    io::{self, Write},
-    path::PathBuf,
-};
+use std::{io, path::PathBuf};
 struct Terminal;
 impl Terminal {
     fn enter() -> io::Result<Self> {
@@ -24,7 +21,12 @@ impl Terminal {
 }
 impl Drop for Terminal {
     fn drop(&mut self) {
-        let _ = execute!(io::stdout(), Show, LeaveAlternateScreen);
+        let _ = execute!(
+            io::stdout(),
+            EndSynchronizedUpdate,
+            Show,
+            LeaveAlternateScreen
+        );
         let _ = terminal::disable_raw_mode();
     }
 }
@@ -42,10 +44,9 @@ fn run() -> io::Result<()> {
     let mut view = render::View::default();
     loop {
         view.draw(&editor)?;
-        io::stdout().flush()?;
         match event::read()? {
             Event::Key(k) if k.kind != KeyEventKind::Release => {
-                if editor.key(k) {
+                if editor.key(k, view.page_rows()) {
                     break;
                 }
             }
@@ -58,7 +59,12 @@ fn run() -> io::Result<()> {
 fn main() {
     let previous = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
-        let _ = execute!(io::stdout(), Show, LeaveAlternateScreen);
+        let _ = execute!(
+            io::stdout(),
+            EndSynchronizedUpdate,
+            Show,
+            LeaveAlternateScreen
+        );
         let _ = terminal::disable_raw_mode();
         previous(info);
     }));
