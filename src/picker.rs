@@ -39,7 +39,9 @@ impl Picker {
                 .git_global(false)
                 .require_git(false)
                 .follow_links(false)
-                .filter_entry(|entry| entry.file_name() != ".git");
+                .filter_entry(|entry| {
+                    entry.file_name() != ".git" && entry.file_name() != crate::fileops::TRASH
+                });
             let mut batch = Batch {
                 files: Vec::new(),
                 skipped: 0,
@@ -322,6 +324,8 @@ mod tests {
     fn discovery_is_recursive_and_skips_git_and_symlinks() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(dir.path().join("nested/.git")).unwrap();
+        std::fs::create_dir_all(dir.path().join(crate::fileops::TRASH)).unwrap();
+        std::fs::write(dir.path().join(crate::fileops::TRASH).join("item"), "").unwrap();
         for name in [
             "nested/café.rs",
             "alpha.rs",

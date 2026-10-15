@@ -70,7 +70,7 @@ open, `d` to discard and open, or `c`/Esc to cancel the switch. Failed saves kee
 the choice open; failed opens preserve the original buffer and undo history.
 Opening a file returns to normal mode at its first character.
 
-Press **`-`** in normal mode or run **`:explore`** for a full-screen directory
+Press **Ctrl-O** in normal or insert mode, **`-`** in normal mode, or run **`:explore`** for a full-screen directory
 explorer. It opens at the current file's parent and selects that file, revealing
 it even if hidden or ignored. The process working directory is never changed,
 so Ctrl-P keeps searching from its original working-directory root.
@@ -83,6 +83,12 @@ so Ctrl-P keeps searching from its original working-directory root.
 | Home / End, Page Up / Down | Jump or page through entries. |
 | `/` | Enter a fuzzy filter for names in this directory; type to narrow. |
 | Backspace while filtering | Edit the query; arrows and Enter still navigate/open. |
+| Tab while filtering | Select the match and leave filtering, ready for file actions. |
+| `a` / `A` | Create a file / directory; type a path and Enter. |
+| `r` | Rename/move the selected entry; edit its name or enter another path. Ctrl-U clears the input. |
+| `d` | Move the selected entry to recovery storage; `y` confirms, Esc/`n` cancels. |
+| `u` | Restore the latest deletion in this directory, including after restarting the editor. |
+| Ctrl-O | Return to the file; Ctrl-E retains its end-of-line binding. |
 | Esc while filtering | Clear the filter and restore the previous selection. |
 | `.` outside filtering | Toggle hidden and ignored entries. `.git` and symlinks stay excluded. |
 | Ctrl-P | Open the recursive picker; Esc returns to the explorer. |
@@ -91,7 +97,29 @@ so Ctrl-P keeps searching from its original working-directory root.
 The explorer remembers directory selection and scroll position for this session.
 Directory loading runs in the background. Opening a different file uses the same
 save/discard/cancel choices as Ctrl-P. Browsing, filtering, and canceling preserve
-edits and undo history. This version only browses and opens files.
+edits and undo history.
+
+Creation and rename prompts accept relative paths from the displayed directory
+or absolute paths; destination parent directories must already exist. Enter
+executes and Esc cancels. Existing destinations (including symlinks) are never
+overwritten. Moves use an atomic no-replace rename on Linux/macOS; cross-filesystem
+moves are refused and leave the source intact. Moving the open file or an ancestor
+updates its save path while preserving unsaved edits, cursor, and undo history.
+Open another file before deleting the active file or an ancestor.
+
+Deletion moves the whole entry into a private `.coigue-trash/entry-.../item`
+directory beside its original location and records its original name there.
+The record is relative to that parent, so recovery also survives renaming the parent.
+Recovery is persistent, does not need external tools, and never overwrites an
+occupied original path. To recover, browse the original parent directory and
+press `u`; repeat to restore older deletions. A collision leaves the deleted data
+in recovery storage so it can be retried after freeing the name. Storage is not
+automatically purged. Add `.coigue-trash/` to your Git ignore rules if needed;
+the editor does not change `.gitignore`. `.coigue-trash` and `.git` are excluded from both browsers
+even when showing all entries, and filesystem actions cannot target either.
+The recovery directory and its contents are ordinary on-disk files: keep them
+until recovery is no longer needed. Buffer undo (`u` outside the explorer) covers
+text edits; explorer `u` restores deletions only.
 
 Lines scroll vertically and horizontally; terminal resize triggers a redraw.
 Screen updates are buffered and repaint only changed rows, with synchronized updates

@@ -17,6 +17,7 @@ pub struct View {
     styles: Option<Vec<Vec<crate::syntax::Style>>>,
     dirty: bool,
     generation: u64,
+    syntax_path: Option<std::path::PathBuf>,
 }
 fn cell(c: char) -> (String, usize) {
     if c == '\t' {
@@ -172,6 +173,12 @@ impl View {
                 ""
             }
         )];
+        if explorer.filtering {
+            lines[0] = format!(
+                "Filter: Tab selects for actions, Esc cancels | {}",
+                explorer.directory.display()
+            );
+        }
         if !e.message.is_empty() {
             lines[0] = e.message.clone();
         }
@@ -189,12 +196,14 @@ impl View {
         }
         let prompt = if e.switch_prompt.is_some() {
             switch_prompt(e)
+        } else if let Some(prompt) = &e.filesystem_prompt {
+            prompt.display()
         } else if explorer.filtering {
             format!("/{}", explorer.query)
         } else if !explorer.message.is_empty() {
             explorer.message.clone()
         } else {
-            "/ filter  Enter open  h parent  . show all  Esc return".into()
+            "a file  A dir  r move  d trash  u restore  / filter  Esc return".into()
         };
         if h == 1 {
             lines.clear();
@@ -219,7 +228,10 @@ impl View {
         for (y, line) in lines.iter().enumerate() {
             // Keep the end of a long query visible while typing.
             let left = if y == usize::from(h - 1)
-                && (line.starts_with('/') || line.starts_with("Open:"))
+                && (line.starts_with('/')
+                    || line.starts_with("Open:")
+                    || line.starts_with("New ")
+                    || line.starts_with("Rename/move"))
             {
                 line.chars()
                     .map(|c| cell(c).1)
@@ -291,8 +303,10 @@ impl View {
             self.left = col + 1 - width;
         }
         let revision = (b.revision(), e.file.revision());
-        if self.revision != Some(revision) {
-            if self.revision.map(|r| r.0) != Some(revision.0) {
+        let path_changed = self.syntax_path.as_ref() != Some(&e.file.path);
+        if self.revision != Some(revision) || path_changed {
+            if self.revision.map(|r| r.0) != Some(revision.0) || path_changed {
+                self.syntax_path = Some(e.file.path.clone());
                 self.styles = (e.file.path.extension().is_some_and(|ext| ext == "rs"))
                     .then(|| crate::syntax::rust(&b.lines));
             }
@@ -410,6 +424,45 @@ impl View {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn explorer_rename_updates_syntax_without_resetting_cursor_or_viewport() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("plain");
+        std::fs::write(&path, "fn main() {}\n".repeat(12)).unwrap();
+        let (file, text) = crate::file::File::open(path).unwrap();
+        let mut e = Editor::new(file, &text);
+        e.buffer.row = 7;
+        let mut view = View::default();
+        view.draw_to(&e, (20, 4), &mut Vec::new()).unwrap();
+        let top = view.top;
+        assert!(view.styles.is_none());
+        e.key(KeyEvent::new(KeyCode::Char('o'), KeyModifiers::CONTROL), 2);
+        let explorer = e.explorer.as_mut().unwrap();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+        while explorer.loading {
+            explorer.poll();
+            assert!(std::time::Instant::now() < deadline);
+            std::thread::yield_now();
+        }
+        e.key(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::NONE), 2);
+        for size in [(1, 1), (0, 0), (20, 4)] {
+            view.draw_to(&e, size, &mut Vec::new()).unwrap();
+        }
+        e.key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL), 2);
+        for c in "code.rs".chars() {
+            e.key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE), 2);
+        }
+        e.key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE), 2);
+        e.key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE), 2);
+        view.draw_to(&e, (20, 4), &mut Vec::new()).unwrap();
+        assert_eq!(e.buffer.row, 7);
+        assert_eq!(view.top, top);
+        assert_eq!(
+            view.styles.as_ref().unwrap()[0][0],
+            crate::syntax::Style::Keyword
+        );
+    }
     #[test]
     fn explorer_resize_confirmation_and_cancel_preserve_file_viewport() {
         use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
