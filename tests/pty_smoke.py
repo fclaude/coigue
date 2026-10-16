@@ -15,10 +15,10 @@ import time
 
 binary = str(pathlib.Path(sys.argv[1]).resolve())
 
-def session(path, steps, command=None, cwd=None):
+def session(path, steps, command=None, cwd=None, width=80):
     master, slave = pty.openpty()
     original = termios.tcgetattr(slave)
-    fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 24, 80, 0, 0))
+    fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 24, width, 0, 0))
     env = dict(os.environ)
     env.pop('NO_COLOR', None)  # Exercise color output even in color-disabled CI hosts.
     proc = subprocess.Popen(command or ([binary] if path is None else [binary, str(path)]), stdin=slave, stdout=slave, stderr=slave, env=env, cwd=cwd)
@@ -84,15 +84,15 @@ with tempfile.TemporaryDirectory() as directory:
     print('Counts and line numbers PTY: operators, undo, block paste and resize verified')
 
 with tempfile.TemporaryDirectory() as directory:
-    root = pathlib.Path(directory) / 'launch space café 界'
+    root = (pathlib.Path(directory) / 'launch space café 界').resolve()
     root.mkdir()
-    out = session(None, [b'iaccidental', b':w\r', None, b':q\r'], cwd=root)
+    out = session(None, [b'iaccidental', b':w\r', None, b':q\r'], cwd=root, width=200)
     for expected in ['Coigüe', 'Welcome', str(root), 'Ctrl-O', 'Ctrl-P', 'No file open']:
         assert expected.encode() in out, (expected, out)
     assert list(root.iterdir()) == [], 'welcome created a file'
     path = root / 'hello café.txt'
     path.write_text('hello')
-    out = session(None, [b'-', b'/hello', b'\r', b'i!', b'\x1b', b':wq\r'], cwd=root)
+    out = session(None, [b'-', b'/hello', b'\r', b'i!', b'\x1b', b':wq\r'], cwd=root, width=200)
     assert path.read_text() == '!hello'
     assert str(root).encode() in out
     out = session(None, [b'\x10', b'hello', b'\x1b', b'\x0f', b'\x1b',
