@@ -210,6 +210,30 @@ impl Buffer {
         self.set_offset(start + chars.len() - 1);
         self.clamp(false);
     }
+    /// Inclusive character selection, clamped to real scalars (including newlines).
+    pub fn selection_chars(&mut self, anchor: (usize, usize), cut: bool) -> Vec<char> {
+        let offset_at = |row: usize, col: usize| {
+            self.lines[..row]
+                .iter()
+                .map(|line| line.len() + 1)
+                .sum::<usize>()
+                + col
+        };
+        let a = offset_at(anchor.0, anchor.1);
+        let b = self.offset();
+        let mut chars: Vec<_> = self.text().chars().collect();
+        let start = a.min(b).min(chars.len());
+        let end = (a.max(b) + 1).min(chars.len());
+        let selected = chars[start..end].to_vec();
+        if cut && start < end {
+            self.change();
+            chars.drain(start..end);
+            self.lines = chars.split(|&c| c == '\n').map(<[char]>::to_vec).collect();
+        }
+        self.set_offset(start);
+        self.clamp(false);
+        selected
+    }
     fn offset(&self) -> usize {
         self.lines[..self.row]
             .iter()

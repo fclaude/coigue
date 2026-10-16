@@ -4,6 +4,8 @@ use crossterm::event::{KeyCode as K, KeyEvent, KeyModifiers};
 pub enum Mode {
     Normal,
     Insert,
+    Visual,
+    VisualLine,
     Command,
     Search,
 }
@@ -92,6 +94,7 @@ impl CommandCompletion {
 }
 pub struct Editor {
     textwidth: usize,
+    selection_anchor: Option<(usize, usize)>,
     pub theme: crate::theme::Theme,
     pub lsp: crate::lsp::Client,
     pub welcome: Option<std::path::PathBuf>,
@@ -118,6 +121,7 @@ impl Editor {
     pub fn new(file: File, text: &str) -> Self {
         Self {
             textwidth: 80,
+            selection_anchor: None,
             theme: crate::theme::Theme::default(),
             lsp: crate::lsp::Client::default(),
             welcome: None,
@@ -255,10 +259,14 @@ impl Editor {
             }
         }
         if key.code == K::Esc {
+            if matches!(self.mode, Mode::Visual | Mode::VisualLine) {
+                self.message.clear();
+            }
             if self.mode == Mode::Insert {
                 self.buffer.col = self.buffer.col.saturating_sub(1);
             }
             self.mode = Mode::Normal;
+            self.selection_anchor = None;
             self.reset_pending();
             self.command.clear();
             self.search.clear();
@@ -314,6 +322,11 @@ impl Editor {
                 }
                 _ => {}
             }
+            return false;
+        }
+        if matches!(self.mode, Mode::Visual | Mode::VisualLine) {
+            self.visual_key(key.code, page_rows);
+            self.buffer.clamp(false);
             return false;
         }
         if self.mode == Mode::Normal {
@@ -376,6 +389,98 @@ impl Editor {
             .min(9999);
         self.operator_count = None;
         (count, explicit)
+    }
+    /// Selected scalar columns, with a virtual cell for a selected newline/empty line.
+    pub fn selection(&self, row: usize) -> Option<std::ops::Range<usize>> {
+        if !matches!(self.mode, Mode::Visual | Mode::VisualLine) {
+            return None;
+        }
+        let anchor = self.selection_anchor?;
+        let cursor = (self.buffer.row, self.buffer.col);
+        let (start, end) = (anchor.min(cursor), anchor.max(cursor));
+        if row < start.0 || row > end.0 {
+            return None;
+        }
+        let len = self.buffer.lines.get(row)?.len();
+        if self.mode == Mode::VisualLine {
+            return Some(0..len + 1);
+        }
+        Some(
+            (if row == start.0 { start.1 } else { 0 })..(if row == end.0 {
+                end.1 + 1
+            } else {
+                len + 1
+            }),
+        )
+    }
+    fn visual_key(&mut self, code: K, page_rows: usize) {
+        match code {
+            K::Char(c @ ('v' | 'V')) => {
+                let mode = if c == 'v' {
+                    Mode::Visual
+                } else {
+                    Mode::VisualLine
+                };
+                if self.mode == mode {
+                    self.mode = Mode::Normal;
+                    self.selection_anchor = None;
+                    self.message.clear();
+                } else {
+                    self.mode = mode;
+                }
+                self.reset_pending();
+            }
+            K::Char('o') => {
+                let anchor = self.selection_anchor.as_mut().unwrap();
+                std::mem::swap(&mut anchor.0, &mut self.buffer.row);
+                std::mem::swap(&mut anchor.1, &mut self.buffer.col);
+                self.reset_pending();
+            }
+            K::Char(op @ ('y' | 'd')) => {
+                let anchor = self.selection_anchor.take().unwrap();
+                if self.mode == Mode::VisualLine {
+                    let start = anchor.0.min(self.buffer.row);
+                    let end = anchor.0.max(self.buffer.row) + 1;
+                    self.register = Some(Register::Line(
+                        self.buffer.lines[start..end].to_vec(),
+                        end < self.buffer.lines.len(),
+                    ));
+                    self.buffer.row = start;
+                    self.buffer.col = 0;
+                    if op == 'd' {
+                        for _ in start..end {
+                            self.buffer.row = start;
+                            self.buffer.delete_line();
+                        }
+                    }
+                } else {
+                    let chars = self.buffer.selection_chars(anchor, op == 'd');
+                    if !chars.is_empty() {
+                        self.register = Some(Register::Chars(chars));
+                    }
+                }
+                self.mode = Mode::Normal;
+                self.reset_pending();
+                self.message = if op == 'y' {
+                    "Selection yanked"
+                } else {
+                    "Selection deleted"
+                }
+                .into();
+            }
+            K::Char(
+                'h' | 'j' | 'k' | 'l' | 'w' | 'b' | 'e' | '0'..='9' | '$' | 'g' | 'G' | 'n' | 'N',
+            )
+            | K::Left
+            | K::Right
+            | K::Up
+            | K::Down
+            | K::Home
+            | K::End
+            | K::PageUp
+            | K::PageDown => self.normal_key(code, page_rows),
+            _ => self.reset_pending(),
+        }
     }
     fn normal_key(&mut self, code: K, page_rows: usize) {
         // Replacement data must bypass digit parsing (e.g. 2r3).
@@ -496,6 +601,15 @@ impl Editor {
                         break;
                     }
                 }
+            }
+            (_, K::Char(c @ ('v' | 'V'))) => {
+                self.selection_anchor = Some((self.buffer.row, self.buffer.col));
+                self.mode = if c == 'v' {
+                    Mode::Visual
+                } else {
+                    Mode::VisualLine
+                };
+                self.message = "Visual: motions select | y yank | d delete | Esc cancel".into();
             }
             (_, K::Char('x')) => {
                 let b = &mut self.buffer;
@@ -859,6 +973,7 @@ impl Editor {
             Ok((file, text)) => {
                 self.welcome = None;
                 self.file = file;
+                self.selection_anchor = None;
                 self.buffer = Buffer::new(&text);
                 self.mode = Mode::Normal;
                 self.command.clear();
@@ -1036,6 +1151,89 @@ impl Editor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn visual_yank_cancel_preserve_redo_and_empty_yank_keeps_register() {
+        let (_dir, mut e) = editing_fixture("abc\n");
+        send(&mut e, "vldu");
+        assert_eq!(e.buffer.text(), "abc\n");
+        send(&mut e, "gg0vly");
+        send(&mut e, "Gvy");
+        assert!(matches!(&e.register, Some(Register::Chars(c)) if c == &vec!['a', 'b']));
+        send(&mut e, "v");
+        press(&mut e, K::Esc);
+        e.key(KeyEvent::new(K::Char('r'), KeyModifiers::CONTROL), 22);
+        assert_eq!(e.buffer.text(), "c\n");
+        assert_eq!(e.mode, Mode::Normal);
+        assert!(e.selection_anchor.is_none());
+    }
+    #[test]
+    fn visual_characters_yank_paste_delete_backwards_and_undo() {
+        let (_dir, mut e) = editing_fixture("aé界z\n\nend\r\nlast");
+        send(&mut e, "v2ly");
+        assert_eq!(e.mode, Mode::Normal);
+        assert!(
+            matches!(&e.register, Some(Register::Chars(c)) if c.iter().collect::<String>() == "aé界")
+        );
+        assert!(!e.buffer.undo()); // Selection/yank add no history.
+        send(&mut e, "$p");
+        assert_eq!(e.buffer.text(), "aé界zaé界\n\nend\r\nlast");
+        send(&mut e, "u$v");
+        send(&mut e, "2hy");
+        assert!(
+            matches!(&e.register, Some(Register::Chars(c)) if c.iter().collect::<String>() == "é界z")
+        );
+        send(&mut e, "gg0v2ld");
+        assert_eq!(e.buffer.text(), "z\n\nend\r\nlast");
+        send(&mut e, "u");
+        assert_eq!(e.buffer.text(), "aé界z\n\nend\r\nlast");
+        e.key(KeyEvent::new(K::Char('r'), KeyModifiers::CONTROL), 22);
+        assert_eq!(e.buffer.text(), "z\n\nend\r\nlast");
+    }
+    #[test]
+    fn visual_multiline_empty_lines_crlf_and_whole_buffer() {
+        let (_dir, mut e) = editing_fixture("ab\r\n\n界z\nlast");
+        send(&mut e, "v2jly");
+        assert!(
+            matches!(&e.register, Some(Register::Chars(c)) if c.iter().collect::<String>() == "ab\r\n\n界z")
+        );
+        send(&mut e, "v2jld");
+        assert_eq!(e.buffer.text(), "\nlast");
+        send(&mut e, "uG$vgg0d");
+        assert_eq!(e.buffer.text(), "");
+        send(&mut e, "u");
+        assert_eq!(e.buffer.text(), "ab\r\n\n界z\nlast");
+        send(&mut e, "j0vyd"); // 'd' starts an ordinary operator after yanking newline.
+        assert!(matches!(&e.register, Some(Register::Chars(c)) if c == &vec!['\n']));
+        press(&mut e, K::Esc);
+        let (_dir, mut empty) = editing_fixture("");
+        send(&mut empty, "vydVd");
+        assert_eq!(empty.buffer.text(), "");
+        assert_eq!(empty.mode, Mode::Normal);
+    }
+    #[test]
+    fn visual_lines_switch_cancel_swap_and_motion_counts() {
+        let (_dir, mut e) = editing_fixture("one\ntwo\n\nlast");
+        send(&mut e, "V2jy");
+        assert!(matches!(&e.register, Some(Register::Line(lines, true)) if lines.len() == 3));
+        send(&mut e, "Gp");
+        assert_eq!(e.buffer.text(), "one\ntwo\n\nlast\none\ntwo\n");
+        send(&mut e, "uggVjd");
+        assert_eq!(e.buffer.text(), "\nlast");
+        send(&mut e, "uGVggd");
+        assert_eq!(e.buffer.text(), "");
+        send(&mut e, "uggv2jov");
+        assert_eq!(e.mode, Mode::Normal);
+        assert!(e.selection(0).is_none());
+        send(&mut e, "vV");
+        assert_eq!(e.mode, Mode::VisualLine);
+        press(&mut e, K::Esc);
+        assert!(e.selection_anchor.is_none());
+        let text = e.buffer.text();
+        send(&mut e, "vixp:q"); // Editing and command entry are ignored while selecting.
+        assert_eq!(e.buffer.text(), text);
+        assert_eq!(e.mode, Mode::Visual);
+        press(&mut e, K::Esc);
+    }
     #[test]
     fn justify_commands_width_history_and_completion() {
         let (_dir, mut e) = editing_fixture("one two three four\n\nother paragraph");

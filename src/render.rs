@@ -65,12 +65,14 @@ fn styled_line(
     left: usize,
     width: usize,
     palette: Palette,
+    selection: Option<std::ops::Range<usize>>,
 ) -> io::Result<()> {
     let mut col = 0;
     let mut previous = palette.foreground;
     let mut previous_bold = false;
     let mut previous_italic = false;
-    for (c, style) in line.iter().zip(styles) {
+    let mut reversed = false;
+    for (index, (c, style)) in line.iter().zip(styles).enumerate() {
         let (s, w) = cell(*c);
         let visible = if col >= left && col + w <= left + width {
             s
@@ -80,6 +82,20 @@ fn styled_line(
             String::new()
         };
         if !visible.is_empty() {
+            let selected = selection
+                .as_ref()
+                .is_some_and(|range| range.contains(&index));
+            if selected != reversed {
+                queue!(
+                    out,
+                    SetAttribute(if selected {
+                        Attribute::Reverse
+                    } else {
+                        Attribute::NoReverse
+                    })
+                )?;
+                reversed = selected;
+            }
             let next = palette.syntax(*style);
             if next != previous {
                 queue!(out, SetForegroundColor(next))?;
@@ -112,6 +128,22 @@ fn styled_line(
             queue!(out, Print(visible))?;
         }
         col += w;
+    }
+    if reversed {
+        queue!(out, SetAttribute(Attribute::NoReverse))?;
+    }
+    if selection
+        .as_ref()
+        .is_some_and(|range| range.contains(&line.len()))
+        && col >= left
+        && col < left + width
+    {
+        queue!(
+            out,
+            SetAttribute(Attribute::Reverse),
+            Print(" "),
+            SetAttribute(Attribute::NoReverse)
+        )?;
     }
     if previous_bold {
         queue!(out, SetAttribute(Attribute::NormalIntensity))?;
@@ -442,6 +474,17 @@ impl View {
                         self.left,
                         text_width,
                         palette,
+                        e.selection(self.top + y),
+                    )?;
+                } else if let Some(selection) = e.selection(self.top + y) {
+                    styled_line(
+                        line_out,
+                        line,
+                        &vec![crate::syntax::Style::Plain; line.len()],
+                        self.left,
+                        text_width,
+                        palette,
+                        Some(selection),
                     )?;
                 } else {
                     queue!(
@@ -525,7 +568,15 @@ impl View {
                 // A full-width line needs no clearing.
                 let cells = if row < rows {
                     b.lines.get(self.top + row).map_or(1, |line| {
+                        let end_cell = line.iter().map(|c| cell(*c).1).sum::<usize>();
+                        let selected_end = usize::from(
+                            e.selection(self.top + row)
+                                .is_some_and(|range| range.contains(&line.len()))
+                                && end_cell >= self.left
+                                && end_cell < self.left + text_width,
+                        );
                         gutter
+                            + selected_end
                             + clipped(line.iter().copied(), self.left, text_width)
                                 .chars()
                                 .map(|c| c.width().unwrap_or(0))
@@ -563,6 +614,93 @@ impl View {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn visual_selection_repaints_empty_lines_scrolls_and_cancels() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let dir = tempfile::tempdir().unwrap();
+        let (file, _) = crate::file::File::open(dir.path().join("selection.md")).unwrap();
+        let mut e = Editor::new(file, "a界\n\nlast\nfour\nfive\nsix\nseven");
+        let mut view = View::default();
+        let mut out = Vec::new();
+        view.draw_to(&e, (14, 5), &mut out).unwrap();
+        for c in "v2jl".chars() {
+            e.key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE), 3);
+        }
+        view.draw_to(&e, (14, 5), &mut out).unwrap();
+        let reverse = SetAttribute(Attribute::Reverse).to_string();
+        for row in &view.previous[..3] {
+            assert!(String::from_utf8_lossy(row).contains(&reverse));
+        }
+        // The selected empty line has an actual highlighted cell, retained after clearing.
+        assert!(String::from_utf8_lossy(&view.previous[1]).contains(&format!("{reverse} ")));
+        e.key(KeyEvent::new(KeyCode::Char('G'), KeyModifiers::NONE), 3);
+        view.draw_to(&e, (14, 5), &mut out).unwrap();
+        assert!(view.top > 0);
+        assert!(String::from_utf8_lossy(&view.previous[0]).contains(&reverse));
+        e.key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE), 3);
+        view.draw_to(&e, (14, 5), &mut out).unwrap();
+        assert!(
+            view.previous
+                .iter()
+                .all(|row| !String::from_utf8_lossy(row).contains(&reverse))
+        );
+        for c in "Vgg".chars() {
+            e.key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE), 3);
+        }
+        view.draw_to(&e, (5, 3), &mut out).unwrap();
+        view.draw_to(&e, (1, 1), &mut out).unwrap();
+        assert_eq!(e.buffer.text(), "a界\n\nlast\nfour\nfive\nsix\nseven");
+    }
+    #[test]
+    fn visual_plain_text_horizontal_scroll_and_theme_reset() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let dir = tempfile::tempdir().unwrap();
+        let (file, _) = crate::file::File::open(dir.path().join("selection.txt")).unwrap();
+        let mut e = Editor::new(file, "abcdefghi\t界éxyz");
+        let mut view = View::default();
+        let mut out = Vec::new();
+        for c in "v$".chars() {
+            e.key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE), 2);
+        }
+        for theme in [Theme::Terminal, Theme::Monochrome, Theme::CatppuccinMocha] {
+            e.theme = theme;
+            view.draw_to(&e, (9, 4), &mut out).unwrap();
+            assert!(view.left > 0);
+            assert!(
+                String::from_utf8_lossy(&view.previous[0])
+                    .contains(&SetAttribute(Attribute::Reverse).to_string())
+            );
+        }
+        e.key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE), 2);
+        view.draw_to(&e, (9, 4), &mut out).unwrap();
+        assert!(
+            !String::from_utf8_lossy(&view.previous[0])
+                .contains(&SetAttribute(Attribute::Reverse).to_string())
+        );
+        assert!(view.styles.is_none());
+    }
+    #[test]
+    fn visual_highlight_clips_tabs_unicode_and_resets_attributes() {
+        let mut out = Vec::new();
+        let line: Vec<_> = "\t界é".chars().collect();
+        styled_line(
+            &mut out,
+            &line,
+            &vec![crate::syntax::Style::Keyword; line.len()],
+            5,
+            2,
+            Theme::Terminal.palette(),
+            Some(1..3),
+        )
+        .unwrap();
+        let rendered = String::from_utf8(out).unwrap();
+        assert!(rendered.contains(&SetAttribute(Attribute::Reverse).to_string()));
+        assert!(rendered.contains(" é"));
+        assert!(rendered.contains(&SetAttribute(Attribute::NoReverse).to_string()));
+        assert!(
+            rendered.ends_with(&SetForegroundColor(crossterm::style::Color::Reset).to_string())
+        );
+    }
     #[test]
     fn markdown_highlighting_repaints_themes_and_tracks_fence_edits_and_history() {
         use crate::syntax::Style;
@@ -1186,6 +1324,7 @@ mod styled_tests {
                 5,
                 2,
                 Theme::Terminal.palette(),
+                None,
             )
             .unwrap();
             let rendered = String::from_utf8(out).unwrap();
@@ -1211,6 +1350,7 @@ mod styled_tests {
             5,
             4,
             Theme::Terminal.palette(),
+            None,
         )
         .unwrap();
         let rendered = String::from_utf8(out).unwrap();

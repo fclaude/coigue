@@ -108,6 +108,22 @@ moves to the start of the line. Counts and multiplied totals are capped at 9999.
 Insert-entry commands (`i`, `a`, `A`, `o`) enter once; inserted text is not repeated.
 Counts apply only to normal editing, not browser filters, search input, or commands.
 
+Press **`v`** in normal mode for inclusive character-wise visual selection, or
+**`V`** for line-wise selection. Move with `h/j/k/l`, arrows, `w/b/e`, `0/$`,
+`gg/G`, Home/End, Page Up/Down, or their existing Ctrl aliases; counts work with
+these motions. Selected text appears in reverse video, including a cell for
+selected line breaks and empty lines. **`o`** swaps the anchor and moving end;
+`v`/`V` switches selection type, or cancels when already in that type.
+**Esc** cancels. **`y`** yanks and **`d`** deletes the selection, returns to normal
+mode and places the cursor at its start. Use **`p`** / **`P`** to paste through
+the existing internal register. Character-wise selections retain exact Unicode
+scalars, whitespace and line separators; line-wise selections use the same paste
+semantics as `yy`/`dd`. Deletion is one undo step; selection and yanking add no
+history. An empty character selection at EOF keeps the previous register.
+Other editing commands, browser shortcuts and command entry are ignored while
+selecting. There is no rectangular/block selection, mouse selection or system
+clipboard integration; combining marks remain separate scalars.
+
 Use **`gq`** in normal mode or **`:justify [width]`** to fill just the paragraph
 under the cursor. **`:textwidth 72`** sets the session width (default 80 display
 columns); `:textwidth` reports it. Command widths accept 1–10000; a width on
