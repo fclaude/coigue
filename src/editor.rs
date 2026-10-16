@@ -45,6 +45,9 @@ struct CommandCompletion {
 impl CommandCompletion {
     fn new(input: &str, backwards: bool) -> Option<Self> {
         const COMMANDS: &[&str] = &[
+            "clipboard-copy",
+            "clipboard-paste",
+            "clipboard-paste-before",
             "explore",
             "justify",
             "lsp-restart",
@@ -95,6 +98,7 @@ impl CommandCompletion {
 pub struct Editor {
     textwidth: usize,
     selection_anchor: Option<(usize, usize)>,
+    clipboard_export: Option<(String, Register)>,
     pub theme: crate::theme::Theme,
     pub lsp: crate::lsp::Client,
     pub welcome: Option<std::path::PathBuf>,
@@ -122,6 +126,7 @@ impl Editor {
         Self {
             textwidth: 80,
             selection_anchor: None,
+            clipboard_export: None,
             theme: crate::theme::Theme::default(),
             lsp: crate::lsp::Client::default(),
             welcome: None,
@@ -436,8 +441,9 @@ impl Editor {
                 std::mem::swap(&mut anchor.1, &mut self.buffer.col);
                 self.reset_pending();
             }
-            K::Char(op @ ('y' | 'd')) => {
+            K::Char(op @ ('y' | 'Y' | 'd')) => {
                 let anchor = self.selection_anchor.take().unwrap();
+                let mut yanked = true;
                 if self.mode == Mode::VisualLine {
                     let start = anchor.0.min(self.buffer.row);
                     let end = anchor.0.max(self.buffer.row) + 1;
@@ -455,7 +461,8 @@ impl Editor {
                     }
                 } else {
                     let chars = self.buffer.selection_chars(anchor, op == 'd');
-                    if !chars.is_empty() {
+                    yanked = !chars.is_empty();
+                    if yanked {
                         self.register = Some(Register::Chars(chars));
                     }
                 }
@@ -467,6 +474,14 @@ impl Editor {
                     "Selection deleted"
                 }
                 .into();
+                if op == 'Y' {
+                    if yanked {
+                        self.copy_clipboard();
+                    } else {
+                        self.message =
+                            "Empty selection; clipboard unchanged, internal yank kept".into();
+                    }
+                }
             }
             K::Char(
                 'h' | 'j' | 'k' | 'l' | 'w' | 'b' | 'e' | '0'..='9' | '$' | 'g' | 'G' | 'n' | 'N',
@@ -609,7 +624,8 @@ impl Editor {
                 } else {
                     Mode::VisualLine
                 };
-                self.message = "Visual: motions select | y yank | d delete | Esc cancel".into();
+                self.message =
+                    "Visual: motions select | y yank | Y clipboard | d delete | Esc cancel".into();
             }
             (_, K::Char('x')) => {
                 let b = &mut self.buffer;
@@ -1056,6 +1072,58 @@ impl Editor {
             _ => {}
         }
     }
+    fn copy_clipboard(&mut self) {
+        self.copy_clipboard_using(crate::clipboard::copy);
+    }
+    fn copy_clipboard_using(&mut self, copy: impl FnOnce(&str) -> Result<(), String>) {
+        let Some(register) = self.register.clone() else {
+            self.message = "Nothing yanked; use y/yy or visual Y first".into();
+            return;
+        };
+        let text = match &register {
+            Register::Chars(chars) => chars.iter().collect(),
+            Register::Line(lines, terminated) => {
+                let mut text = lines
+                    .iter()
+                    .map(|line| line.iter().collect::<String>())
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                if *terminated {
+                    text.push('\n');
+                }
+                text
+            }
+        };
+        match copy(&text) {
+            Ok(()) => {
+                self.clipboard_export = Some((text, register));
+                self.message = "Yank copied to system clipboard".into();
+            }
+            Err(error) => {
+                self.message = format!("Clipboard copy failed; internal yank kept: {error}")
+            }
+        }
+    }
+    fn paste_clipboard_result(&mut self, result: Result<String, String>, after: bool) {
+        match result {
+            Ok(text) if text.is_empty() => {
+                self.message = "System clipboard is empty; no edit".into()
+            }
+            Ok(text) => {
+                if let Some((exported, Register::Line(lines, terminated))) = &self.clipboard_export
+                    && exported == &text
+                {
+                    self.buffer.paste_lines(lines, after, *terminated);
+                } else {
+                    self.buffer
+                        .paste_chars(&text.chars().collect::<Vec<_>>(), after);
+                }
+                self.buffer.clamp(false);
+                self.message = "Pasted system clipboard (internal yank kept)".into();
+            }
+            Err(error) => self.message = format!("Clipboard paste failed: {error}"),
+        }
+    }
     fn justify(&mut self, width: usize) {
         self.message = if self.welcome.is_some() {
             "No file open".into()
@@ -1067,6 +1135,20 @@ impl Editor {
     }
     fn execute(&mut self, cmd: &str) -> bool {
         let cmd = cmd.trim();
+        if matches!(
+            cmd,
+            "clipboard-copy" | "clipboard-paste" | "clipboard-paste-before"
+        ) {
+            if self.welcome.is_some() {
+                self.message = "No file open".into();
+            } else if cmd == "clipboard-copy" {
+                self.copy_clipboard();
+            } else {
+                self.paste_clipboard_result(crate::clipboard::paste(), cmd == "clipboard-paste");
+            }
+            return false;
+        }
+
         let args: Vec<_> = cmd.split_whitespace().collect();
         if matches!(args.first(), Some(&"justify" | &"textwidth")) {
             let width = if args.len() == 1 {
@@ -1151,6 +1233,62 @@ impl Editor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn clipboard_register_serialization_and_recoverable_copy_errors() {
+        let (_dir, mut e) = editing_fixture("é界\nnext");
+        send(&mut e, "vly");
+        e.copy_clipboard_using(|text| {
+            assert_eq!(text, "é界");
+            Err("backend unavailable".into())
+        });
+        assert!(e.message.contains("internal yank kept"));
+        assert!(e.clipboard_export.is_none());
+        assert!(
+            matches!(&e.register, Some(Register::Chars(c)) if c.iter().collect::<String>() == "é界")
+        );
+        assert!(!e.buffer.undo());
+        send(&mut e, "Vy");
+        e.copy_clipboard_using(|text| {
+            assert_eq!(text, "é界\n");
+            Ok(())
+        });
+        assert_eq!(e.clipboard_export.as_ref().unwrap().0, "é界\n");
+        send(&mut e, "GVy");
+        e.copy_clipboard_using(|text| {
+            assert_eq!(text, "next");
+            Ok(())
+        });
+        assert_eq!(e.buffer.text(), "é界\nnext");
+        let (_dir, mut empty) = editing_fixture("");
+        empty.copy_clipboard_using(|_| panic!("No register must not contact a backend"));
+        send(&mut empty, "vY"); // Empty visual Y must not export a previous register.
+        assert!(empty.message.contains("Empty selection"));
+    }
+    #[test]
+    fn clipboard_paste_unicode_multiline_linewise_empty_errors_and_undo() {
+        let (_dir, mut e) = editing_fixture("abc\nlast");
+        send(&mut e, "yy");
+        e.copy_clipboard_using(|_| Ok(()));
+        e.buffer.begin_edit();
+        e.paste_clipboard_result(Ok("abc\n".into()), true);
+        e.buffer.finish_edit();
+        assert_eq!(e.buffer.text(), "abc\nabc\nlast");
+        send(&mut e, "u");
+        e.buffer.begin_edit();
+        e.paste_clipboard_result(Ok("é界\r\nnext\n".into()), false);
+        e.buffer.finish_edit();
+        assert_eq!(e.buffer.text(), "é界\r\nnext\nabc\nlast");
+        assert!(matches!(&e.register, Some(Register::Line(lines, true)) if lines.len() == 1));
+        send(&mut e, "u");
+        let cursor = (e.buffer.row, e.buffer.col);
+        e.paste_clipboard_result(Ok(String::new()), true);
+        e.paste_clipboard_result(Err("denied".into()), true);
+        assert_eq!(e.buffer.text(), "abc\nlast");
+        assert_eq!((e.buffer.row, e.buffer.col), cursor);
+        e.key(KeyEvent::new(K::Char('r'), KeyModifiers::CONTROL), 22);
+        assert_eq!(e.buffer.text(), "é界\r\nnext\nabc\nlast");
+        assert!(e.message.contains("Redone"));
+    }
     #[test]
     fn visual_yank_cancel_preserve_redo_and_empty_yank_keeps_register() {
         let (_dir, mut e) = editing_fixture("abc\n");
@@ -1293,6 +1431,9 @@ mod tests {
         let mut e = Editor::welcome(dir.path().into());
         send(&mut e, ":");
         for expected in [
+            "clipboard-copy",
+            "clipboard-paste",
+            "clipboard-paste-before",
             "explore",
             "justify",
             "lsp-restart",
@@ -1303,6 +1444,9 @@ mod tests {
             "theme",
             "w",
             "wq",
+            "clipboard-copy",
+            "clipboard-paste",
+            "clipboard-paste-before",
             "explore",
         ] {
             press(&mut e, K::Tab);
