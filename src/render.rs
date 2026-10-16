@@ -3,7 +3,7 @@ use crate::theme::{Palette, Theme};
 use crossterm::{
     cursor::{Hide, MoveTo, Show},
     queue,
-    style::{Print, SetBackgroundColor, SetForegroundColor},
+    style::{Attribute, Print, SetAttribute, SetBackgroundColor, SetForegroundColor},
     terminal::{self, BeginSynchronizedUpdate, Clear, ClearType, EndSynchronizedUpdate},
 };
 use std::io::{self, Write};
@@ -67,6 +67,7 @@ fn styled_line(
 ) -> io::Result<()> {
     let mut col = 0;
     let mut previous = palette.foreground;
+    let mut previous_bold = false;
     for (c, style) in line.iter().zip(styles) {
         let (s, w) = cell(*c);
         let visible = if col >= left && col + w <= left + width {
@@ -82,9 +83,24 @@ fn styled_line(
                 queue!(out, SetForegroundColor(next))?;
                 previous = next;
             }
+            let bold = palette.bold(*style);
+            if bold != previous_bold {
+                queue!(
+                    out,
+                    SetAttribute(if bold {
+                        Attribute::Bold
+                    } else {
+                        Attribute::NormalIntensity
+                    })
+                )?;
+                previous_bold = bold;
+            }
             queue!(out, Print(visible))?;
         }
         col += w;
+    }
+    if previous_bold {
+        queue!(out, SetAttribute(Attribute::NormalIntensity))?;
     }
     queue!(out, SetForegroundColor(palette.foreground))
 }

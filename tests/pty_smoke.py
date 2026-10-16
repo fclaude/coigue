@@ -265,7 +265,9 @@ with tempfile.TemporaryDirectory() as directory:
     monochrome_out = monochrome_out.split(b'Theme: monochrome', 1)[1]
     colors = re.findall(rb'\x1b\[(?:38|48);2;(\d+);(\d+);(\d+)m', monochrome_out)
     assert colors and all(r == g == b for r, g, b in colors), 'monochrome emitted a colored hue'
-    assert b'\x1b[48;2;24;24;24m' in monochrome_out, 'missing monochrome background'
+    assert b'\x1b[48;2;8;8;8m' in monochrome_out, 'missing monochrome background'
+    assert b'\x1b[1m' in monochrome_out, 'monochrome keywords lack bold emphasis'
+    assert b'\x1b[22m' in monochrome_out, 'bold emphasis leaked beyond syntax'
     restarted = session(theme_path, [b':q\r'])
     assert b'\x1b[48;2;30;30;46m' in restarted, 'theme persisted after restart'
     theme_welcome = pathlib.Path(directory) / 'theme-welcome'
