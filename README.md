@@ -3,6 +3,9 @@
 A small Rust terminal modal editor. One UTF-8 file at a time; no interpreter integration.
 
 Licensed under the [MIT License](LICENSE).
+Built-in theme attribution and license terms are in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md); include these notices with
+distributions containing the palettes.
 
 Install a current stable Rust toolchain (Rust 2024 edition), then:
 
@@ -166,6 +169,23 @@ The gutter grows with the file's line count and stays fixed during horizontal
 scrolling. It is hidden in terminals too narrow to leave one text column.
 Browsers, welcome, status and command rows do not receive line numbers.
 
+Catppuccin Mocha is the default theme. Use `:theme` to show the current theme and
+available choices, or `:theme <name>` to switch immediately:
+
+| Command | Theme |
+| --- | --- |
+| `:theme mocha` | Catppuccin Mocha (default dark). |
+| `:theme gruvbox` | Gruvbox Dark (warm dark). |
+| `:theme latte` | Catppuccin Latte (light). |
+| `:theme terminal` | Use the terminal's default background/foreground and ANSI palette. |
+
+The full names `catppuccin-mocha`, `gruvbox-dark`, and `catppuccin-latte` are also
+accepted. Theme selection applies to the whole session, including welcome,
+file browsers, syntax, line-number gutters, and the status row; opening another
+file keeps the selection. There is no config file or persistence: restarting
+returns to Mocha. Built-in palettes use 24-bit RGB colors and need a truecolor
+terminal for faithful rendering; `terminal` retains the previous ANSI behavior.
+
 Lines scroll vertically and horizontally; terminal resize triggers a redraw.
 Screen updates are buffered and repaint only changed rows, with synchronized updates
 on terminals that support them. LF and existing trailing newlines are preserved exactly; opening a file does not add a newline. CRLF bytes round-trip unchanged, but CR is displayed as a replacement glyph and newly inserted line breaks use LF.
@@ -191,4 +211,4 @@ strings, characters, lifetimes, numbers, and macros. Nested block comments and
 multiline/raw strings retain state across lines. Other extensions remain plain.
 The lexer runs over the buffer after edits and caches the result while navigating;
 this favors simplicity over performance on very large files. It does not perform
-semantic analysis or use an LSP. Colors use the terminal's ANSI palette.
+semantic analysis or use an LSP. Colors come from the selected theme.

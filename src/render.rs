@@ -1,8 +1,9 @@
 use crate::editor::{Editor, Mode};
+use crate::theme::{Palette, Theme};
 use crossterm::{
     cursor::{Hide, MoveTo, Show},
     queue,
-    style::{Color, Print, SetForegroundColor},
+    style::{Print, SetBackgroundColor, SetForegroundColor},
     terminal::{self, BeginSynchronizedUpdate, Clear, ClearType, EndSynchronizedUpdate},
 };
 use std::io::{self, Write};
@@ -13,11 +14,13 @@ pub struct View {
     left: usize,
     size: (u16, u16),
     previous: Vec<Vec<u8>>,
+    cursor: Option<(u16, u16)>,
     revision: Option<(u64, u64)>,
     styles: Option<Vec<Vec<crate::syntax::Style>>>,
     dirty: bool,
     generation: u64,
     syntax_path: Option<std::path::PathBuf>,
+    theme: Option<Theme>,
 }
 fn cell(c: char) -> (String, usize) {
     if c == '\t' {
@@ -42,18 +45,16 @@ fn clipped(text: impl Iterator<Item = char>, left: usize, width: usize) -> Strin
     }
     out
 }
-fn color(style: crate::syntax::Style) -> Color {
-    use crate::syntax::Style::*;
-    match style {
-        Plain => Color::Reset,
-        Keyword => Color::Magenta,
-        Comment => Color::DarkGrey,
-        String => Color::Green,
-        Number => Color::Cyan,
-        Macro => Color::Yellow,
-        Punctuation => Color::Reset,
-        Lifetime => Color::Blue,
-    }
+fn row_colors(out: &mut impl Write, palette: Palette, surface: bool) -> io::Result<()> {
+    queue!(
+        out,
+        SetForegroundColor(palette.foreground),
+        SetBackgroundColor(if surface {
+            palette.surface
+        } else {
+            palette.background
+        })
+    )
 }
 // Apply exactly the same cell clipping as plain text; ANSI bytes never count as cells.
 fn styled_line(
@@ -62,9 +63,10 @@ fn styled_line(
     styles: &[crate::syntax::Style],
     left: usize,
     width: usize,
+    palette: Palette,
 ) -> io::Result<()> {
     let mut col = 0;
-    let mut previous = Color::Reset;
+    let mut previous = palette.foreground;
     for (c, style) in line.iter().zip(styles) {
         let (s, w) = cell(*c);
         let visible = if col >= left && col + w <= left + width {
@@ -75,7 +77,7 @@ fn styled_line(
             String::new()
         };
         if !visible.is_empty() {
-            let next = color(*style);
+            let next = palette.syntax(*style);
             if next != previous {
                 queue!(out, SetForegroundColor(next))?;
                 previous = next;
@@ -84,7 +86,7 @@ fn styled_line(
         }
         col += w;
     }
-    queue!(out, SetForegroundColor(Color::Reset))
+    queue!(out, SetForegroundColor(palette.foreground))
 }
 fn switch_prompt(e: &Editor) -> String {
     format!(
@@ -147,7 +149,7 @@ impl View {
             lines.truncate(usize::from(h - 1));
         }
         lines.push(prompt.clone());
-        self.draw_browser_lines(lines, out)
+        self.draw_browser_lines(lines, e, out)
     }
     fn draw_explorer(&mut self, e: &Editor, out: &mut impl Write) -> io::Result<()> {
         let explorer = e.explorer.as_ref().unwrap();
@@ -211,20 +213,21 @@ impl View {
             lines.truncate(usize::from(h - 1));
         }
         lines.push(prompt);
-        self.draw_browser_lines(lines, out)
+        self.draw_browser_lines(lines, e, out)
     }
-    fn draw_browser_lines(&mut self, lines: Vec<String>, out: &mut impl Write) -> io::Result<()> {
+    fn draw_browser_lines(
+        &mut self,
+        lines: Vec<String>,
+        e: &Editor,
+        out: &mut impl Write,
+    ) -> io::Result<()> {
+        let palette = e.theme.palette();
         let (w, h) = self.size;
         let width = usize::from(w);
         let prompt = lines.last().unwrap();
         let mut frame = Vec::new();
         let mut update = Vec::new();
-        queue!(
-            update,
-            BeginSynchronizedUpdate,
-            Hide,
-            SetForegroundColor(Color::Reset)
-        )?;
+        queue!(update, BeginSynchronizedUpdate, Hide)?;
         for (y, line) in lines.iter().enumerate() {
             // Keep the end of a long query visible while typing.
             let left = if y == usize::from(h - 1)
@@ -245,6 +248,12 @@ impl View {
             let visible = clipped(line.chars(), left, width);
             let bytes = visible.as_bytes().to_vec();
             if self.previous.get(y) != Some(&bytes) {
+                let surface = e.welcome.is_none() || e.picker.is_some() || e.explorer.is_some();
+                row_colors(
+                    &mut update,
+                    palette,
+                    surface && y < usize::from(h - 1) && (y == 0 || line.starts_with("> ")),
+                )?;
                 queue!(update, MoveTo(0, y as u16), Print(&visible))?;
                 let cells: usize = visible.chars().map(|c| c.width().unwrap_or(0)).sum();
                 if cells < width {
@@ -262,10 +271,15 @@ impl View {
             .map(|c| cell(c).1)
             .sum::<usize>()
             .min(width - 1) as u16;
+        if self.previous == frame && self.cursor == Some((x, h - 1)) {
+            return Ok(());
+        }
+        row_colors(&mut update, palette, false)?;
         queue!(update, MoveTo(x, h - 1), Show, EndSynchronizedUpdate)?;
         out.write_all(&update)?;
         out.flush()?;
         self.previous = frame;
+        self.cursor = Some((x, h - 1));
         Ok(())
     }
     fn draw_to(&mut self, e: &Editor, size: (u16, u16), out: &mut impl Write) -> io::Result<()> {
@@ -273,6 +287,12 @@ impl View {
         if self.size != size {
             self.previous.clear();
             self.size = size;
+        }
+        if self.theme != Some(e.theme) {
+            // Plain rows and empty tails must repaint too, even when their text
+            // and the cached syntax tokens are unchanged.
+            self.previous.clear();
+            self.theme = Some(e.theme);
         }
         if w == 0 || h == 0 {
             return Ok(());
@@ -311,8 +331,9 @@ impl View {
             } else {
                 "Ctrl-O browse | Ctrl-P find | :q quit".into()
             };
-            return self.draw_browser_lines(lines, out);
+            return self.draw_browser_lines(lines, e, out);
         }
+        let palette = e.theme.palette();
         let rows = usize::from(h.saturating_sub(2));
         let width = usize::from(w);
         let b = &e.buffer;
@@ -353,13 +374,20 @@ impl View {
                     let number = format!("{:>digits$} ", self.top + y + 1, digits = gutter - 1);
                     queue!(
                         line_out,
-                        SetForegroundColor(Color::DarkGrey),
+                        SetForegroundColor(palette.muted),
                         Print(clipped(number.chars(), 0, gutter)),
-                        SetForegroundColor(Color::Reset)
+                        SetForegroundColor(palette.foreground)
                     )?;
                 }
                 if let Some(styles) = &self.styles {
-                    styled_line(line_out, line, &styles[self.top + y], self.left, text_width)?;
+                    styled_line(
+                        line_out,
+                        line,
+                        &styles[self.top + y],
+                        self.left,
+                        text_width,
+                        palette,
+                    )?;
                 } else {
                     queue!(
                         line_out,
@@ -418,15 +446,14 @@ impl View {
         };
         // Assemble the entire update before touching the terminal. Unchanged rows
         // stay in place; synchronized terminals display changed rows atomically.
+        if self.previous == frame && self.cursor == Some((x, y)) {
+            return Ok(());
+        }
         let mut update = Vec::new();
-        queue!(
-            update,
-            BeginSynchronizedUpdate,
-            Hide,
-            SetForegroundColor(Color::Reset)
-        )?;
+        queue!(update, BeginSynchronizedUpdate, Hide)?;
         for (row, line) in frame.iter().enumerate() {
             if self.previous.get(row) != Some(line) {
+                row_colors(&mut update, palette, h >= 2 && row == usize::from(h - 2))?;
                 queue!(update, MoveTo(0, row as u16))?;
                 update.extend_from_slice(line);
                 // Reset a possible pending wrap before clearing the unused tail.
@@ -459,16 +486,122 @@ impl View {
                 }
             }
         }
+        row_colors(&mut update, palette, false)?;
         queue!(update, MoveTo(x, y), Show, EndSynchronizedUpdate)?;
         out.write_all(&update)?;
         out.flush()?;
         self.previous = frame;
+        self.cursor = Some((x, y));
         Ok(())
     }
 }
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn theme_switch_repaints_all_rows_and_tails_without_resetting_viewport_or_syntax() {
+        for extension in ["txt", "rs"] {
+            let dir = tempfile::tempdir().unwrap();
+            let (file, _) =
+                crate::file::File::open(dir.path().join(format!("test.{extension}"))).unwrap();
+            let text = ["fn main() { let x = 42; }"; 10].join("\n");
+            let mut e = Editor::new(file, &text);
+            e.buffer.row = 9;
+            e.buffer.col = 20;
+            let mut view = View {
+                top: 9,
+                ..View::default()
+            };
+            view.draw_to(&e, (18, 6), &mut Vec::new()).unwrap();
+            let position = (view.top, view.left, view.cursor);
+            let revision = view.revision;
+            let styles = view.styles.clone();
+            for theme in [
+                Theme::GruvboxDark,
+                Theme::CatppuccinLatte,
+                Theme::Terminal,
+                Theme::CatppuccinMocha,
+            ] {
+                e.theme = theme;
+                let palette = theme.palette();
+                let mut out = Vec::new();
+                view.draw_to(&e, (18, 6), &mut out).unwrap();
+                let rendered = String::from_utf8(out).unwrap();
+                for row in 0..6 {
+                    assert!(
+                        rendered.contains(&MoveTo(0, row).to_string()),
+                        "stale row {row}"
+                    );
+                }
+                assert!(rendered.contains(&SetBackgroundColor(palette.background).to_string()));
+                assert!(rendered.contains(&SetBackgroundColor(palette.surface).to_string()));
+                assert!(rendered.contains(&Clear(ClearType::UntilNewLine).to_string()));
+                assert!(!rendered.contains(&Clear(ClearType::All).to_string()));
+                if theme == Theme::Terminal {
+                    assert!(
+                        !rendered.contains(";2;"),
+                        "terminal theme leaked RGB colors"
+                    );
+                }
+                assert_eq!((view.top, view.left, view.cursor), position);
+                assert_eq!(view.revision, revision);
+                assert_eq!(view.styles, styles);
+                let mut idle = Vec::new();
+                view.draw_to(&e, (18, 6), &mut idle).unwrap();
+                assert!(idle.is_empty());
+            }
+            assert_eq!(e.buffer.text(), text);
+        }
+    }
+
+    #[test]
+    fn welcome_and_browsers_repaint_themes_including_selected_rows_after_resize() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("file.txt"), "hello").unwrap();
+        let mut e = Editor::welcome(dir.path().into());
+        let mut view = View::default();
+        view.draw_to(&e, (80, 8), &mut Vec::new()).unwrap();
+        e.theme = Theme::CatppuccinLatte;
+        let mut out = Vec::new();
+        view.draw_to(&e, (80, 8), &mut out).unwrap();
+        let rendered = String::from_utf8(out).unwrap();
+        assert!(rendered.contains(&SetBackgroundColor(e.theme.palette().background).to_string()));
+        assert!(rendered.contains(&MoveTo(0, 0).to_string()));
+        e.key(KeyEvent::new(KeyCode::Char('-'), KeyModifiers::NONE), 6);
+        let explorer = e.explorer.as_mut().unwrap();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+        while explorer.loading {
+            explorer.poll();
+            assert!(std::time::Instant::now() < deadline);
+            std::thread::yield_now();
+        }
+        for picker in [false, true] {
+            if picker {
+                e.picker = Some(crate::picker::Picker::new(dir.path().into()));
+            }
+            for theme in [Theme::GruvboxDark, Theme::Terminal, Theme::CatppuccinMocha] {
+                e.theme = theme;
+                for size in [(0, 0), (1, 1), (80, 8)] {
+                    view.draw_to(&e, size, &mut Vec::new()).unwrap();
+                }
+                e.theme = Theme::CatppuccinLatte;
+                let mut out = Vec::new();
+                view.draw_to(&e, (80, 8), &mut out).unwrap();
+                let rendered = String::from_utf8(out).unwrap();
+                for row in 0..8 {
+                    assert!(rendered.contains(&MoveTo(0, row).to_string()));
+                }
+                assert!(
+                    rendered.contains(&SetBackgroundColor(e.theme.palette().surface).to_string())
+                );
+                let mut idle = Vec::new();
+                view.draw_to(&e, (80, 8), &mut idle).unwrap();
+                assert!(idle.is_empty());
+            }
+        }
+    }
+
     #[test]
     fn line_numbers_track_scroll_cursor_and_decimal_width_changes() {
         let dir = tempfile::tempdir().unwrap();
@@ -795,10 +928,13 @@ mod styled_tests {
             &vec![crate::syntax::Style::Keyword; line.len()],
             5,
             4,
+            Theme::Terminal.palette(),
         )
         .unwrap();
         let rendered = String::from_utf8(out).unwrap();
         assert!(rendered.contains(" é�"));
-        assert!(rendered.ends_with(&SetForegroundColor(Color::Reset).to_string()));
+        assert!(
+            rendered.ends_with(&SetForegroundColor(crossterm::style::Color::Reset).to_string())
+        );
     }
 }
