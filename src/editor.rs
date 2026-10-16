@@ -37,6 +37,7 @@ impl FilesystemPrompt {
     }
 }
 pub struct Editor {
+    pub theme: crate::theme::Theme,
     pub welcome: Option<std::path::PathBuf>,
     pub buffer: Buffer,
     pub file: File,
@@ -59,6 +60,7 @@ pub struct Editor {
 impl Editor {
     pub fn new(file: File, text: &str) -> Self {
         Self {
+            theme: crate::theme::Theme::default(),
             welcome: None,
             buffer: Buffer::new(text),
             file,
@@ -845,6 +847,26 @@ impl Editor {
     }
     fn execute(&mut self, cmd: &str) -> bool {
         let cmd = cmd.trim();
+        let mut words = cmd.split_whitespace();
+        if words.next() == Some("theme") {
+            use crate::theme::Theme;
+            match (words.next(), words.next()) {
+                (None, _) => {
+                    self.message =
+                        format!("Theme: {} | :theme <{}>", self.theme.name(), Theme::CHOICES);
+                }
+                (Some(name), None) => {
+                    if let Some(theme) = Theme::parse(name) {
+                        self.theme = theme;
+                        self.message = format!("Theme: {}", theme.name());
+                    } else {
+                        self.message = format!("Unknown theme: {name}; use :theme");
+                    }
+                }
+                _ => self.message = format!("Usage: :theme <{}>", Theme::CHOICES),
+            }
+            return false;
+        }
         if !cmd.is_empty() && cmd.bytes().all(|c| c.is_ascii_digit()) {
             if self.welcome.is_some() {
                 self.message = "No file open".into();
@@ -880,6 +902,76 @@ impl Editor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn theme_commands_preserve_edits_history_and_selection_across_files() {
+        use crate::theme::Theme;
+        let (dir, mut e) = editing_fixture("first\nsecond");
+        assert_eq!(e.theme, Theme::CatppuccinMocha);
+        send(&mut e, "jA!");
+        press(&mut e, K::Esc);
+        let position = (e.buffer.row, e.buffer.col);
+        let revision = e.buffer.revision();
+        for (name, theme) in [
+            ("gruvbox-dark", Theme::GruvboxDark),
+            ("gruvbox", Theme::GruvboxDark),
+            ("catppuccin-latte", Theme::CatppuccinLatte),
+            ("latte", Theme::CatppuccinLatte),
+            ("terminal", Theme::Terminal),
+            ("catppuccin-mocha", Theme::CatppuccinMocha),
+            ("mocha", Theme::CatppuccinMocha),
+        ] {
+            send(&mut e, &format!(":theme {name}"));
+            assert!(!e.key(KeyEvent::new(K::Enter, KeyModifiers::NONE), 22));
+            assert_eq!(e.theme, theme);
+            assert_eq!(e.message, format!("Theme: {}", theme.name()));
+            assert_eq!(e.mode, Mode::Normal);
+            assert_eq!((e.buffer.row, e.buffer.col), position);
+            assert_eq!(e.buffer.revision(), revision);
+            assert!(e.file.dirty(&e.buffer.text()));
+        }
+        send(&mut e, ":theme latte");
+        press(&mut e, K::Esc);
+        assert_eq!(e.theme, Theme::CatppuccinMocha);
+        send(&mut e, "u");
+        assert_eq!(e.buffer.text(), "first\nsecond");
+        e.execute("theme latte");
+        let second = dir.path().join("other");
+        std::fs::write(&second, "other").unwrap();
+        e.request_open(second);
+        assert_eq!(e.theme, Theme::CatppuccinLatte);
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("fixture")).unwrap(),
+            "first\nsecond"
+        );
+    }
+
+    #[test]
+    fn themes_work_on_welcome_reject_bad_arguments_and_reset_on_new_sessions() {
+        use crate::theme::Theme;
+        let dir = tempfile::tempdir().unwrap();
+        let mut e = Editor::welcome(dir.path().into());
+        send(&mut e, ":theme gruvbox");
+        press(&mut e, K::Enter);
+        assert_eq!(e.theme, Theme::GruvboxDark);
+        e.execute("theme");
+        for name in ["gruvbox-dark", "mocha", "gruvbox", "latte", "terminal"] {
+            assert!(e.message.contains(name));
+        }
+        for command in ["theme unknown", "theme latte extra", "themefoo latte"] {
+            e.execute(command);
+            assert_eq!(e.theme, Theme::GruvboxDark);
+            assert!(e.message.starts_with("Unknown") || e.message.starts_with("Usage:"));
+        }
+        e.execute("  theme\tlatte  ");
+        assert_eq!(e.theme, Theme::CatppuccinLatte);
+        assert_eq!(e.buffer.text(), "");
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
+        assert_eq!(
+            Editor::welcome(dir.path().into()).theme,
+            Theme::CatppuccinMocha
+        );
+    }
+
     fn send(e: &mut Editor, s: &str) {
         for c in s.chars() {
             e.key(KeyEvent::new(K::Char(c), KeyModifiers::NONE), 22);

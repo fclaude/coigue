@@ -50,6 +50,7 @@ def session(path, steps, command=None, cwd=None):
         original[3] &= ~pending_input
         assert restored == original, 'terminal attributes not restored'
         assert b'\x1b[?1049l' in output, 'alternate screen not restored'
+        assert b'\x1b[0m\x1b[?1049l' in output, 'colors not reset on exit'
         return output
     finally:
         if proc.poll() is None:
@@ -232,15 +233,40 @@ with tempfile.TemporaryDirectory() as directory:
     rust_path = pathlib.Path(directory) / 'fixture.rs'
     rust_path.write_text('fn main() {\n\tlet café = r#"界"#; // comment\n}\n' + '// scrolling\n' * 40)
     rust_out = session(rust_path, [b'j$a!', b'\x1b', b'G', None, b'gg', b':wq\r'])
-    assert b'\x1b[38;5;13mfn\x1b[39m main() {' in rust_out, 'incorrect rendered keyword text'
-    assert '    \x1b[38;5;13mlet\x1b[39m café = \x1b[38;5;10mr#"界"#'.encode() in rust_out, 'incorrect tab/Unicode/string rendering'
-    assert b'\x1b[39m' in rust_out, 'missing foreground reset'
+    assert b'\x1b[38;2;203;166;247mfn\x1b[38;2;205;214;244m main() {' in rust_out, 'incorrect rendered keyword text'
+    assert '    \x1b[38;2;203;166;247mlet\x1b[38;2;205;214;244m café = \x1b[38;2;166;227;161mr#"界"#'.encode() in rust_out, 'incorrect tab/Unicode/string rendering'
+    assert b'\x1b[48;2;30;30;46m' in rust_out, 'missing Mocha background'
     assert b'\x1b[1;4H' in rust_out, 'cursor did not return to first text cell after gutter'
     assert 'comment!' in rust_path.read_text()
     print('Rust PTY: colored fn/let/raw string, four-cell tab and Unicode text verified')
     plain_out = session(path, [b':q\r'])
-    assert b'\x1b[38;5;8m' in plain_out, 'line-number gutter missing'
-    assert b'\x1b[38;5;' not in plain_out.replace(b'\x1b[38;5;8m', b''), 'plain text received syntax highlighting'
+    assert b'\x1b[38;2;127;132;156m' in plain_out, 'line-number gutter missing'
+    assert b'\x1b[38;2;203;166;247m' not in plain_out, 'plain text received syntax highlighting'
+    theme_path = pathlib.Path(directory) / 'themes.rs'
+    theme_text = 'fn main() {}\n'
+    theme_path.write_text(theme_text)
+    theme_out = session(theme_path, [b':theme\r', b':theme gruvbox-dark\r',
+                                   b':theme catppuccin-latte\r', b':theme nope\r',
+                                   b':theme mocha extra\r',
+                                   b':theme terminal\r', None, b':theme mocha', b'\x1b', b':q\r'])
+    for expected in [b'Theme: catppuccin-mocha', b'Theme: gruvbox-dark',
+                     b'Theme: catppuccin-latte', b'Theme: terminal',
+                     b'Unknown theme: nope', b'Usage: :theme']:
+        assert expected in theme_out, (expected, theme_out)
+    assert b'\x1b[48;2;40;40;40m' in theme_out, 'missing Gruvbox background'
+    assert b'\x1b[48;2;239;241;245m' in theme_out, 'missing Latte background'
+    terminal_out = theme_out.split(b'Theme: terminal', 1)[1]
+    assert b'\x1b[49m' in terminal_out, 'terminal background not restored'
+    assert b'\x1b[38;5;13mfn\x1b[39m main() {' in terminal_out, 'terminal ANSI syntax not restored'
+    assert b'\x1b[48;2;' not in terminal_out, 'canceling a theme command changed the palette'
+    assert theme_path.read_text() == theme_text, 'theme commands changed the file'
+    restarted = session(theme_path, [b':q\r'])
+    assert b'\x1b[48;2;30;30;46m' in restarted, 'theme persisted after restart'
+    theme_welcome = pathlib.Path(directory) / 'theme-welcome'
+    theme_welcome.mkdir()
+    session(None, [b':theme latte\r', b'\x0f', b'\x1b', b':q\r'], cwd=theme_welcome)
+    assert list(theme_welcome.iterdir()) == [], 'theme selection created a config file'
+    print('Themes PTY: palettes, command errors/cancel, resize, ANSI fallback, no persistence and color cleanup verified')
     path.write_bytes('café_2!! \t\r\n\n界 end'.encode())
     session(path, [b'wyw', b'u', b'dwP', b'ggcwNEW', b'\x1b', b'u', b'\x12', b':wq\r'])
     assert path.read_bytes() == 'NEW!! \t\r\n\n界 end'.encode()
@@ -266,6 +292,8 @@ with tempfile.TemporaryDirectory() as directory:
     test_bins = [p for p in pathlib.Path(binary).parent.joinpath('deps').glob('coigue-*')
                  if p.is_file() and os.access(p, os.X_OK) and p.suffix != '.d']
     assert test_bins, 'run cargo test first'
+    # Cargo can leave older test binaries with different dependency hashes.
+    test_bins.sort(key=lambda p: p.stat().st_mtime_ns, reverse=True)
     test_bin = next(p for p in test_bins if b'terminal_guard_restores_after_error_and_unwind'
                     in subprocess.run([str(p), '--list'], capture_output=True).stdout)
     session(path, [], [str(test_bin), '--exact',

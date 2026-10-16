@@ -6,10 +6,12 @@ mod fileops;
 mod picker;
 mod render;
 mod syntax;
+mod theme;
 use crossterm::{
     cursor::Show,
     event::{self, Event, KeyEventKind},
     execute,
+    style::ResetColor,
     terminal::{self, EndSynchronizedUpdate, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use std::{io, path::PathBuf};
@@ -28,6 +30,7 @@ impl Drop for Terminal {
             io::stdout(),
             EndSynchronizedUpdate,
             Show,
+            ResetColor,
             LeaveAlternateScreen
         );
         let _ = terminal::disable_raw_mode();
@@ -89,6 +92,7 @@ fn main() {
             io::stdout(),
             EndSynchronizedUpdate,
             Show,
+            ResetColor,
             LeaveAlternateScreen
         );
         let _ = terminal::disable_raw_mode();
