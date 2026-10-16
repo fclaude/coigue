@@ -38,6 +38,12 @@ Bindings:
   move by the current viewport height, excluding the two status/message rows.
 - Command mode: `:N` jumps to line N (for example `:42` then Enter); `:w`, `:q`, `:wq`, `:q!`, Enter to execute; Esc cancels. `:q` refuses unsaved changes; failed writes never quit.
 
+In the `:` command line, Tab completes command names and `:theme` arguments
+(including theme aliases). Repeated Tab cycles through matching choices;
+Shift-Tab cycles backward. An empty prompt lists all commands by cycling, and
+`:theme ` cycles through all theme names. Typing or Backspace starts a fresh
+completion cycle. Completion only changes the prompt; Enter executes it.
+
 Additional normal-mode editing commands:
 
 | Keys | Action |

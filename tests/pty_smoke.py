@@ -246,6 +246,19 @@ with tempfile.TemporaryDirectory() as directory:
     theme_path = pathlib.Path(directory) / 'themes.rs'
     theme_text = 'fn main() {}\n'
     theme_path.write_text(theme_text)
+    completion_out = session(theme_path, [b':the\t m\t', b'\t', b'\x1b[Z\r',
+                                         b':theme catppuccin-l\t\r', b':w\t\t',
+                                         b'\x1b', b':q\t\t\x1b[Z\r'])
+    for expected in [b':theme mocha', b':theme monochrome', b'Theme: catppuccin-mocha',
+                     b'Theme: catppuccin-latte', b':wq', b':q!']:
+        assert expected in completion_out, (expected, completion_out)
+    assert theme_path.read_text() == theme_text, 'completion changed the file'
+    completion_root = pathlib.Path(directory) / 'completion-welcome'
+    completion_root.mkdir()
+    welcome_completion_out = session(None, [b':the\t term\t\r', b':q\r'], cwd=completion_root)
+    assert b'Theme: terminal' in welcome_completion_out
+    assert list(completion_root.iterdir()) == []
+    print('Command completion PTY: Tab, Shift-Tab, theme aliases, cancel and welcome verified')
     theme_out = session(theme_path, [b':theme\r', b':theme gruvbox-dark\r',
                                    b':theme catppuccin-latte\r', b':theme nope\r',
                                    b':theme mocha extra\r',
