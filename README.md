@@ -16,7 +16,37 @@ cargo run --                 # welcome in the current directory
 cargo run -- path/to/file
 ```
 
-Linux and macOS terminals are the intended platforms. The Rust code uses portable standard-library, crossterm, tempfile and unicode-width APIs; Unix-specific permission/symlink tests are gated with `cfg(unix)`. This first version was built and exercised on Linux; macOS compilation and PTY integration checks have also been exercised.
+## Compatibility
+
+Linux and macOS terminals are the intended platforms. This first version was
+built and exercised on Linux; macOS compilation and PTY integration checks have
+also been exercised.
+
+| System | Status | Evidence and limitations |
+| --- | --- | --- |
+| Linux x86-64 | Intended platform | `cargo check` passes for `x86_64-unknown-linux-gnu`; runtime testing has been exercised on Linux. |
+| macOS Intel | Intended platform | `cargo check` passes for `x86_64-apple-darwin`; macOS PTY integration testing has been exercised, but runtime coverage is not documented by architecture. |
+| macOS Apple Silicon | Intended platform | `cargo check` passes for `aarch64-apple-darwin`; macOS PTY integration testing has been exercised, but runtime coverage is not documented by architecture. |
+| Linux ARM64 and other architectures | Unverified | No architecture-specific application code, but compilation and runtime behavior have not been verified. |
+| Windows native | Not an intended platform | Core editing is unverified; explorer rename, delete, and restore operations explicitly fail. |
+| BSD and other Unix systems | Not an intended platform | Core editing is unverified; explorer rename, delete, and restore operations explicitly fail. |
+
+Compilation checks do not establish runtime compatibility. Minimum OS versions
+are not documented. Unix-specific permission and symlink tests are gated with
+`cfg(unix)`; the Python PTY integration tests require Unix.
+
+Across supported systems:
+
+- Built-in color themes need a truecolor terminal for faithful rendering;
+  `:theme terminal` uses the terminal's default colors and ANSI palette.
+- Files must be UTF-8. Existing CRLF bytes round-trip unchanged, but CR displays
+  as a replacement glyph and newly inserted line breaks use LF.
+- `rust-analyzer`, `gopls`, and Marksman are optional, separately installed
+  language servers. Editing and saving work without them.
+- Explorer moves must stay on the same filesystem. Non-overwriting rename,
+  delete, and restore use OS primitives implemented only for Linux and macOS.
+
+## Usage
 
 Run `coigue` without arguments to see a welcome screen rooted in the directory
 where you launched it. Use `Ctrl-O`, `-`, or `:explore` to browse that directory,
