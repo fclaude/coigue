@@ -69,7 +69,10 @@ fn run() -> io::Result<()> {
         }
         match event::read()? {
             Event::Key(k) if k.kind != KeyEventKind::Release => {
-                if editor.key(k, view.page_rows()) {
+                // Resize notifications can arrive after a queued key. Page by
+                // the current terminal height rather than the last drawn frame.
+                let page_rows = usize::from(terminal::size()?.1.saturating_sub(2)).max(1);
+                if editor.key(k, page_rows) {
                     break;
                 }
             }

@@ -31,7 +31,7 @@ Bindings:
 - Normal and insert modes: Home / Ctrl-A begins a line; End / Ctrl-E ends a line
   (after the last character in insert mode). Page Up / Ctrl-B and Page Down / Ctrl-F
   move by the current viewport height, excluding the two status/message rows.
-- Command mode: `:w`, `:q`, `:wq`, `:q!`, Enter to execute; Esc cancels. `:q` refuses unsaved changes; failed writes never quit.
+- Command mode: `:N` jumps to line N (for example `:42` then Enter); `:w`, `:q`, `:wq`, `:q!`, Enter to execute; Esc cancels. `:q` refuses unsaved changes; failed writes never quit.
 
 Additional normal-mode editing commands:
 
@@ -50,6 +50,20 @@ Additional normal-mode editing commands:
 | `n` / `N` | Find the next/previous occurrence of the last search, wrapping at the file boundaries. |
 | `>>` / `<<` | Indent by four spaces / remove one leading tab or up to four leading spaces. |
 | `A` | Enter insert mode after the last character of the current line. |
+
+Normal-mode counts repeat movement and editing commands: `5j`, `3w`, `2dd`,
+`2yy`, `4>>`, `3x`, `2p`, and `3r_`. Counts before and after an operator multiply
+(`2d3w` cuts six words). `Ngg` and `NG` go to line N; bare `gg` / `G` go to the
+first / last line. `:N` also jumps to line N, at its first character; line
+numbers beyond EOF go to the last line, while zero and overflowing numbers report
+an error. Esc cancels a pending jump. Counts also work with arrows, page movement, `n` / `N`, undo,
+and redo. `4>>` indents four lines once each. Ranges stop at the file or line
+boundary; each counted edit is one undo step, including a counted `cw` and its
+following insert session. Registers retain the entire selected range.
+Pending keys appear in the message row; Esc cancels them. A leading `0` still
+moves to the start of the line. Counts and multiplied totals are capped at 9999.
+Insert-entry commands (`i`, `a`, `A`, `o`) enter once; inserted text is not repeated.
+Counts apply only to normal editing, not browser filters, search input, or commands.
 
 Words are Unicode letters/numbers and underscores; punctuation forms separate
 runs and Unicode whitespace separates runs. Word motions cross empty lines.
@@ -145,13 +159,18 @@ The recovery directory and its contents are ordinary on-disk files: keep them
 until recovery is no longer needed. Buffer undo (`u` outside the explorer) covers
 text edits; explorer `u` restores deletions only.
 
+Absolute line numbers are enabled by default, with no configuration option yet.
+The gutter grows with the file's line count and stays fixed during horizontal
+scrolling. It is hidden in terminals too narrow to leave one text column.
+Browsers, welcome, status and command rows do not receive line numbers.
+
 Lines scroll vertically and horizontally; terminal resize triggers a redraw.
 Screen updates are buffered and repaint only changed rows, with synchronized updates
 on terminals that support them. LF and existing trailing newlines are preserved exactly; opening a file does not add a newline. CRLF bytes round-trip unchanged, but CR is displayed as a replacement glyph and newly inserted line breaks use LF.
 
 Saving compares the file's bytes with the last loaded/saved snapshot, writes and syncs a same-directory temporary file, then atomically replaces the destination. Failed writes leave existing contents intact. New files are created without clobbering an existing destination. Existing symlinks are resolved at opening, so later changes to the original link do not redirect the session. Saves refuse read-only destinations or a resolved target replaced by a symlink. Unix permission bits are preserved; new files use private temporary-file permissions (0600 on Unix). Atomic replacement changes inode identity (including hard-link relationships); ownership, ACLs and extended attributes are not preserved. If another program writes after the final byte comparison but before the atomic rename, its update can still be overwritten without detection; this is not a locking editor. Use one writer per file. No force-write command bypasses conflicts.
 
-Limits: in-memory files, scalar-value rather than grapheme-cluster editing (combining marks may be edited independently), fixed four-column tabs, terminal-dependent emoji/combining display width. No counts, system clipboard, multiple buffers or configuration yet. Raw mode, cursor and alternate screen are restored on normal exits, returned errors and Rust panics; uncatchable termination cannot run cleanup.
+Limits: in-memory files, scalar-value rather than grapheme-cluster editing (combining marks may be edited independently), fixed four-column tabs, terminal-dependent emoji/combining display width. No system clipboard, multiple buffers or configuration yet. Raw mode, cursor and alternate screen are restored on normal exits, returned errors and Rust panics; uncatchable termination cannot run cleanup.
 
 Development checks:
 

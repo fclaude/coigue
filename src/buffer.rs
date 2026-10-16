@@ -157,10 +157,10 @@ impl Buffer {
             self.lines[self.row][self.col] = ch;
         }
     }
-    pub fn paste_line(&mut self, line: &[char], after: bool, terminated: bool) {
+    pub fn paste_lines(&mut self, lines: &[Vec<char>], after: bool, terminated: bool) {
         self.change();
         if self.lines.len() == 1 && self.lines[0].is_empty() {
-            self.lines[0] = line.to_vec();
+            self.lines = lines.to_vec();
             // An empty buffer is represented by one placeholder line. Restore
             // the copied terminator as well when replacing that placeholder.
             if terminated {
@@ -168,7 +168,7 @@ impl Buffer {
             }
         } else {
             self.row += usize::from(after);
-            self.lines.insert(self.row, line.to_vec());
+            self.lines.splice(self.row..self.row, lines.iter().cloned());
         }
         self.col = 0;
     }
@@ -254,16 +254,21 @@ impl Buffer {
     }
     /// Characterwise range, including literal line separators. Change retains
     /// trailing whitespace when starting on a non-whitespace run.
-    pub fn word_range(&mut self, cut: bool, change: bool) -> Vec<char> {
+    pub fn word_range(&mut self, cut: bool, change: bool, count: usize) -> Vec<char> {
         let mut chars: Vec<_> = self.text().chars().collect();
         let start = self.offset();
-        let mut end = Self::next_word(&chars, start);
+        let mut end = start;
+        for _ in 0..count {
+            let next = Self::next_word(&chars, end);
+            if next == end {
+                break;
+            }
+            end = next;
+        }
         if change && chars.get(start).is_some_and(|c| Self::word_class(*c) != 0) {
-            end = start + 1;
-            while end < chars.len()
-                && Self::word_class(chars[end]) == Self::word_class(chars[start])
-            {
-                end += 1;
+            // cw behaves like ce: retain whitespace after the last selected run.
+            while end > start && Self::word_class(chars[end - 1]) == 0 {
+                end -= 1;
             }
         }
         let copied = chars[start..end].to_vec();
@@ -357,14 +362,14 @@ mod tests {
         }
         assert_eq!(b.revision(), 0);
         b.col = 3;
-        let cut = b.word_range(true, false);
+        let cut = b.word_range(true, false, 1);
         assert_eq!(cut.iter().collect::<String>(), "!!\u{2003}\n\n");
         b.clamp(false);
         b.col = 2;
         b.paste_chars(&cut, true);
         assert_eq!(b.text(), "é_2!!\u{2003}\n\n界9");
         let mut empty = Buffer::new("");
-        assert!(empty.word_range(true, false).is_empty());
+        assert!(empty.word_range(true, false, 1).is_empty());
         assert_eq!(empty.revision(), 0);
     }
     #[test]

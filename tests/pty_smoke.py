@@ -59,6 +59,29 @@ def session(path, steps, command=None, cwd=None):
         os.close(slave)
 
 with tempfile.TemporaryDirectory() as directory:
+    path = pathlib.Path(directory) / 'go-to-line'
+    path.write_text('\n'.join(f'line{n}' for n in range(1, 61)))
+    out = session(path, [b':42\r', b'i@', b'\x1b', b':1', b'\x1b',
+                         b':999999\r', b'i#', b'\x1b', b':0\r',
+                         b':1\r', b'i^', b'\x1b', None, b':wq\r'])
+    expected = [f'line{n}' for n in range(1, 61)]
+    expected[0] = '^line1'
+    expected[41] = '@line42'
+    expected[59] = '#line60'
+    assert path.read_text() == '\n'.join(expected)
+    assert b'Invalid line number' in out
+    print('Go-to-line PTY: numeric commands, EOF clamp, cancellation and scrolling verified')
+
+with tempfile.TemporaryDirectory() as directory:
+    path = pathlib.Path(directory) / 'counts'
+    path.write_text('one two three four five six seven\nb\nc\nd\ne')
+    out = session(path, [b'2d3w', b'u', b'3j', b'2dd', b'u', b'gg',
+                         b'2>>', b'u', b'2yy', b'G2p', None, b':wq\r'])
+    assert path.read_text() == 'one two three four five six seven\nb\nc\nd\ne\none two three four five six seven\nb\none two three four five six seven\nb'
+    assert b'1 ' in out and b'5 ' in out, 'line numbers missing'
+    print('Counts and line numbers PTY: operators, undo, block paste and resize verified')
+
+with tempfile.TemporaryDirectory() as directory:
     root = pathlib.Path(directory) / 'launch space café 界'
     root.mkdir()
     out = session(None, [b'iaccidental', b':w\r', None, b':q\r'], cwd=root)
@@ -212,11 +235,12 @@ with tempfile.TemporaryDirectory() as directory:
     assert b'\x1b[38;5;13mfn\x1b[39m main() {' in rust_out, 'incorrect rendered keyword text'
     assert '    \x1b[38;5;13mlet\x1b[39m café = \x1b[38;5;10mr#"界"#'.encode() in rust_out, 'incorrect tab/Unicode/string rendering'
     assert b'\x1b[39m' in rust_out, 'missing foreground reset'
-    assert b'\x1b[1;1H' in rust_out, 'cursor did not return to first cell'
+    assert b'\x1b[1;4H' in rust_out, 'cursor did not return to first text cell after gutter'
     assert 'comment!' in rust_path.read_text()
     print('Rust PTY: colored fn/let/raw string, four-cell tab and Unicode text verified')
     plain_out = session(path, [b':q\r'])
-    assert b'\x1b[38;5;' not in plain_out, 'plain file was highlighted'
+    assert b'\x1b[38;5;8m' in plain_out, 'line-number gutter missing'
+    assert b'\x1b[38;5;' not in plain_out.replace(b'\x1b[38;5;8m', b''), 'plain text received syntax highlighting'
     path.write_bytes('café_2!! \t\r\n\n界 end'.encode())
     session(path, [b'wyw', b'u', b'dwP', b'ggcwNEW', b'\x1b', b'u', b'\x12', b':wq\r'])
     assert path.read_bytes() == 'NEW!! \t\r\n\n界 end'.encode()
