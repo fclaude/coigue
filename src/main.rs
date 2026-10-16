@@ -5,6 +5,7 @@ mod file;
 mod fileops;
 mod lsp;
 mod picker;
+mod reflow;
 mod render;
 mod semantic;
 mod syntax;

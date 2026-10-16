@@ -91,6 +91,7 @@ Additional normal-mode editing commands:
 | `/` then text, Enter | Find the next literal, case-sensitive match in the file. Esc cancels. |
 | `n` / `N` | Find the next/previous occurrence of the last search, wrapping at the file boundaries. |
 | `>>` / `<<` | Indent by four spaces / remove one leading tab or up to four leading spaces. |
+| `gq` | Fill the current Markdown paragraph to the session text width. |
 | `A` | Enter insert mode after the last character of the current line. |
 
 Normal-mode counts repeat movement and editing commands: `5j`, `3w`, `2dd`,
@@ -106,6 +107,24 @@ Pending keys appear in the message row; Esc cancels them. A leading `0` still
 moves to the start of the line. Counts and multiplied totals are capped at 9999.
 Insert-entry commands (`i`, `a`, `A`, `o`) enter once; inserted text is not repeated.
 Counts apply only to normal editing, not browser filters, search input, or commands.
+
+Use **`gq`** in normal mode or **`:justify [width]`** to fill just the paragraph
+under the cursor. **`:textwidth 72`** sets the session width (default 80 display
+columns); `:textwidth` reports it. Command widths accept 1–10000; a width on
+`:justify` applies only to that invocation. Both commands support Tab completion.
+This is source reflow, without padded full justification: Markdown collapses added
+spaces, so left-and-right alignment belongs in the rendered document's styling.
+The commands work on any file, treating its contents as Markdown.
+
+Reflow preserves list/blockquote prefixes, nested list indentation, LF/CRLF and
+final newlines. Headings, code blocks, tables, HTML, reference definitions and
+paragraphs with intentional hard breaks are protected. Links and inline code are
+kept together, so long constructs/words may exceed the width. Ambiguous container
+continuations or unbalanced inline constructs are left unchanged; a rendering
+comparison also rejects structural changes. Ordinary inter-word whitespace is
+normalized. The cursor moves to the paragraph's first line; the entire change
+undoes/redoes as one edit with `u` / Ctrl-R. No other paragraph is reflowed.
+Width is retained across file switches but is not saved between sessions.
 
 Words are Unicode letters/numbers and underscores; punctuation forms separate
 runs and Unicode whitespace separates runs. Word motions cross empty lines.
