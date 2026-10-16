@@ -101,7 +101,7 @@ pub fn decode(data: &[u32], legend: &Legend, lines: &[Vec<char>]) -> Option<Vec<
         .iter()
         .position(|s| s == "readonly")
         .filter(|i| *i < 32);
-    for chunk in data.chunks_exact(5) {
+    for chunk in data.as_chunks::<5>().0 {
         row = row.checked_add(chunk[0] as usize)?;
         start = if chunk[0] == 0 {
             start.checked_add(chunk[1] as usize)?
