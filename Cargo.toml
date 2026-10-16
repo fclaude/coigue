@@ -2,6 +2,8 @@
 name = "coigue"
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
+repository = "https://github.com/fclaude/coigue"
 
 [dependencies]
 crossterm = "0.29"
