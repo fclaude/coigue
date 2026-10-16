@@ -177,6 +177,7 @@ available choices, or `:theme <name>` to switch immediately:
 | `:theme mocha` | Catppuccin Mocha (default dark). |
 | `:theme gruvbox` | Gruvbox Dark (warm dark). |
 | `:theme latte` | Catppuccin Latte (light). |
+| `:theme monochrome` | Dark grayscale, with brighter keywords and muted comments. |
 | `:theme terminal` | Use the terminal's default background/foreground and ANSI palette. |
 
 The full names `catppuccin-mocha`, `gruvbox-dark`, and `catppuccin-latte` are also

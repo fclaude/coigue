@@ -1,6 +1,7 @@
 //! Built-in palettes. Terminal uses the user's existing ANSI colors.
-//! Palette sources: https://github.com/catppuccin/catppuccin and
+//! Catppuccin and Gruvbox palette sources: https://github.com/catppuccin/catppuccin and
 //! https://github.com/morhetz/gruvbox (both MIT licensed).
+//! Monochrome uses an original grayscale palette.
 //! Attribution and license terms are in THIRD_PARTY_NOTICES.md.
 use crate::syntax::Style;
 use crossterm::style::Color;
@@ -11,17 +12,19 @@ pub enum Theme {
     CatppuccinMocha,
     GruvboxDark,
     CatppuccinLatte,
+    Monochrome,
     Terminal,
 }
 
 impl Theme {
-    pub const CHOICES: &str = "mocha|gruvbox|latte|terminal";
+    pub const CHOICES: &str = "mocha|gruvbox|latte|monochrome|terminal";
 
     pub fn name(self) -> &'static str {
         match self {
             Self::CatppuccinMocha => "catppuccin-mocha",
             Self::GruvboxDark => "gruvbox-dark",
             Self::CatppuccinLatte => "catppuccin-latte",
+            Self::Monochrome => "monochrome",
             Self::Terminal => "terminal",
         }
     }
@@ -31,6 +34,7 @@ impl Theme {
             "catppuccin-mocha" | "mocha" => Some(Self::CatppuccinMocha),
             "gruvbox-dark" | "gruvbox" => Some(Self::GruvboxDark),
             "catppuccin-latte" | "latte" => Some(Self::CatppuccinLatte),
+            "monochrome" => Some(Self::Monochrome),
             "terminal" => Some(Self::Terminal),
             _ => None,
         }
@@ -73,6 +77,18 @@ impl Theme {
                 number: rgb(0xfe640b),
                 macro_color: rgb(0x1e66f5),
                 lifetime: rgb(0xdf8e1d),
+            },
+            Self::Monochrome => Palette {
+                background: rgb(0x181818),
+                foreground: rgb(0xd4d4d4),
+                muted: rgb(0x8f8f8f),
+                surface: rgb(0x303030),
+                keyword: rgb(0xf0f0f0),
+                comment: rgb(0x8f8f8f),
+                string: rgb(0xbcbcbc),
+                number: rgb(0xc6c6c6),
+                macro_color: rgb(0xe0e0e0),
+                lifetime: rgb(0xd4d4d4),
             },
             Self::Terminal => Palette {
                 background: Color::Reset,
