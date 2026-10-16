@@ -61,6 +61,10 @@ def session(path, steps, command=None, cwd=None, width=80):
         os.close(slave)
 
 with tempfile.TemporaryDirectory() as directory:
+    path = pathlib.Path(directory) / 'reflow.md'
+    path.write_text('one two three four\n\nuntouched paragraph\n')
+    session(path, [b':textwidth 10\r', b'gq', b'u', b'\x12', b':wq\r'])
+    assert path.read_text() == 'one two\nthree four\n\nuntouched paragraph\n'
     path = pathlib.Path(directory) / 'go-to-line'
     path.write_text('\n'.join(f'line{n}' for n in range(1, 61)))
     out = session(path, [b':42\r', b'i@', b'\x1b', b':1', b'\x1b',

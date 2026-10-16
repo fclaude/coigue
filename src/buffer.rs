@@ -95,6 +95,32 @@ impl Buffer {
     pub fn revision(&self) -> u64 {
         self.revision
     }
+    pub fn justify(&mut self, width: usize) -> bool {
+        let text = self.text();
+        let cursor = self.lines[..self.row]
+            .iter()
+            .map(|line| line.iter().map(|c| c.len_utf8()).sum::<usize>() + 1)
+            .sum::<usize>()
+            + self.lines[self.row][..self.col]
+                .iter()
+                .map(|c| c.len_utf8())
+                .sum::<usize>();
+        let Some((start, end, replacement)) = crate::reflow::paragraph(&text, cursor, width) else {
+            return false;
+        };
+        if text[start..end] == replacement {
+            return false;
+        }
+        self.change();
+        let updated = format!("{}{}{}", &text[..start], replacement, &text[end..]);
+        self.lines = updated
+            .split('\n')
+            .map(|line| line.chars().collect())
+            .collect();
+        self.row = text[..start].bytes().filter(|c| *c == b'\n').count();
+        self.col = 0;
+        true
+    }
     pub fn open_line(&mut self) {
         self.change();
         self.row += 1;

@@ -44,10 +44,12 @@ impl CommandCompletion {
     fn new(input: &str, backwards: bool) -> Option<Self> {
         const COMMANDS: &[&str] = &[
             "explore",
+            "justify",
             "lsp-restart",
             "open",
             "q",
             "q!",
+            "textwidth",
             "theme",
             "w",
             "wq",
@@ -89,6 +91,7 @@ impl CommandCompletion {
     }
 }
 pub struct Editor {
+    textwidth: usize,
     pub theme: crate::theme::Theme,
     pub lsp: crate::lsp::Client,
     pub welcome: Option<std::path::PathBuf>,
@@ -114,6 +117,7 @@ pub struct Editor {
 impl Editor {
     pub fn new(file: File, text: &str) -> Self {
         Self {
+            textwidth: 80,
             theme: crate::theme::Theme::default(),
             lsp: crate::lsp::Client::default(),
             welcome: None,
@@ -453,6 +457,7 @@ impl Editor {
                 b.row = start;
                 b.col = first_col;
             }
+            (Some('g'), K::Char('q')) => self.justify(self.textwidth),
             (Some('g'), K::Char('g')) | (_, K::Char('G')) => {
                 self.buffer.row = if explicit {
                     count - 1
@@ -936,8 +941,42 @@ impl Editor {
             _ => {}
         }
     }
+    fn justify(&mut self, width: usize) {
+        self.message = if self.welcome.is_some() {
+            "No file open".into()
+        } else if self.buffer.justify(width) {
+            format!("Paragraph filled to {width} columns")
+        } else {
+            "Paragraph unchanged (already filled or protected Markdown)".into()
+        };
+    }
     fn execute(&mut self, cmd: &str) -> bool {
         let cmd = cmd.trim();
+        let args: Vec<_> = cmd.split_whitespace().collect();
+        if matches!(args.first(), Some(&"justify" | &"textwidth")) {
+            let width = if args.len() == 1 {
+                Some(self.textwidth)
+            } else if args.len() == 2 {
+                args[1]
+                    .parse::<usize>()
+                    .ok()
+                    .filter(|n| (1..=10000).contains(n))
+            } else {
+                None
+            };
+            if let Some(width) = width {
+                if args[0] == "justify" {
+                    self.justify(width);
+                } else {
+                    self.textwidth = width;
+                    self.message = format!("Text width: {width}");
+                }
+            } else {
+                self.message = "Usage: :justify [1..10000] or :textwidth [1..10000]".into();
+            }
+            return false;
+        }
+
         let mut words = cmd.split_whitespace();
         if words.next() == Some("theme") {
             use crate::theme::Theme;
@@ -998,6 +1037,34 @@ impl Editor {
 mod tests {
     use super::*;
     #[test]
+    fn justify_commands_width_history_and_completion() {
+        let (_dir, mut e) = editing_fixture("one two three four\n\nother paragraph");
+        send(&mut e, ":textwidth 10");
+        press(&mut e, K::Enter);
+        send(&mut e, "gq");
+        assert_eq!(e.buffer.text(), "one two\nthree four\n\nother paragraph");
+        send(&mut e, "u");
+        assert_eq!(e.buffer.text(), "one two three four\n\nother paragraph");
+        e.key(KeyEvent::new(K::Char('r'), KeyModifiers::CONTROL), 22);
+        assert_eq!(e.buffer.text(), "one two\nthree four\n\nother paragraph");
+        send(&mut e, ":justify 80");
+        press(&mut e, K::Enter);
+        assert_eq!(e.buffer.text(), "one two three four\n\nother paragraph");
+        for bad in [
+            "textwidth 0",
+            "justify nope",
+            "justify 10 extra",
+            "textwidth 10001",
+        ] {
+            e.execute(bad);
+            assert!(e.message.starts_with("Usage:"));
+        }
+        assert_eq!(e.textwidth, 10);
+        send(&mut e, ":ju");
+        press(&mut e, K::Tab);
+        assert_eq!(e.command, "justify");
+    }
+    #[test]
     fn command_completion_cycles_both_directions_without_executing() {
         let (_dir, mut e) = editing_fixture("original");
         send(&mut e, "i!");
@@ -1029,10 +1096,12 @@ mod tests {
         send(&mut e, ":");
         for expected in [
             "explore",
+            "justify",
             "lsp-restart",
             "open",
             "q",
             "q!",
+            "textwidth",
             "theme",
             "w",
             "wq",
