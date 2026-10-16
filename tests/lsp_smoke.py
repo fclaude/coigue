@@ -87,7 +87,8 @@ class Editor:
     def __init__(self, binary, path, root, env):
         self.master, self.slave = pty.openpty()
         self.original = termios.tcgetattr(self.slave)
-        fcntl.ioctl(self.slave, termios.TIOCSWINSZ, struct.pack('HHHH', 16, 140, 0, 0))
+        width = max(140, len(os.fsencode(path)) + 80)
+        fcntl.ioctl(self.slave, termios.TIOCSWINSZ, struct.pack('HHHH', 16, width, 0, 0))
         self.proc = subprocess.Popen([binary, str(path)], stdin=self.slave, stdout=self.slave,
                                      stderr=self.slave, cwd=root, env=env)
         self.output = bytearray()
@@ -145,7 +146,7 @@ def assert_reaped(log):
 def main():
     binary = str(pathlib.Path(sys.argv[1]).resolve())
     with tempfile.TemporaryDirectory() as temp:
-        root = pathlib.Path(temp)
+        root = pathlib.Path(temp).resolve()
         bin_dir, log = root / 'bin', root / 'log'
         bin_dir.mkdir()
         log.mkdir()
