@@ -916,6 +916,7 @@ mod tests {
             ("gruvbox", Theme::GruvboxDark),
             ("catppuccin-latte", Theme::CatppuccinLatte),
             ("latte", Theme::CatppuccinLatte),
+            ("monochrome", Theme::Monochrome),
             ("terminal", Theme::Terminal),
             ("catppuccin-mocha", Theme::CatppuccinMocha),
             ("mocha", Theme::CatppuccinMocha),
@@ -954,7 +955,14 @@ mod tests {
         press(&mut e, K::Enter);
         assert_eq!(e.theme, Theme::GruvboxDark);
         e.execute("theme");
-        for name in ["gruvbox-dark", "mocha", "gruvbox", "latte", "terminal"] {
+        for name in [
+            "gruvbox-dark",
+            "mocha",
+            "gruvbox",
+            "latte",
+            "monochrome",
+            "terminal",
+        ] {
             assert!(e.message.contains(name));
         }
         for command in ["theme unknown", "theme latte extra", "themefoo latte"] {

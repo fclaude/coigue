@@ -519,6 +519,7 @@ mod tests {
             for theme in [
                 Theme::GruvboxDark,
                 Theme::CatppuccinLatte,
+                Theme::Monochrome,
                 Theme::Terminal,
                 Theme::CatppuccinMocha,
             ] {
@@ -580,7 +581,12 @@ mod tests {
             if picker {
                 e.picker = Some(crate::picker::Picker::new(dir.path().into()));
             }
-            for theme in [Theme::GruvboxDark, Theme::Terminal, Theme::CatppuccinMocha] {
+            for theme in [
+                Theme::GruvboxDark,
+                Theme::Monochrome,
+                Theme::Terminal,
+                Theme::CatppuccinMocha,
+            ] {
                 e.theme = theme;
                 for size in [(0, 0), (1, 1), (80, 8)] {
                     view.draw_to(&e, size, &mut Vec::new()).unwrap();

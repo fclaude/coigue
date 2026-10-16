@@ -3,6 +3,7 @@ import fcntl
 import os
 import pathlib
 import pty
+import re
 import select
 import signal
 import struct
@@ -260,6 +261,11 @@ with tempfile.TemporaryDirectory() as directory:
     assert b'\x1b[38;5;13mfn\x1b[39m main() {' in terminal_out, 'terminal ANSI syntax not restored'
     assert b'\x1b[48;2;' not in terminal_out, 'canceling a theme command changed the palette'
     assert theme_path.read_text() == theme_text, 'theme commands changed the file'
+    monochrome_out = session(theme_path, [b':theme monochrome\r', None, b':q\r'])
+    monochrome_out = monochrome_out.split(b'Theme: monochrome', 1)[1]
+    colors = re.findall(rb'\x1b\[(?:38|48);2;(\d+);(\d+);(\d+)m', monochrome_out)
+    assert colors and all(r == g == b for r, g, b in colors), 'monochrome emitted a colored hue'
+    assert b'\x1b[48;2;24;24;24m' in monochrome_out, 'missing monochrome background'
     restarted = session(theme_path, [b':q\r'])
     assert b'\x1b[48;2;30;30;46m' in restarted, 'theme persisted after restart'
     theme_welcome = pathlib.Path(directory) / 'theme-welcome'
