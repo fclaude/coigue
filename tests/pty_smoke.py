@@ -240,6 +240,18 @@ with tempfile.TemporaryDirectory() as directory:
     assert b'\x1b[1;4H' in rust_out, 'cursor did not return to first text cell after gutter'
     assert 'comment!' in rust_path.read_text()
     print('Rust PTY: colored fn/let/raw string, four-cell tab and Unicode text verified')
+    markdown_path = pathlib.Path(directory) / 'fixture.MARKDOWN'
+    markdown_text = '# Heading\n*café* plain **bold**\n```rust\nfn main() {}\n```\n'
+    markdown_path.write_text(markdown_text)
+    markdown_out = session(markdown_path, [b':3\r', b'dd', b'u', b'\x12', b'u',
+                                           b':theme terminal\r', None, b':q\r'])
+    assert b'\x1b[38;2;203;166;247m\x1b[1m# Heading\x1b[22m' in markdown_out, 'Markdown heading not highlighted'
+    assert '\x1b[3m*café*\x1b[38;2;205;214;244m\x1b[23m plain '.encode() in markdown_out, 'Markdown italic text or attribute reset missing'
+    assert b'\x1b[1m**bold**\x1b[22m' in markdown_out, 'Markdown strong emphasis not bold'
+    assert b'\x1b[38;2;203;166;247mfn' in markdown_out, 'Rust fence not highlighted'
+    assert b'\x1b[38;5;13m\x1b[1m# Heading' in markdown_out, 'Markdown theme switch not rendered'
+    assert markdown_path.read_text() == markdown_text, 'Markdown highlighting/history changed file contents'
+    print('Markdown PTY: headings, emphasis, fenced Rust, undo/redo, theme and resize verified')
     plain_out = session(path, [b':q\r'])
     assert b'\x1b[38;2;127;132;156m' in plain_out, 'line-number gutter missing'
     assert b'\x1b[38;2;203;166;247m' not in plain_out, 'plain text received syntax highlighting'

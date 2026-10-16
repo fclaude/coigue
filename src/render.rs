@@ -69,6 +69,7 @@ fn styled_line(
     let mut col = 0;
     let mut previous = palette.foreground;
     let mut previous_bold = false;
+    let mut previous_italic = false;
     for (c, style) in line.iter().zip(styles) {
         let (s, w) = cell(*c);
         let visible = if col >= left && col + w <= left + width {
@@ -96,12 +97,27 @@ fn styled_line(
                 )?;
                 previous_bold = bold;
             }
+            let italic = *style == crate::syntax::Style::Emphasis;
+            if italic != previous_italic {
+                queue!(
+                    out,
+                    SetAttribute(if italic {
+                        Attribute::Italic
+                    } else {
+                        Attribute::NoItalic
+                    })
+                )?;
+                previous_italic = italic;
+            }
             queue!(out, Print(visible))?;
         }
         col += w;
     }
     if previous_bold {
         queue!(out, SetAttribute(Attribute::NormalIntensity))?;
+    }
+    if previous_italic {
+        queue!(out, SetAttribute(Attribute::NoItalic))?;
     }
     queue!(out, SetForegroundColor(palette.foreground))
 }
@@ -547,6 +563,67 @@ impl View {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn markdown_highlighting_repaints_themes_and_tracks_fence_edits_and_history() {
+        use crate::syntax::Style;
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let dir = tempfile::tempdir().unwrap();
+        let (file, _) = crate::file::File::open(dir.path().join("test.MD")).unwrap();
+        let mut e = Editor::new(
+            file,
+            "# Heading\n*italic* plain **bold**\n```rust\nfn main() {}\n```",
+        );
+        let mut view = View::default();
+        for theme in [
+            Theme::CatppuccinMocha,
+            Theme::GruvboxDark,
+            Theme::CatppuccinLatte,
+            Theme::Monochrome,
+            Theme::Terminal,
+        ] {
+            e.theme = theme;
+            let mut out = Vec::new();
+            view.draw_to(&e, (80, 8), &mut out).unwrap();
+            let rendered = String::from_utf8(out).unwrap();
+            for attribute in [
+                Attribute::Bold,
+                Attribute::NormalIntensity,
+                Attribute::Italic,
+                Attribute::NoItalic,
+            ] {
+                assert!(rendered.contains(&SetAttribute(attribute).to_string()));
+            }
+            assert!(rendered.contains(&format!(
+                "{}{}# Heading",
+                SetForegroundColor(theme.palette().syntax(Style::Heading)),
+                SetAttribute(Attribute::Bold)
+            )));
+            let styles = view.styles.as_ref().unwrap();
+            assert_eq!(styles[0][0], Style::Heading);
+            assert_eq!(styles[1][0], Style::Emphasis);
+            assert_eq!(styles[3][0], Style::Keyword);
+            let mut unchanged = Vec::new();
+            view.draw_to(&e, (80, 8), &mut unchanged).unwrap();
+            assert!(unchanged.is_empty());
+        }
+        e.buffer.row = 2;
+        for key in [KeyCode::Char('d'), KeyCode::Char('d')] {
+            e.key(KeyEvent::new(key, KeyModifiers::NONE), 6);
+        }
+        view.draw_to(&e, (80, 8), &mut Vec::new()).unwrap();
+        assert!(
+            view.styles.as_ref().unwrap()[2]
+                .iter()
+                .all(|s| *s == Style::Plain)
+        );
+        e.key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::NONE), 6);
+        view.draw_to(&e, (80, 8), &mut Vec::new()).unwrap();
+        assert_eq!(view.styles.as_ref().unwrap()[3][0], Style::Keyword);
+        e.key(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::CONTROL), 6);
+        view.draw_to(&e, (80, 8), &mut Vec::new()).unwrap();
+        assert_eq!(view.styles.as_ref().unwrap()[2][0], Style::Plain);
+    }
+
     #[test]
     fn semantic_highlighting_uses_every_theme_and_reverts_to_lexical_colors() {
         use crate::syntax::Style;
@@ -1086,6 +1163,43 @@ mod tests {
 #[cfg(test)]
 mod styled_tests {
     use super::*;
+    #[test]
+    fn clipped_markdown_emphasis_resets_attributes_before_the_next_row() {
+        for (style, enabled, reset) in [
+            (
+                crate::syntax::Style::Emphasis,
+                Attribute::Italic,
+                Attribute::NoItalic,
+            ),
+            (
+                crate::syntax::Style::Strong,
+                Attribute::Bold,
+                Attribute::NormalIntensity,
+            ),
+        ] {
+            let line: Vec<char> = "\t界é".chars().collect();
+            let mut out = Vec::new();
+            styled_line(
+                &mut out,
+                &line,
+                &vec![style; line.len()],
+                5,
+                2,
+                Theme::Terminal.palette(),
+            )
+            .unwrap();
+            let rendered = String::from_utf8(out).unwrap();
+            assert!(rendered.contains(&format!(
+                "{} é{}",
+                SetAttribute(enabled),
+                SetAttribute(reset)
+            )));
+            assert!(
+                rendered.ends_with(&SetForegroundColor(crossterm::style::Color::Reset).to_string())
+            );
+        }
+    }
+
     #[test]
     fn styled_clipping_preserves_cells_and_resets() {
         let line: Vec<char> = "\t界é\u{1b}".chars().collect();

@@ -1,5 +1,7 @@
 //! Lightweight fallback lexers. Character-indexed styles match the editor buffer.
 //! Relex from the beginning after edits so multiline state stays correct.
+mod markdown;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Style {
     Plain,
@@ -16,12 +18,17 @@ pub enum Style {
     Property,
     Constant,
     Namespace,
+    Heading,
+    Emphasis,
+    Strong,
+    Link,
 }
 
 pub fn for_path(path: &std::path::Path, lines: &[Vec<char>]) -> Option<Vec<Vec<Style>>> {
     match path.extension()?.to_str()?.to_ascii_lowercase().as_str() {
         "rs" => Some(rust(lines)),
         "go" => Some(go(lines)),
+        "md" | "markdown" => Some(markdown::highlight(lines)),
         _ => None,
     }
 }
