@@ -61,6 +61,15 @@ def session(path, steps, command=None, cwd=None, width=80):
         os.close(slave)
 
 with tempfile.TemporaryDirectory() as directory:
+    path = pathlib.Path(directory) / 'visual.md'
+    path.write_text('aé界z\n\nlast\n')
+    output = session(path, [b'v2ly', b'$p', b'u', b'gg0v2ld', b'u', b'\x12', b':wq\r'])
+    assert path.read_text() == 'z\n\nlast\n'
+    assert b'\x1b[7m' in output and b'Visual' in output
+    path.write_text('one\ntwo\n\nlast')
+    session(path, [b'Vjy', b'Gp', b'u', b'ggVjd', b'u', b'\x12', b':wq\r'])
+    assert path.read_text() == '\nlast'
+    print('Visual PTY: highlighting, Unicode yank/paste, line selection, delete and undo/redo verified')
     path = pathlib.Path(directory) / 'reflow.md'
     path.write_text('one two three four\n\nuntouched paragraph\n')
     session(path, [b':textwidth 10\r', b'gq', b'u', b'\x12', b':wq\r'])
