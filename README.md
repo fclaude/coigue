@@ -233,6 +233,11 @@ Limits: in-memory files, scalar-value rather than grapheme-cluster editing (comb
 
 Development checks:
 
+[GitHub Actions CI](.github/workflows/ci.yml) runs the checks below on pushes,
+pull requests, and manual dispatches using stable Rust and Python 3.13. Jobs run
+natively on Linux x86-64 (`ubuntu-24.04`), macOS Intel (`macos-15-intel`), and
+macOS Apple Silicon (`macos-15`), including both PTY integration suites.
+
 ```sh
 cargo fmt --check
 cargo test
