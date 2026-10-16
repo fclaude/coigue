@@ -733,7 +733,7 @@ mod tests {
         let (file, _) = crate::file::File::open(dir.path().join("test.rs")).unwrap();
         let mut e = Editor::new(file, "a😀b\nsecond\nthird");
         let mut view = View::default();
-        view.draw_to(&e, (100, 6), &mut Vec::new()).unwrap();
+        view.draw_to(&e, (200, 6), &mut Vec::new()).unwrap();
         e.lsp.status = "rust-analyzer".into();
         e.lsp.diagnostics = vec![crate::lsp::Diagnostic {
             start: (0, 1),
@@ -742,7 +742,7 @@ mod tests {
             message: "Unicode warning\nwith control\u{1b}".into(),
         }];
         let mut out = Vec::new();
-        view.draw_to(&e, (100, 6), &mut out).unwrap();
+        view.draw_to(&e, (200, 6), &mut out).unwrap();
         assert!(String::from_utf8_lossy(&view.previous[0]).contains("W"));
         assert!(String::from_utf8_lossy(&view.previous[1]).contains("2 "));
         assert!(String::from_utf8_lossy(&view.previous[4]).contains("rust-analyzer E:0 W:1"));
@@ -751,21 +751,21 @@ mod tests {
         );
         assert!(String::from_utf8_lossy(&out).contains(&MoveTo(2, 0).to_string()));
         out.clear();
-        view.draw_to(&e, (100, 6), &mut out).unwrap();
+        view.draw_to(&e, (200, 6), &mut out).unwrap();
         assert!(
             out.is_empty(),
             "idle polling should not write an unchanged frame"
         );
         e.mode = Mode::Command;
         e.command = "w".into();
-        view.draw_to(&e, (100, 6), &mut Vec::new()).unwrap();
+        view.draw_to(&e, (200, 6), &mut Vec::new()).unwrap();
         assert_eq!(view.previous[5], b":w");
         e.mode = Mode::Normal;
         e.message = "Save failed".into();
-        view.draw_to(&e, (100, 6), &mut Vec::new()).unwrap();
+        view.draw_to(&e, (200, 6), &mut Vec::new()).unwrap();
         assert_eq!(view.previous[5], b"Save failed");
         e.lsp.diagnostics.clear();
-        for size in [(1, 1), (2, 3), (3, 4), (100, 6)] {
+        for size in [(1, 1), (2, 3), (3, 4), (200, 6)] {
             view.draw_to(&e, size, &mut Vec::new()).unwrap();
         }
         assert!(String::from_utf8_lossy(&view.previous[0]).contains("1 "));

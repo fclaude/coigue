@@ -1334,7 +1334,8 @@ mod tests {
     fn diagnostics_reject_stale_versions_generations_and_other_files_and_clear_on_edits() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("Cargo.toml"), "").unwrap();
-        let path = dir.path().join("test.rs");
+        let root = dir.path().canonicalize().unwrap();
+        let path = root.join("test.rs");
         let uri = Url::from_file_path(&path).unwrap().to_string();
         let (input, _inbox) = mailbox();
         let (events, output) = mpsc::sync_channel(64);
@@ -1346,7 +1347,7 @@ mod tests {
             output,
             finished,
         });
-        client.key = Some((Language::Rust, dir.path().into()));
+        client.key = Some((Language::Rust, root));
         let buffer = crate::buffer::Buffer::new("a😀b");
         client.sync(&path, 0, 0, 0, || buffer.text());
         for (generation, stamp, version, other_uri) in [
