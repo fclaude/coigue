@@ -3,8 +3,10 @@ mod editor;
 mod explorer;
 mod file;
 mod fileops;
+mod lsp;
 mod picker;
 mod render;
+mod semantic;
 mod syntax;
 mod theme;
 use crossterm::{
@@ -55,8 +57,10 @@ fn run() -> io::Result<()> {
         editor::Editor::welcome(std::env::current_dir()?)
     };
     let _terminal = Terminal::enter()?;
+    editor.lsp.enable();
     let mut view = render::View::default();
     loop {
+        editor.poll_lsp();
         if let Some(picker) = &mut editor.picker {
             picker.poll();
         }
@@ -65,9 +69,7 @@ fn run() -> io::Result<()> {
             explorer.fit(view.page_rows());
         }
         view.draw(&editor)?;
-        if (editor.picker.is_some() || editor.explorer.is_some())
-            && !event::poll(std::time::Duration::from_millis(50))?
-        {
+        if !event::poll(std::time::Duration::from_millis(50))? {
             continue;
         }
         match event::read()? {

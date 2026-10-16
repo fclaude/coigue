@@ -54,6 +54,15 @@ impl Theme {
                 number: rgb(0xfab387),
                 macro_color: rgb(0x89b4fa),
                 lifetime: rgb(0xf9e2af),
+                type_color: rgb(0xf9e2af),
+                function: rgb(0x89b4fa),
+                property: rgb(0xb4befe),
+                constant: rgb(0xfab387),
+                namespace: rgb(0x94e2d5),
+                error: rgb(0xf38ba8),
+                warning: rgb(0xf9e2af),
+                info: rgb(0x89dceb),
+                hint: rgb(0x94e2d5),
             },
             Self::GruvboxDark => Palette {
                 bold_keywords: false,
@@ -67,6 +76,15 @@ impl Theme {
                 number: rgb(0xd3869b),
                 macro_color: rgb(0xfabd2f),
                 lifetime: rgb(0x8ec07c),
+                type_color: rgb(0xfabd2f),
+                function: rgb(0xb8bb26),
+                property: rgb(0x83a598),
+                constant: rgb(0xd3869b),
+                namespace: rgb(0x8ec07c),
+                error: rgb(0xfb4934),
+                warning: rgb(0xfabd2f),
+                info: rgb(0x83a598),
+                hint: rgb(0x8ec07c),
             },
             Self::CatppuccinLatte => Palette {
                 bold_keywords: false,
@@ -80,6 +98,15 @@ impl Theme {
                 number: rgb(0xfe640b),
                 macro_color: rgb(0x1e66f5),
                 lifetime: rgb(0xdf8e1d),
+                type_color: rgb(0xdf8e1d),
+                function: rgb(0x1e66f5),
+                property: rgb(0x7287fd),
+                constant: rgb(0xfe640b),
+                namespace: rgb(0x179299),
+                error: rgb(0xd20f39),
+                warning: rgb(0xdf8e1d),
+                info: rgb(0x209fb5),
+                hint: rgb(0x179299),
             },
             Self::Monochrome => Palette {
                 bold_keywords: true,
@@ -93,6 +120,15 @@ impl Theme {
                 number: rgb(0x989898),
                 macro_color: rgb(0xffffff),
                 lifetime: rgb(0xd8d8d8),
+                type_color: rgb(0xd8d8d8),
+                function: rgb(0xffffff),
+                property: rgb(0xb0b0b0),
+                constant: rgb(0x989898),
+                namespace: rgb(0x989898),
+                error: rgb(0xffffff),
+                warning: rgb(0xd8d8d8),
+                info: rgb(0xb0b0b0),
+                hint: rgb(0x7c7c7c),
             },
             Self::Terminal => Palette {
                 bold_keywords: false,
@@ -106,6 +142,15 @@ impl Theme {
                 number: Color::Cyan,
                 macro_color: Color::Yellow,
                 lifetime: Color::Blue,
+                type_color: Color::Yellow,
+                function: Color::Blue,
+                property: Color::Cyan,
+                constant: Color::Cyan,
+                namespace: Color::Blue,
+                error: Color::Red,
+                warning: Color::Yellow,
+                info: Color::Cyan,
+                hint: Color::Cyan,
             },
         }
     }
@@ -132,6 +177,15 @@ pub struct Palette {
     number: Color,
     macro_color: Color,
     lifetime: Color,
+    type_color: Color,
+    function: Color,
+    property: Color,
+    constant: Color,
+    namespace: Color,
+    error: Color,
+    warning: Color,
+    info: Color,
+    hint: Color,
 }
 
 impl Palette {
@@ -141,13 +195,28 @@ impl Palette {
 
     pub fn syntax(self, style: Style) -> Color {
         match style {
-            Style::Plain | Style::Punctuation => self.foreground,
+            Style::Punctuation => self.foreground,
             Style::Keyword => self.keyword,
             Style::Comment => self.comment,
             Style::String => self.string,
             Style::Number => self.number,
             Style::Macro => self.macro_color,
             Style::Lifetime => self.lifetime,
+            Style::Type => self.type_color,
+            Style::Function => self.function,
+            Style::Plain | Style::Variable => self.foreground,
+            Style::Property => self.property,
+            Style::Constant => self.constant,
+            Style::Namespace => self.namespace,
+        }
+    }
+
+    pub fn diagnostic(self, severity: u8) -> Color {
+        match severity {
+            1 => self.error,
+            2 => self.warning,
+            3 => self.info,
+            _ => self.hint,
         }
     }
 }

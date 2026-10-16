@@ -258,7 +258,8 @@ with tempfile.TemporaryDirectory() as directory:
     assert b'\x1b[48;2;239;241;245m' in theme_out, 'missing Latte background'
     terminal_out = theme_out.split(b'Theme: terminal', 1)[1]
     assert b'\x1b[49m' in terminal_out, 'terminal background not restored'
-    assert b'\x1b[38;5;13mfn\x1b[39m main() {' in terminal_out, 'terminal ANSI syntax not restored'
+    # Function names may also receive semantic colors from an installed server.
+    assert b'\x1b[38;5;13mfn' in terminal_out, 'terminal ANSI syntax not restored'
     assert b'\x1b[48;2;' not in terminal_out, 'canceling a theme command changed the palette'
     assert theme_path.read_text() == theme_text, 'theme commands changed the file'
     monochrome_out = session(theme_path, [b':theme monochrome\r', None, b':q\r'])
