@@ -18,20 +18,21 @@ cargo run -- path/to/file
 
 ## Compatibility
 
-Linux and macOS terminals are the intended platforms. This first version was
-built and exercised on Linux; macOS compilation and PTY integration checks have
-also been exercised.
+Linux and macOS terminals are the intended platforms. [GitHub Actions CI](.github/workflows/ci.yml)
+tests Linux x86-64, macOS Intel, and macOS Apple Silicon natively, including
+formatting, unit tests, Clippy, builds, and both terminal and language-server
+PTY integration suites.
 
 | System | Status | Evidence and limitations |
 | --- | --- | --- |
-| Linux x86-64 | Intended platform | `cargo check` passes for `x86_64-unknown-linux-gnu`; runtime testing has been exercised on Linux. |
-| macOS Intel | Intended platform | `cargo check` passes for `x86_64-apple-darwin`; macOS PTY integration testing has been exercised, but runtime coverage is not documented by architecture. |
-| macOS Apple Silicon | Intended platform | `cargo check` passes for `aarch64-apple-darwin`; macOS PTY integration testing has been exercised, but runtime coverage is not documented by architecture. |
+| Linux x86-64 | Tested in CI | Native `ubuntu-24.04` runner; builds, unit tests, and both PTY integration suites pass. |
+| macOS Intel | Tested in CI | Native `macos-15-intel` runner; builds, unit tests, and both PTY integration suites pass. |
+| macOS Apple Silicon | Tested in CI | Native `macos-15` ARM64 runner; builds, unit tests, and both PTY integration suites pass. |
 | Linux ARM64 and other architectures | Unverified | No architecture-specific application code, but compilation and runtime behavior have not been verified. |
 | Windows native | Not an intended platform | Core editing is unverified; explorer rename, delete, and restore operations explicitly fail. |
 | BSD and other Unix systems | Not an intended platform | Core editing is unverified; explorer rename, delete, and restore operations explicitly fail. |
 
-Compilation checks do not establish runtime compatibility. Minimum OS versions
+CI coverage applies to the runner systems listed above; minimum OS versions
 are not documented. Unix-specific permission and symlink tests are gated with
 `cfg(unix)`; the Python PTY integration tests require Unix.
 
