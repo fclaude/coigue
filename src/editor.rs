@@ -38,6 +38,7 @@ impl FilesystemPrompt {
 }
 pub struct Editor {
     pub theme: crate::theme::Theme,
+    pub lsp: crate::lsp::Client,
     pub welcome: Option<std::path::PathBuf>,
     pub buffer: Buffer,
     pub file: File,
@@ -61,6 +62,7 @@ impl Editor {
     pub fn new(file: File, text: &str) -> Self {
         Self {
             theme: crate::theme::Theme::default(),
+            lsp: crate::lsp::Client::default(),
             welcome: None,
             buffer: Buffer::new(text),
             file,
@@ -92,7 +94,27 @@ impl Editor {
         if self.mode != Mode::Insert || self.picker.is_some() || self.explorer.is_some() {
             self.buffer.finish_edit();
         }
+        self.sync_lsp();
         quit
+    }
+    fn sync_lsp(&mut self) {
+        self.lsp.sync(
+            &self.file.path,
+            self.generation,
+            self.buffer.revision(),
+            self.file.revision(),
+            || self.buffer.text(),
+        );
+    }
+    pub fn poll_lsp(&mut self) {
+        self.sync_lsp();
+        self.lsp.poll(&self.buffer.lines);
+    }
+    fn save_current(&mut self) -> std::io::Result<()> {
+        self.file.save(&self.buffer.text())?;
+        // Synchronize the old document before save-and-open replaces it.
+        self.sync_lsp();
+        Ok(())
     }
     fn key_inner(&mut self, mut key: KeyEvent, page_rows: usize) -> bool {
         if self.switch_prompt.is_some() {
@@ -790,7 +812,7 @@ impl Editor {
             }
             K::Char('s' | 'd') => {
                 if key.code == K::Char('s')
-                    && let Err(err) = self.file.save(&self.buffer.text())
+                    && let Err(err) = self.save_current()
                 {
                     self.message = format!("Save failed: {err}");
                     return;
@@ -883,9 +905,13 @@ impl Editor {
         }
         let text = self.buffer.text();
         match cmd {
+            "lsp-restart" => {
+                self.lsp.restart();
+                self.message.clear();
+            }
             "open" => self.open_picker(),
             "explore" => self.open_explorer(),
-            "w" | "wq" => match self.file.save(&text) {
+            "w" | "wq" => match self.save_current() {
                 Ok(()) => {
                     self.message = "Written".into();
                     return cmd == "wq";

@@ -17,6 +17,7 @@ pub struct View {
     cursor: Option<(u16, u16)>,
     revision: Option<(u64, u64)>,
     styles: Option<Vec<Vec<crate::syntax::Style>>>,
+    semantic_revision: u64,
     dirty: bool,
     generation: u64,
     syntax_path: Option<std::path::PathBuf>,
@@ -374,11 +375,21 @@ impl View {
         }
         let revision = (b.revision(), e.file.revision());
         let path_changed = self.syntax_path.as_ref() != Some(&e.file.path);
-        if self.revision != Some(revision) || path_changed {
-            if self.revision.map(|r| r.0) != Some(revision.0) || path_changed {
+        let semantic_changed = self.semantic_revision != e.lsp.semantic_revision;
+        if self.revision != Some(revision) || path_changed || semantic_changed {
+            if self.revision.map(|r| r.0) != Some(revision.0) || path_changed || semantic_changed {
                 self.syntax_path = Some(e.file.path.clone());
-                self.styles = (e.file.path.extension().is_some_and(|ext| ext == "rs"))
-                    .then(|| crate::syntax::rust(&b.lines));
+                self.styles = crate::syntax::for_path(&e.file.path, &b.lines);
+                if let Some(styles) = &mut self.styles {
+                    for token in &e.lsp.semantic_tokens {
+                        if let Some(line) = styles.get_mut(token.row)
+                            && let Some(span) = line.get_mut(token.start..token.end)
+                        {
+                            span.fill(token.style);
+                        }
+                    }
+                }
+                self.semantic_revision = e.lsp.semantic_revision;
             }
             self.dirty = e.file.dirty(&b.text());
             self.revision = Some(revision);
@@ -387,13 +398,25 @@ impl View {
         for (y, line_out) in frame.iter_mut().take(rows).enumerate() {
             if let Some(line) = b.lines.get(self.top + y) {
                 if gutter > 0 {
-                    let number = format!("{:>digits$} ", self.top + y + 1, digits = gutter - 1);
-                    queue!(
-                        line_out,
-                        SetForegroundColor(palette.muted),
-                        Print(clipped(number.chars(), 0, gutter)),
-                        SetForegroundColor(palette.foreground)
-                    )?;
+                    let severity = e.lsp.line_severity(self.top + y);
+                    let mut number = format!("{:>digits$}", self.top + y + 1, digits = gutter - 1);
+                    if severity.is_none() {
+                        number.push(' ');
+                    }
+                    queue!(line_out, SetForegroundColor(palette.muted), Print(number),)?;
+                    if let Some(severity) = severity {
+                        queue!(
+                            line_out,
+                            SetForegroundColor(palette.diagnostic(severity)),
+                            Print(match severity {
+                                1 => "E",
+                                2 => "W",
+                                3 => "I",
+                                _ => "H",
+                            }),
+                        )?;
+                    }
+                    queue!(line_out, SetForegroundColor(palette.foreground))?;
                 }
                 if let Some(styles) = &self.styles {
                     styled_line(
@@ -415,7 +438,7 @@ impl View {
             }
         }
 
-        let status = format!(
+        let mut status = format!(
             "{:?} {}{}  {}:{}",
             e.mode,
             e.file.path.display(),
@@ -423,6 +446,10 @@ impl View {
             b.row + 1,
             b.col + 1
         );
+        if !e.lsp.status.is_empty() {
+            let (errors, warnings) = e.lsp.counts();
+            status.push_str(&format!(" | {} E:{errors} W:{warnings}", e.lsp.status));
+        }
         if h >= 2 {
             queue!(
                 frame[usize::from(h - 2)],
@@ -435,6 +462,12 @@ impl View {
             format!("/{}", e.search)
         } else if !e.pending_input().is_empty() {
             e.pending_input()
+        } else if e.message.is_empty() {
+            e.lsp
+                .at_cursor(b.row, b.col)
+                .or_else(|| e.lsp.failure())
+                .unwrap_or("")
+                .into()
         } else {
             e.message.clone()
         };
@@ -515,6 +548,69 @@ impl View {
 mod tests {
     use super::*;
     #[test]
+    fn semantic_highlighting_uses_every_theme_and_reverts_to_lexical_colors() {
+        use crate::syntax::Style;
+        let dir = tempfile::tempdir().unwrap();
+        for (extension, text, start, end) in
+            [("rs", "fn main() {}", 3, 7), ("go", "func main() {}", 5, 9)]
+        {
+            let (file, _) =
+                crate::file::File::open(dir.path().join(format!("test.{extension}"))).unwrap();
+            let mut e = Editor::new(file, text);
+            let mut view = View::default();
+            view.draw_to(&e, (100, 6), &mut Vec::new()).unwrap();
+            assert_eq!(view.styles.as_ref().unwrap()[0][0], Style::Keyword);
+            assert_eq!(view.styles.as_ref().unwrap()[0][start], Style::Plain);
+            e.lsp.semantic_tokens = vec![crate::semantic::Token {
+                row: 0,
+                start,
+                end,
+                style: Style::Function,
+            }];
+            e.lsp.semantic_revision += 1;
+            for theme in [
+                Theme::CatppuccinMocha,
+                Theme::GruvboxDark,
+                Theme::CatppuccinLatte,
+                Theme::Monochrome,
+                Theme::Terminal,
+            ] {
+                e.theme = theme;
+                let mut out = Vec::new();
+                view.draw_to(&e, (100, 6), &mut out).unwrap();
+                assert_eq!(view.styles.as_ref().unwrap()[0][start], Style::Function);
+                assert_eq!(view.styles.as_ref().unwrap()[0][0], Style::Keyword);
+                let rendered = String::from_utf8_lossy(&out);
+                assert!(rendered.contains(&format!(
+                    "{}main",
+                    SetForegroundColor(theme.palette().syntax(Style::Function))
+                )));
+                if theme == Theme::Terminal {
+                    assert!(!rendered.contains("38;2;"));
+                    assert!(!rendered.contains("48;2;"));
+                }
+                if theme == Theme::Monochrome {
+                    assert!(rendered.contains(&SetAttribute(Attribute::Bold).to_string()));
+                    assert!(
+                        rendered.contains(&SetAttribute(Attribute::NormalIntensity).to_string())
+                    );
+                    assert!(!theme.palette().bold(Style::Function));
+                }
+                out.clear();
+                view.draw_to(&e, (100, 6), &mut out).unwrap();
+                assert!(out.is_empty());
+            }
+            e.lsp.semantic_tokens.clear();
+            e.lsp.semantic_revision += 1;
+            view.draw_to(&e, (100, 6), &mut Vec::new()).unwrap();
+            assert_eq!(view.styles.as_ref().unwrap()[0][start], Style::Plain);
+            assert_eq!(view.styles.as_ref().unwrap()[0][0], Style::Keyword);
+            for size in [(1, 1), (2, 3), (4, 5), (100, 6)] {
+                view.draw_to(&e, size, &mut Vec::new()).unwrap();
+            }
+        }
+    }
+    #[test]
     fn theme_switch_repaints_all_rows_and_tails_without_resetting_viewport_or_syntax() {
         for extension in ["txt", "rs"] {
             let dir = tempfile::tempdir().unwrap();
@@ -524,6 +620,12 @@ mod tests {
             let mut e = Editor::new(file, &text);
             e.buffer.row = 9;
             e.buffer.col = 20;
+            e.lsp.diagnostics = vec![crate::lsp::Diagnostic {
+                start: (9, 0),
+                end: (9, 1),
+                severity: 2,
+                message: "warning".into(),
+            }];
             let mut view = View {
                 top: 9,
                 ..View::default()
@@ -552,6 +654,7 @@ mod tests {
                 }
                 assert!(rendered.contains(&SetBackgroundColor(palette.background).to_string()));
                 assert!(rendered.contains(&SetBackgroundColor(palette.surface).to_string()));
+                assert!(rendered.contains(&SetForegroundColor(palette.diagnostic(2)).to_string()));
                 assert!(rendered.contains(&Clear(ClearType::UntilNewLine).to_string()));
                 assert!(!rendered.contains(&Clear(ClearType::All).to_string()));
                 if theme == Theme::Terminal {
@@ -624,6 +727,49 @@ mod tests {
         }
     }
 
+    #[test]
+    fn diagnostics_redraw_while_idle_and_preserve_gutter_width_and_prompt_priority() {
+        let dir = tempfile::tempdir().unwrap();
+        let (file, _) = crate::file::File::open(dir.path().join("test.rs")).unwrap();
+        let mut e = Editor::new(file, "a😀b\nsecond\nthird");
+        let mut view = View::default();
+        view.draw_to(&e, (100, 6), &mut Vec::new()).unwrap();
+        e.lsp.status = "rust-analyzer".into();
+        e.lsp.diagnostics = vec![crate::lsp::Diagnostic {
+            start: (0, 1),
+            end: (1, 0),
+            severity: 2,
+            message: "Unicode warning\nwith control\u{1b}".into(),
+        }];
+        let mut out = Vec::new();
+        view.draw_to(&e, (100, 6), &mut out).unwrap();
+        assert!(String::from_utf8_lossy(&view.previous[0]).contains("W"));
+        assert!(String::from_utf8_lossy(&view.previous[1]).contains("2 "));
+        assert!(String::from_utf8_lossy(&view.previous[4]).contains("rust-analyzer E:0 W:1"));
+        assert!(
+            String::from_utf8_lossy(&view.previous[5]).contains("Unicode warning�with control�")
+        );
+        assert!(String::from_utf8_lossy(&out).contains(&MoveTo(2, 0).to_string()));
+        out.clear();
+        view.draw_to(&e, (100, 6), &mut out).unwrap();
+        assert!(
+            out.is_empty(),
+            "idle polling should not write an unchanged frame"
+        );
+        e.mode = Mode::Command;
+        e.command = "w".into();
+        view.draw_to(&e, (100, 6), &mut Vec::new()).unwrap();
+        assert_eq!(view.previous[5], b":w");
+        e.mode = Mode::Normal;
+        e.message = "Save failed".into();
+        view.draw_to(&e, (100, 6), &mut Vec::new()).unwrap();
+        assert_eq!(view.previous[5], b"Save failed");
+        e.lsp.diagnostics.clear();
+        for size in [(1, 1), (2, 3), (3, 4), (100, 6)] {
+            view.draw_to(&e, size, &mut Vec::new()).unwrap();
+        }
+        assert!(String::from_utf8_lossy(&view.previous[0]).contains("1 "));
+    }
     #[test]
     fn line_numbers_track_scroll_cursor_and_decimal_width_changes() {
         let dir = tempfile::tempdir().unwrap();

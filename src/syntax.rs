@@ -1,4 +1,4 @@
-//! Lightweight Rust lexer. Character-indexed styles match the editor buffer.
+//! Lightweight fallback lexers. Character-indexed styles match the editor buffer.
 //! Relex from the beginning after edits so multiline state stays correct.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Style {
@@ -10,7 +10,139 @@ pub enum Style {
     Macro,
     Punctuation,
     Lifetime,
+    Type,
+    Function,
+    Variable,
+    Property,
+    Constant,
+    Namespace,
 }
+
+pub fn for_path(path: &std::path::Path, lines: &[Vec<char>]) -> Option<Vec<Vec<Style>>> {
+    match path.extension()?.to_str()?.to_ascii_lowercase().as_str() {
+        "rs" => Some(rust(lines)),
+        "go" => Some(go(lines)),
+        _ => None,
+    }
+}
+
+pub fn go(lines: &[Vec<char>]) -> Vec<Vec<Style>> {
+    use Style::*;
+    let mut block_comment = false;
+    let mut raw_string = false;
+    let mut result = Vec::with_capacity(lines.len());
+    for line in lines {
+        let mut styles = vec![Plain; line.len()];
+        let mut i = 0;
+        while i < line.len() {
+            let start = i;
+            let c = line[i];
+            let next = line.get(i + 1).copied();
+            let style;
+            if block_comment {
+                style = Comment;
+                if c == '*' && next == Some('/') {
+                    block_comment = false;
+                    i += 2;
+                } else {
+                    i += 1;
+                }
+            } else if raw_string {
+                style = String;
+                if c == '`' {
+                    raw_string = false;
+                }
+                i += 1;
+            } else if c == '/' && next == Some('/') {
+                style = Comment;
+                i = line.len();
+            } else if c == '/' && next == Some('*') {
+                style = Comment;
+                block_comment = true;
+                i += 2;
+            } else if c == '`' {
+                style = String;
+                raw_string = true;
+                i += 1;
+            } else if c == '"' || c == '\'' {
+                style = String;
+                i += 1;
+                while i < line.len() {
+                    let ch = line[i];
+                    i += 1;
+                    if ch == '\\' {
+                        i = (i + 1).min(line.len());
+                    } else if ch == c {
+                        break;
+                    }
+                }
+            } else if c.is_ascii_digit() || (c == '.' && next.is_some_and(|c| c.is_ascii_digit())) {
+                style = Number;
+                i += 1;
+                while i < line.len() {
+                    let ch = line[i];
+                    if ch.is_ascii_alphanumeric()
+                        || ch == '_'
+                        || ch == '.'
+                        || (matches!(ch, '+' | '-') && matches!(line[i - 1], 'e' | 'E' | 'p' | 'P'))
+                    {
+                        i += 1;
+                    } else {
+                        break;
+                    }
+                }
+            } else if ident_start(c) {
+                i += 1;
+                while i < line.len() && ident(line[i]) {
+                    i += 1;
+                }
+                let word: std::string::String = line[start..i].iter().collect();
+                style = if GO_KEYWORDS.contains(&word.as_str()) {
+                    Keyword
+                } else {
+                    Plain
+                };
+            } else {
+                style = if c.is_ascii_punctuation() {
+                    Punctuation
+                } else {
+                    Plain
+                };
+                i += 1;
+            }
+            styles[start..i].fill(style);
+        }
+        result.push(styles);
+    }
+    result
+}
+const GO_KEYWORDS: &[&str] = &[
+    "break",
+    "case",
+    "chan",
+    "const",
+    "continue",
+    "default",
+    "defer",
+    "else",
+    "fallthrough",
+    "for",
+    "func",
+    "go",
+    "goto",
+    "if",
+    "import",
+    "interface",
+    "map",
+    "package",
+    "range",
+    "return",
+    "select",
+    "struct",
+    "switch",
+    "type",
+    "var",
+];
 
 pub fn rust(lines: &[Vec<char>]) -> Vec<Vec<Style>> {
     use Style::*;
@@ -263,5 +395,30 @@ mod tests {
         }
         assert_eq!(lex("let café = 1..2;")[0][0], Keyword);
         assert_eq!(lex("let café = 1..2;")[0][12], Punctuation);
+    }
+}
+
+#[cfg(test)]
+mod go_tests {
+    use super::*;
+    #[test]
+    fn go_fallback_handles_multiline_raw_strings_comments_runes_and_keywords() {
+        let text = "package main\n/* func\nstill */ func main() {\ns := `// raw\nfunc` // comment\nr := '\\''; n := 0x1.fp+2; f := .5\nvar 界 = \"a\\\"b\"\npackageName := 1\n";
+        let lines = crate::buffer::Buffer::new(text).lines;
+        let styles = go(&lines);
+        assert!(styles[0][..7].iter().all(|s| *s == Style::Keyword));
+        assert!(styles[1].iter().all(|s| *s == Style::Comment));
+        assert_eq!(styles[2][9], Style::Keyword);
+        assert_eq!(styles[3][5], Style::String);
+        assert!(styles[4][..5].iter().all(|s| *s == Style::String));
+        assert!(styles[4][6..].iter().all(|s| *s == Style::Comment));
+        assert_eq!(styles[5][5], Style::String);
+        assert_eq!(styles[5][17], Style::Number);
+        assert_eq!(styles[6][0], Style::Keyword);
+        assert_eq!(styles[7][0], Style::Plain);
+        assert_eq!(
+            for_path(std::path::Path::new("test.GO"), &lines),
+            Some(styles)
+        );
     }
 }

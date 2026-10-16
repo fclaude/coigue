@@ -182,7 +182,7 @@ available choices, or `:theme <name>` to switch immediately:
 
 The full names `catppuccin-mocha`, `gruvbox-dark`, and `catppuccin-latte` are also
 accepted. Theme selection applies to the whole session, including welcome,
-file browsers, syntax, line-number gutters, and the status row; opening another
+file browsers, syntax, gutter diagnostics, and the status row; opening another
 file keeps the selection. There is no config file or persistence: restarting
 returns to Mocha. Built-in palettes use 24-bit RGB colors and need a truecolor
 terminal for faithful rendering; `terminal` retains the previous ANSI behavior.
@@ -203,13 +203,128 @@ cargo test
 cargo clippy --all-targets -- -D warnings
 cargo build
 python3 tests/pty_smoke.py target/debug/coigue
+python3 tests/lsp_smoke.py target/debug/coigue
 ```
 
 The Unix PTY smoke test uses only disposable files and checks save/reopen, repeated edits, resize, quit safeguards and terminal restoration after errors and unwinding. The additional `/dev/full` output-failure test runs on Linux and is skipped when that device is unavailable (including macOS).
 
-Rust files (`.rs`) receive lightweight lexical highlighting for keywords, comments,
-strings, characters, lifetimes, numbers, and macros. Nested block comments and
-multiline/raw strings retain state across lines. Other extensions remain plain.
-The lexer runs over the buffer after edits and caches the result while navigating;
-this favors simplicity over performance on very large files. It does not perform
-semantic analysis or use an LSP. Colors come from the selected theme.
+Rust (`.rs`) and Go (`.go`) files receive built-in lexical highlighting immediately,
+including when no language server is installed. The Rust lexer handles keywords,
+comments, strings, characters, lifetimes, numbers, and macros; the Go lexer handles
+keywords, comments, quoted/raw strings, runes, and numbers. Multiline state is
+preserved for block comments and raw strings. Other extensions remain plain.
+Lexers run over the buffer after edits and cache the result while navigating;
+this favors simplicity over performance on very large files.
+
+When `rust-analyzer` or `gopls` advertises full semantic tokens, Coigüe overlays
+them on lexical highlighting to distinguish functions, types, variables, fields,
+constants, namespaces, and other supported token classes. Unknown token classes
+retain their lexical colors. All colors use the selected theme, including Mocha,
+Gruvbox, Latte, Monochrome, and the terminal ANSI palette. Monochrome retains bold
+keywords and grayscale semantic colors. Switching themes reuses cached tokens
+and repaints immediately. Markdown continues to use LSP for diagnostics only.
+
+Semantic-token requests run in the background after document synchronization.
+Edits clear old tokens and use lexical colors until a current response arrives;
+responses for older versions or other files are ignored. Missing, crashed,
+unsupported, or unresponsive servers leave lexical highlighting usable. Semantic
+requests time out after five seconds without stopping diagnostics. Coigüe supports
+full token responses and server refresh requests; range and delta token requests
+are not used. Gopls semantic tokens are enabled automatically by Coigüe.
+
+Language-server diagnostics start automatically for these file types when the
+corresponding executable is on `PATH`:
+
+| Files | Server command | Workspace root |
+| --- | --- | --- |
+| `.rs` | `rust-analyzer` | Nearest ancestor containing `Cargo.toml`. |
+| `.go` | `gopls` | Nearest ancestor containing `go.work` or `go.mod`. |
+| `.md`, `.markdown` (case-insensitive) | `marksman server` | Nearest ancestor containing `.marksman.toml` or `.git`. |
+
+Without a matching workspace marker, the file's parent directory is used.
+Install whichever servers you need separately. No server is bundled or downloaded
+by the editor. Welcome and other file types start no server.
+
+For Rust with a rustup-managed toolchain, install
+[rust-analyzer](https://rust-analyzer.github.io/book/rust_analyzer_binary.html#rustup)
+and the standard-library sources for the toolchain used by your project:
+
+```sh
+rustup component add rust-analyzer rust-src
+```
+
+Make sure `$HOME/.cargo/bin` is on `PATH`. If your project uses a toolchain
+override, run the command from that project so the components match its toolchain.
+
+For Go, install a current Go toolchain, then install
+[gopls](https://go.dev/gopls/#installation):
+
+```sh
+go install golang.org/x/tools/gopls@latest
+export PATH="$(go env GOPATH)/bin:$PATH"
+```
+
+If you set `GOBIN`, add that directory to `PATH` instead. The `go` executable
+must also be on `PATH` when running Coigüe.
+
+For Markdown, install [Marksman](https://github.com/artempyanykh/marksman/blob/main/docs/install.md).
+On macOS or Linux with Homebrew:
+
+```sh
+brew install marksman
+```
+
+Without Homebrew, download the binary matching your OS and CPU from the
+[Marksman releases](https://github.com/artempyanykh/marksman/releases), rename it
+to `marksman`, then run these commands from the download directory:
+
+```sh
+mkdir -p "$HOME/.local/bin"
+install -m 755 ./marksman "$HOME/.local/bin/marksman"
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Keep any needed `PATH` additions in your shell startup file (for example,
+`~/.zshrc` or `~/.bashrc`). Before launching Coigüe, check that the servers you
+installed are discoverable from the same terminal:
+
+```sh
+command -v rust-analyzer
+command -v gopls
+command -v marksman
+```
+
+Restart Coigüe after changing its inherited `PATH`. If a server was installed
+into a directory already on its `PATH`, use `:lsp-restart` to retry in the current
+session. Coigüe starts each server automatically; do not launch `marksman server`
+manually alongside the editor.
+
+The line-number separator becomes a colored `E`, `W`, `I`, or `H` for an error,
+warning, information, or hint, without moving the text. The status row shows the
+server and error/warning counts. The message row displays the diagnostic under
+the cursor, falling back to the highest-severity diagnostic on the current line;
+commands, prompts, and editor messages take priority. Diagnostics arrive while
+idle as well as during editing. Marksman provides Markdown link/reference
+diagnostics; it is not a general Markdown style checker.
+
+The active document is synchronized on open, edits (including undo/redo),
+successful saves, file switches, and renames. The client honors the server's
+full/incremental synchronization and save capabilities; incremental updates
+currently replace the previous document's entire range. UTF-16 protocol positions
+are converted to the buffer's Unicode character positions. Editing clears old
+diagnostics, and publications with an outdated document version are ignored.
+Servers that omit versions cannot always distinguish delayed diagnostics from
+the current text. Only the current file's diagnostics are shown.
+
+Servers run in the background, with one active server reused within the same
+language/workspace. Missing or crashed servers clear their diagnostics and show
+a status message; editing and saving continue. Startup times out after 20 seconds.
+Use `:lsp-restart` to retry after installing a server or recovering from a failure.
+File switches close the old document; changing language/workspace stops the old
+server. Shutdown has a bounded wait and unresponsive children are killed/reaped.
+Server output never writes into the terminal UI.
+
+This integration supports diagnostics and Rust/Go semantic highlighting. Completion, hover, navigation,
+formatting, rename, workspace edits, file watching, and server configuration are
+not implemented. The LSP smoke test uses disposable fake servers for deterministic
+PTY checks and does not require these language servers to be installed.
