@@ -121,8 +121,40 @@ scalars, whitespace and line separators; line-wise selections use the same paste
 semantics as `yy`/`dd`. Deletion is one undo step; selection and yanking add no
 history. An empty character selection at EOF keeps the previous register.
 Other editing commands, browser shortcuts and command entry are ignored while
-selecting. There is no rectangular/block selection, mouse selection or system
-clipboard integration; combining marks remain separate scalars.
+selecting. Rectangular/block selection is intentionally excluded from the
+project. Mouse selection is not implemented; combining marks remain separate scalars.
+
+System clipboard access is explicit:
+
+| Command/key | Action |
+| --- | --- |
+| Visual **`Y`** | Yank the selection internally, then copy it to the system clipboard. |
+| **`:clipboard-copy`** | Copy the current internal yank register to the system clipboard. |
+| **`:clipboard-paste`** | Paste system clipboard text after the cursor. |
+| **`:clipboard-paste-before`** | Paste system clipboard text before the cursor. |
+
+The commands support Tab completion and apply in normal mode. Clipboard paste is
+one undo step and keeps the internal yank register. Empty clipboard text does
+nothing. Unicode, whitespace and line separators are retained. Text copied by
+this editor retains its character/line-wise paste type while the clipboard still
+matches that export in the same session; other clipboard text pastes character-wise.
+A failed copy keeps the internal yank, and a failed paste keeps text/history intact.
+An empty character selection at EOF does not export the previous register.
+
+macOS uses `pbcopy`/`pbpaste`. Linux Wayland needs `wl-copy`/`wl-paste`
+(`wl-clipboard`); X11 needs `xclip` or `xsel`, using the CLIPBOARD selection.
+Utilities are discovered on PATH. When both displays are set, Wayland is preferred;
+a missing utility falls back to the next available backend, while backend errors
+are reported directly. No packages are installed automatically. Operations time
+out after two seconds and accept at most 8 MiB of UTF-8 text. Private temporary
+files carry helper input/output and are removed after the operation.
+
+In SSH/headless sessions, clipboard utilities need access to a desktop display
+on the machine running Coigüe (including an explicitly forwarded X11 display).
+Without that access, commands report a recoverable error; internal `y`/`p` still
+work. Coigüe never exports via OSC 52, invokes a network clipboard service, or
+reads/writes the clipboard merely by starting the editor or using ordinary yanks.
+Terminal/multiplexer clipboard forwarding is not enabled automatically.
 
 Use **`gq`** in normal mode or **`:justify [width]`** to fill just the paragraph
 under the cursor. **`:textwidth 72`** sets the session width (default 80 display
@@ -154,8 +186,8 @@ Word operations scan a scalar-value copy of the buffer; very large files may
 notice a delay. Combining marks remain separate scalar values, as in other edits.
 
 The register persists across file switches and supports repeated pastes; it is
-internal to this session and does not access the system clipboard. Searches stay
-within a line and report missing matches without moving the cursor. An empty
+internal to this session; ordinary `y`, `d`, `p` and `P` never access the system
+clipboard. Searches stay within a line and report missing matches without moving the cursor. An empty
 search reuses the previous query. The register and search are not saved to disk.
 
 Undo treats each insert-mode session (including `o`, `a`, and `A`) as one edit;
@@ -265,7 +297,7 @@ on terminals that support them. LF and existing trailing newlines are preserved 
 
 Saving compares the file's bytes with the last loaded/saved snapshot, writes and syncs a same-directory temporary file, then atomically replaces the destination. Failed writes leave existing contents intact. New files are created without clobbering an existing destination. Existing symlinks are resolved at opening, so later changes to the original link do not redirect the session. Saves refuse read-only destinations or a resolved target replaced by a symlink. Unix permission bits are preserved; new files use private temporary-file permissions (0600 on Unix). Atomic replacement changes inode identity (including hard-link relationships); ownership, ACLs and extended attributes are not preserved. If another program writes after the final byte comparison but before the atomic rename, its update can still be overwritten without detection; this is not a locking editor. Use one writer per file. No force-write command bypasses conflicts.
 
-Limits: in-memory files, scalar-value rather than grapheme-cluster editing (combining marks may be edited independently), fixed four-column tabs, terminal-dependent emoji/combining display width. No system clipboard, multiple buffers or configuration yet. Raw mode, cursor and alternate screen are restored on normal exits, returned errors and Rust panics; uncatchable termination cannot run cleanup.
+Limits: in-memory files, scalar-value rather than grapheme-cluster editing (combining marks may be edited independently), fixed four-column tabs, terminal-dependent emoji/combining display width. No multiple buffers or persistent configuration yet. Raw mode, cursor and alternate screen are restored on normal exits, returned errors and Rust panics; uncatchable termination cannot run cleanup.
 
 Development checks:
 

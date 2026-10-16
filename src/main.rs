@@ -1,4 +1,5 @@
 mod buffer;
+mod clipboard;
 mod editor;
 mod explorer;
 mod file;

@@ -15,12 +15,13 @@ import time
 
 binary = str(pathlib.Path(sys.argv[1]).resolve())
 
-def session(path, steps, command=None, cwd=None, width=80):
+def session(path, steps, command=None, cwd=None, width=80, env_overrides=None):
     master, slave = pty.openpty()
     original = termios.tcgetattr(slave)
     fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 24, width, 0, 0))
     env = dict(os.environ)
     env.pop('NO_COLOR', None)  # Exercise color output even in color-disabled CI hosts.
+    env.update(env_overrides or {})
     proc = subprocess.Popen(command or ([binary] if path is None else [binary, str(path)]), stdin=slave, stdout=slave, stderr=slave, env=env, cwd=cwd)
     output = bytearray()
     def drain():
@@ -61,6 +62,56 @@ def session(path, steps, command=None, cwd=None, width=80):
         os.close(slave)
 
 with tempfile.TemporaryDirectory() as directory:
+    # All clipboard commands resolve to fixtures: never touch the user's clipboard.
+    helpers = pathlib.Path(directory) / 'clipboard-helpers'
+    helpers.mkdir()
+    store = pathlib.Path(directory) / 'fixture-clipboard'
+    script = f'#!{sys.executable}\n' + """import os, pathlib, sys
+if os.environ.get('COIGUE_CLIPBOARD_FAIL') == '1': sys.exit(7)
+name = pathlib.Path(sys.argv[0]).name
+copy = name in ('wl-copy', 'pbcopy') or '-in' in sys.argv or '--input' in sys.argv
+store = pathlib.Path(os.environ['COIGUE_CLIPBOARD_STORE'])
+if copy: store.write_bytes(sys.stdin.buffer.read())
+else: sys.stdout.buffer.write(store.read_bytes())
+"""
+    for name in ['wl-copy', 'wl-paste', 'pbcopy', 'pbpaste', 'xclip', 'xsel']:
+        helper = helpers / name
+        helper.write_text(script)
+        helper.chmod(0o700)
+    fixture_env = dict(PATH=str(helpers),
+                       WAYLAND_DISPLAY='coigue-fixture', DISPLAY='',
+                       COIGUE_CLIPBOARD_STORE=str(store))
+    path = pathlib.Path(directory) / 'clipboard.md'
+    path.write_text('aé界z\nlast')
+    session(path, [b'v2lY', b':clipboard-copy\r', b'$', b':clipboard-paste\r', b'u', b'\x12', b':wq\r'], env_overrides=fixture_env)
+    assert path.read_text() == 'aé界zaé界\nlast'
+    assert store.read_bytes() == 'aé界'.encode()
+    path.write_text('one\ntwo\nlast')
+    session(path, [b'VjY', b'G', b':clipboard-paste\r', b':wq\r'], env_overrides=fixture_env)
+    assert path.read_text() == 'one\ntwo\nlast\none\ntwo'
+    # External Unicode/multiline text is character-wise, and pasting keeps yanks.
+    store.write_bytes('界\r\nnext\n'.encode())
+    path.write_text('abc')
+    x11_env = dict(fixture_env, WAYLAND_DISPLAY='', DISPLAY='coigue-fixture')
+    session(path, [b'yy', b':clipboard-paste-before\r', b'u', b'p', b':wq\r'], env_overrides=x11_env)
+    assert path.read_text() == 'abc\nabc'
+    # With a fixture-only PATH, missing xclip safely falls back to fixture xsel.
+    (helpers / 'xclip').unlink()
+    store.write_bytes('é界'.encode())
+    path.write_text('abc')
+    session(path, [b':clipboard-paste-before\r', b':wq\r'], env_overrides=x11_env)
+    assert path.read_text() == 'é界abc'
+    store.write_bytes(b'')
+    path.write_text('unchanged')
+    output = session(path, [b':clipboard-paste\r', b':wq\r'], env_overrides=fixture_env)
+    assert path.read_text() == 'unchanged' and b'clipboard is empty' in output
+    failed_env = dict(fixture_env, COIGUE_CLIPBOARD_FAIL='1')
+    path.write_text('abc')
+    output = session(path, [b'vY', b':clipboard-paste\r', b'p', b':wq\r'], env_overrides=failed_env)
+    assert path.read_text() == 'aabc'
+    assert b'copy failed' in output and b'paste failed' in output
+    assert b'\x1b]52;' not in output
+    print('Clipboard PTY: fixture backends, visual Y, line/character paste, Unicode, undo, empty and errors verified')
     path = pathlib.Path(directory) / 'visual.md'
     path.write_text('aé界z\n\nlast\n')
     output = session(path, [b'v2ly', b'$p', b'u', b'gg0v2ld', b'u', b'\x12', b':wq\r'])
