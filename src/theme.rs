@@ -200,20 +200,21 @@ pub struct Palette {
 
 impl Palette {
     pub fn bold(self, style: Style) -> bool {
-        self.bold_keywords && matches!(style, Style::Keyword | Style::Macro)
+        matches!(style, Style::Heading | Style::Strong)
+            || self.bold_keywords && matches!(style, Style::Keyword | Style::Macro)
     }
 
     pub fn syntax(self, style: Style) -> Color {
         match style {
             Style::Punctuation => self.foreground,
-            Style::Keyword => self.keyword,
+            Style::Keyword | Style::Heading => self.keyword,
             Style::Comment => self.comment,
             Style::String => self.string,
             Style::Number => self.number,
-            Style::Macro => self.macro_color,
-            Style::Lifetime => self.lifetime,
+            Style::Macro | Style::Strong => self.macro_color,
+            Style::Lifetime | Style::Emphasis => self.lifetime,
             Style::Type => self.type_color,
-            Style::Function => self.function,
+            Style::Function | Style::Link => self.function,
             Style::Plain | Style::Variable => self.foreground,
             Style::Property => self.property,
             Style::Constant => self.constant,

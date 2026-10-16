@@ -249,11 +249,17 @@ python3 tests/lsp_smoke.py target/debug/coigue
 
 The Unix PTY smoke test uses only disposable files and checks save/reopen, repeated edits, resize, quit safeguards and terminal restoration after errors and unwinding. The additional `/dev/full` output-failure test runs on Linux and is skipped when that device is unavailable (including macOS).
 
-Rust (`.rs`) and Go (`.go`) files receive built-in lexical highlighting immediately,
-including when no language server is installed. The Rust lexer handles keywords,
+Rust (`.rs`), Go (`.go`), and Markdown (`.md`, `.markdown`) files receive built-in
+lexical highlighting immediately, including when no language server is installed.
+Extensions are case-insensitive. The Rust lexer handles keywords,
 comments, strings, characters, lifetimes, numbers, and macros; the Go lexer handles
 keywords, comments, quoted/raw strings, runes, and numbers. Multiline state is
-preserved for block comments and raw strings. Other extensions remain plain.
+preserved for block comments and raw strings. Markdown highlights headings, emphasis,
+links and images, list/quote markers, task checkboxes, thematic breaks, HTML comments,
+and inline/indented/fenced code. Headings and strong emphasis are bold; emphasis is
+italic. Top-level Rust and Go fences reuse their respective lexers; other code blocks
+use a uniform code color. Markdown highlighting is a lightweight source lexer, not
+a full Markdown parser. Other extensions remain plain.
 Lexers run over the buffer after edits and cache the result while navigating;
 this favors simplicity over performance on very large files.
 
@@ -263,7 +269,7 @@ constants, namespaces, and other supported token classes. Unknown token classes
 retain their lexical colors. All colors use the selected theme, including Mocha,
 Gruvbox, Latte, Monochrome, and the terminal ANSI palette. Monochrome retains bold
 keywords and grayscale semantic colors. Switching themes reuses cached tokens
-and repaints immediately. Markdown continues to use LSP for diagnostics only.
+and repaints immediately. Markdown uses built-in highlighting and LSP diagnostics.
 
 Semantic-token requests run in the background after document synchronization.
 Edits clear old tokens and use lexical colors until a current response arrives;
