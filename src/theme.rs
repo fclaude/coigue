@@ -43,6 +43,7 @@ impl Theme {
     pub fn palette(self) -> Palette {
         match self {
             Self::CatppuccinMocha => Palette {
+                bold_keywords: false,
                 background: rgb(0x1e1e2e),
                 foreground: rgb(0xcdd6f4),
                 muted: rgb(0x7f849c),
@@ -55,6 +56,7 @@ impl Theme {
                 lifetime: rgb(0xf9e2af),
             },
             Self::GruvboxDark => Palette {
+                bold_keywords: false,
                 background: rgb(0x282828),
                 foreground: rgb(0xebdbb2),
                 muted: rgb(0x928374),
@@ -67,6 +69,7 @@ impl Theme {
                 lifetime: rgb(0x8ec07c),
             },
             Self::CatppuccinLatte => Palette {
+                bold_keywords: false,
                 background: rgb(0xeff1f5),
                 foreground: rgb(0x4c4f69),
                 muted: rgb(0x6c6f85),
@@ -79,18 +82,20 @@ impl Theme {
                 lifetime: rgb(0xdf8e1d),
             },
             Self::Monochrome => Palette {
-                background: rgb(0x181818),
-                foreground: rgb(0xd4d4d4),
-                muted: rgb(0x8f8f8f),
+                bold_keywords: true,
+                background: rgb(0x080808),
+                foreground: rgb(0xb0b0b0),
+                muted: rgb(0x5e5e5e),
                 surface: rgb(0x303030),
-                keyword: rgb(0xf0f0f0),
-                comment: rgb(0x8f8f8f),
-                string: rgb(0xbcbcbc),
-                number: rgb(0xc6c6c6),
-                macro_color: rgb(0xe0e0e0),
-                lifetime: rgb(0xd4d4d4),
+                keyword: rgb(0xffffff),
+                comment: rgb(0x7c7c7c),
+                string: rgb(0xd8d8d8),
+                number: rgb(0x989898),
+                macro_color: rgb(0xffffff),
+                lifetime: rgb(0xd8d8d8),
             },
             Self::Terminal => Palette {
+                bold_keywords: false,
                 background: Color::Reset,
                 foreground: Color::Reset,
                 muted: Color::DarkGrey,
@@ -116,6 +121,7 @@ fn rgb(hex: u32) -> Color {
 
 #[derive(Clone, Copy)]
 pub struct Palette {
+    bold_keywords: bool,
     pub background: Color,
     pub foreground: Color,
     pub muted: Color,
@@ -129,6 +135,10 @@ pub struct Palette {
 }
 
 impl Palette {
+    pub fn bold(self, style: Style) -> bool {
+        self.bold_keywords && matches!(style, Style::Keyword | Style::Macro)
+    }
+
     pub fn syntax(self, style: Style) -> Color {
         match style {
             Style::Plain | Style::Punctuation => self.foreground,
