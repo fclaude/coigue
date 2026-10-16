@@ -2,6 +2,8 @@
 
 A small Rust terminal modal editor. One UTF-8 file at a time; no interpreter integration.
 
+Licensed under the [MIT License](LICENSE).
+
 Install a current stable Rust toolchain (Rust 2024 edition), then:
 
 ```sh
