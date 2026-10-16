@@ -316,6 +316,14 @@ impl View {
         let rows = usize::from(h.saturating_sub(2));
         let width = usize::from(w);
         let b = &e.buffer;
+        // Keep at least one text cell on narrow terminals; omit the gutter if necessary.
+        let number_width = b.lines.len().to_string().len() + 1;
+        let gutter = if width > number_width {
+            number_width
+        } else {
+            0
+        };
+        let text_width = width - gutter;
         if b.row < self.top {
             self.top = b.row;
         } else if b.row >= self.top + rows.max(1) {
@@ -324,8 +332,8 @@ impl View {
         let col: usize = b.lines[b.row].iter().take(b.col).map(|c| cell(*c).1).sum();
         if col < self.left {
             self.left = col;
-        } else if col >= self.left + width {
-            self.left = col + 1 - width;
+        } else if col >= self.left + text_width {
+            self.left = col + 1 - text_width;
         }
         let revision = (b.revision(), e.file.revision());
         let path_changed = self.syntax_path.as_ref() != Some(&e.file.path);
@@ -341,12 +349,21 @@ impl View {
         let mut frame = vec![Vec::new(); usize::from(h)];
         for (y, line_out) in frame.iter_mut().take(rows).enumerate() {
             if let Some(line) = b.lines.get(self.top + y) {
+                if gutter > 0 {
+                    let number = format!("{:>digits$} ", self.top + y + 1, digits = gutter - 1);
+                    queue!(
+                        line_out,
+                        SetForegroundColor(Color::DarkGrey),
+                        Print(clipped(number.chars(), 0, gutter)),
+                        SetForegroundColor(Color::Reset)
+                    )?;
+                }
                 if let Some(styles) = &self.styles {
-                    styled_line(line_out, line, &styles[self.top + y], self.left, width)?;
+                    styled_line(line_out, line, &styles[self.top + y], self.left, text_width)?;
                 } else {
                     queue!(
                         line_out,
-                        Print(clipped(line.iter().copied(), self.left, width))
+                        Print(clipped(line.iter().copied(), self.left, text_width))
                     )?;
                 }
             } else {
@@ -372,6 +389,8 @@ impl View {
             format!(":{}", e.command)
         } else if e.mode == Mode::Search {
             format!("/{}", e.search)
+        } else if !e.pending_input().is_empty() {
+            e.pending_input()
         } else {
             e.message.clone()
         };
@@ -393,7 +412,7 @@ impl View {
             )
         } else {
             (
-                (col - self.left).min(width - 1) as u16,
+                (gutter + col - self.left).min(width - 1) as u16,
                 (b.row - self.top).min(rows.saturating_sub(1)) as u16,
             )
         };
@@ -414,10 +433,11 @@ impl View {
                 // A full-width line needs no clearing.
                 let cells = if row < rows {
                     b.lines.get(self.top + row).map_or(1, |line| {
-                        clipped(line.iter().copied(), self.left, width)
-                            .chars()
-                            .map(|c| c.width().unwrap_or(0))
-                            .sum()
+                        gutter
+                            + clipped(line.iter().copied(), self.left, text_width)
+                                .chars()
+                                .map(|c| c.width().unwrap_or(0))
+                                .sum::<usize>()
                     })
                 } else if h >= 2 && row == usize::from(h - 2) {
                     clipped(status.chars(), 0, width)
@@ -449,6 +469,61 @@ impl View {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn line_numbers_track_scroll_cursor_and_decimal_width_changes() {
+        let dir = tempfile::tempdir().unwrap();
+        let (file, _) = crate::file::File::open(dir.path().join("numbers")).unwrap();
+        let mut e = Editor::new(file, &["text"; 9].join("\n"));
+        let mut view = View::default();
+        let mut out = Vec::new();
+        view.draw_to(&e, (12, 5), &mut out).unwrap();
+        assert!(String::from_utf8_lossy(&view.previous[0]).contains("1 "));
+        assert!(String::from_utf8_lossy(&out).contains(&MoveTo(2, 0).to_string()));
+        e.buffer.row = 8;
+        e.buffer.open_line();
+        out.clear();
+        view.draw_to(&e, (12, 5), &mut out).unwrap();
+        assert_eq!(view.top, 7);
+        assert!(String::from_utf8_lossy(&view.previous[0]).contains(" 8 "));
+        assert!(String::from_utf8_lossy(&view.previous[2]).contains("10 "));
+        assert!(String::from_utf8_lossy(&out).contains(&MoveTo(3, 2).to_string()));
+        e.buffer.delete_line();
+        view.draw_to(&e, (12, 5), &mut Vec::new()).unwrap();
+        assert!(String::from_utf8_lossy(&view.previous[0]).contains("8 "));
+        assert_eq!(view.previous[2], b"~");
+        // Neither status nor command prompts inherit the number gutter.
+        e.mode = Mode::Command;
+        e.command = "w".into();
+        out.clear();
+        view.draw_to(&e, (12, 5), &mut out).unwrap();
+        assert_eq!(view.previous[4], b":w");
+        assert!(String::from_utf8_lossy(&out).contains(&MoveTo(2, 4).to_string()));
+    }
+    #[test]
+    fn line_number_gutter_stays_fixed_with_unicode_horizontal_scroll_and_resize() {
+        let dir = tempfile::tempdir().unwrap();
+        let (file, _) = crate::file::File::open(dir.path().join("numbers.rs")).unwrap();
+        let mut e = Editor::new(file, "a\t界xyz");
+        e.buffer.col = 4;
+        let mut view = View::default();
+        let mut out = Vec::new();
+        view.draw_to(&e, (10, 4), &mut out).unwrap();
+        assert_eq!(view.left, 1);
+        let row = String::from_utf8_lossy(&view.previous[0]);
+        assert!(row.contains("1 "));
+        assert!(row.contains("    界xy"));
+        assert!(String::from_utf8_lossy(&out).contains(&MoveTo(9, 0).to_string()));
+        for size in [(1, 4), (2, 4), (3, 4), (0, 0), (80, 4)] {
+            view.draw_to(&e, size, &mut Vec::new()).unwrap();
+        }
+        e.buffer.col = 0;
+        view.draw_to(&e, (80, 4), &mut Vec::new()).unwrap();
+        assert_eq!(view.left, 0);
+        assert!(String::from_utf8_lossy(&view.previous[0]).contains("1 "));
+        out.clear();
+        view.draw_to(&e, (80, 4), &mut out).unwrap();
+        assert!(!String::from_utf8_lossy(&out).contains("1 "));
+    }
     #[test]
     fn welcome_renders_directory_hints_and_commands_across_resizes() {
         let mut e = Editor::welcome(std::path::PathBuf::from("/tmp/space café 界"));

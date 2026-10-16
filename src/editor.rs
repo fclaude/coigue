@@ -9,7 +9,7 @@ pub enum Mode {
 }
 #[derive(Clone)]
 enum Register {
-    Line(Vec<char>, bool),
+    Line(Vec<Vec<char>>, bool),
     Chars(Vec<char>),
 }
 #[derive(Clone)]
@@ -44,6 +44,8 @@ pub struct Editor {
     pub command: String,
     pub message: String,
     pending: Option<char>,
+    count: Option<usize>,
+    operator_count: Option<usize>,
     register: Option<Register>,
     pub search: String,
     last_search: String,
@@ -64,6 +66,8 @@ impl Editor {
             command: String::new(),
             message: String::new(),
             pending: None,
+            count: None,
+            operator_count: None,
             register: None,
             search: String::new(),
             last_search: String::new(),
@@ -141,13 +145,16 @@ impl Editor {
             && key.modifiers == KeyModifiers::CONTROL
             && key.code == K::Char('r')
         {
-            self.pending = None;
-            self.message = if self.buffer.redo() {
-                "Redone"
-            } else {
-                "Nothing to redo"
+            let count = self.take_count().0;
+            self.reset_pending();
+            let mut changed = false;
+            for _ in 0..count {
+                if !self.buffer.redo() {
+                    break;
+                }
+                changed = true;
             }
-            .into();
+            self.message = if changed { "Redone" } else { "Nothing to redo" }.into();
             return false;
         }
         if key.modifiers == KeyModifiers::CONTROL {
@@ -167,7 +174,7 @@ impl Editor {
                 self.buffer.col = self.buffer.col.saturating_sub(1);
             }
             self.mode = Mode::Normal;
-            self.pending = None;
+            self.reset_pending();
             self.command.clear();
             self.search.clear();
             self.buffer.clamp(false);
@@ -197,36 +204,6 @@ impl Editor {
             }
             return false;
         }
-        // A replacement consumes its next key as data, even if it is normally
-        // a movement or command (for example rh replaces with h).
-        if self.mode == Mode::Normal && self.pending == Some('r') {
-            self.pending = None;
-            match key.code {
-                K::Char(c) => self.buffer.replace(c),
-                K::Tab => self.buffer.replace('\t'),
-                _ => {}
-            }
-            return false;
-        }
-        if self.mode == Mode::Normal && key.code == K::Char('-') {
-            self.open_explorer();
-            return false;
-        }
-        if self.mode == Mode::Normal && key.code == K::Char('u') {
-            self.pending = None;
-            self.message = if self.buffer.undo() {
-                "Undone"
-            } else {
-                "Nothing to undo"
-            }
-            .into();
-            return false;
-        }
-        if self.mode == Mode::Normal && matches!(key.code, K::Char('n' | 'N')) {
-            self.pending = None;
-            self.find(key.code == K::Char('n'));
-            return false;
-        }
         if self.mode == Mode::Command {
             match key.code {
                 K::Char(c) => self.command.push(c),
@@ -242,100 +219,18 @@ impl Editor {
             }
             return false;
         }
+        if self.mode == Mode::Normal {
+            self.normal_key(key.code, page_rows);
+            self.buffer.clamp(self.mode == Mode::Insert);
+            return false;
+        }
         let b = &mut self.buffer;
-        if self.mode == Mode::Insert {
-            match key.code {
-                K::Char(c) => b.insert(c),
-                K::Enter => b.insert('\n'),
-                K::Tab => b.insert('\t'),
-                K::Backspace => b.backspace(),
-                _ => {}
-            }
-        } else {
-            let pending = self.pending.take();
-            match (pending, key.code) {
-                (Some(op @ ('d' | 'c' | 'y')), K::Char('w')) => {
-                    let chars = b.word_range(op != 'y', op == 'c');
-                    if !chars.is_empty() {
-                        self.register = Some(Register::Chars(chars));
-                    }
-                    if op == 'c' {
-                        self.mode = Mode::Insert;
-                    }
-                }
-                (_, K::Char(motion @ ('w' | 'b' | 'e'))) => b.word_motion(motion),
-                (Some('d'), K::Char('d')) => {
-                    self.register = Some(Register::Line(
-                        b.lines[b.row].clone(),
-                        b.row + 1 < b.lines.len(),
-                    ));
-                    b.delete_line();
-                }
-                (Some('y'), K::Char('y')) => {
-                    self.register = Some(Register::Line(
-                        b.lines[b.row].clone(),
-                        b.row + 1 < b.lines.len(),
-                    ));
-                    self.message = "Line copied".into();
-                }
-                (Some('>'), K::Char('>')) => b.indent(true),
-                (Some('<'), K::Char('<')) => b.indent(false),
-                (Some('g'), K::Char('g')) => {
-                    b.row = 0;
-                    b.col = 0;
-                }
-                (_, K::Char('d')) => self.pending = Some('d'),
-                (_, K::Char('g')) => self.pending = Some('g'),
-                (_, K::Char(c @ ('c' | 'y' | 'r' | '>' | '<'))) => self.pending = Some(c),
-                (_, K::Char('p' | 'P')) => {
-                    if let Some(register) = &self.register {
-                        let after = key.code == K::Char('p');
-                        match register {
-                            Register::Line(line, terminated) => {
-                                b.paste_line(line, after, *terminated)
-                            }
-                            Register::Chars(chars) => b.paste_chars(chars, after),
-                        }
-                    } else {
-                        self.message = "Nothing to paste".into();
-                    }
-                }
-                (_, K::Char('A')) => {
-                    b.col = b.lines[b.row].len();
-                    self.mode = Mode::Insert;
-                }
-                (_, K::Char('/')) => {
-                    self.search.clear();
-                    self.message.clear();
-                    self.mode = Mode::Search;
-                }
-                (_, K::Char('i')) => self.mode = Mode::Insert,
-                (_, K::Char('a')) => {
-                    b.col = (b.col + 1).min(b.lines[b.row].len());
-                    self.mode = Mode::Insert;
-                }
-                (_, K::Char('o')) => {
-                    b.open_line();
-                    self.mode = Mode::Insert;
-                }
-                (_, K::Char('x')) => {
-                    if let Some(&ch) = b.lines[b.row].get(b.col) {
-                        self.register = Some(Register::Chars(vec![ch]));
-                        b.delete();
-                    }
-                }
-                (_, K::Char('0')) => b.col = 0,
-                (_, K::Char('$')) => b.col = b.lines[b.row].len().saturating_sub(1),
-                (_, K::Char('G')) => {
-                    b.row = b.lines.len() - 1;
-                    b.col = 0;
-                }
-                (_, K::Char(':')) => {
-                    self.command.clear();
-                    self.mode = Mode::Command;
-                }
-                _ => {}
-            }
+        match key.code {
+            K::Char(c) => b.insert(c),
+            K::Enter => b.insert('\n'),
+            K::Tab => b.insert('\t'),
+            K::Backspace => b.backspace(),
+            _ => {}
         }
         match key.code {
             K::Home => b.col = 0,
@@ -351,14 +246,228 @@ impl Editor {
             K::Right => b.col += 1,
             K::Up => b.row = b.row.saturating_sub(1),
             K::Down => b.row = (b.row + 1).min(b.lines.len() - 1),
-            K::Char('h') if self.mode == Mode::Normal => b.col = b.col.saturating_sub(1),
-            K::Char('l') if self.mode == Mode::Normal => b.col += 1,
-            K::Char('k') if self.mode == Mode::Normal => b.row = b.row.saturating_sub(1),
-            K::Char('j') if self.mode == Mode::Normal => b.row = (b.row + 1).min(b.lines.len() - 1),
             _ => {}
         }
         b.clamp(self.mode == Mode::Insert);
         false
+    }
+    pub fn pending_input(&self) -> String {
+        let mut input = String::new();
+        if let Some(count) = self.operator_count {
+            input.push_str(&count.to_string());
+        }
+        if let Some(op) = self.pending {
+            input.push(op);
+        }
+        if let Some(count) = self.count {
+            input.push_str(&count.to_string());
+        }
+        input
+    }
+    fn reset_pending(&mut self) {
+        self.pending = None;
+        self.count = None;
+        self.operator_count = None;
+    }
+    fn take_count(&mut self) -> (usize, bool) {
+        let explicit = self.count.is_some() || self.operator_count.is_some();
+        let count = self
+            .count
+            .take()
+            .unwrap_or(1)
+            .saturating_mul(self.operator_count.unwrap_or(1))
+            .min(9999);
+        self.operator_count = None;
+        (count, explicit)
+    }
+    fn normal_key(&mut self, code: K, page_rows: usize) {
+        // Replacement data must bypass digit parsing (e.g. 2r3).
+        if self.pending == Some('r') {
+            let count = self.take_count().0;
+            self.reset_pending();
+            let ch = match code {
+                K::Char(c) => c,
+                K::Tab => '\t',
+                _ => return,
+            };
+            let b = &mut self.buffer;
+            let start = b.col;
+            for col in start..start.saturating_add(count).min(b.lines[b.row].len()) {
+                b.col = col;
+                b.replace(ch);
+            }
+            b.col = start;
+            return;
+        }
+        if let K::Char(c @ '0'..='9') = code
+            && (c != '0' || self.count.is_some())
+        {
+            self.count =
+                Some((self.count.unwrap_or(0) * 10 + c.to_digit(10).unwrap() as usize).min(9999));
+            return;
+        }
+        let pending = self.pending.take();
+        if let K::Char(op @ ('d' | 'c' | 'y' | 'g' | 'r' | '>' | '<')) = code
+            && pending != Some(op)
+        {
+            let (count, explicit) = self.take_count();
+            self.operator_count = explicit.then_some(count);
+            self.pending = Some(op);
+            return;
+        }
+        let (count, explicit) = self.take_count();
+        match (pending, code) {
+            (Some(op @ ('d' | 'c' | 'y')), K::Char('w')) => {
+                let chars = self.buffer.word_range(op != 'y', op == 'c', count);
+                if !chars.is_empty() {
+                    self.register = Some(Register::Chars(chars));
+                }
+                if op == 'c' {
+                    self.mode = Mode::Insert;
+                }
+            }
+            (Some(op @ ('d' | 'y')), K::Char(c)) if op == c => {
+                let b = &mut self.buffer;
+                let start = b.row;
+                let end = start.saturating_add(count).min(b.lines.len());
+                self.register = Some(Register::Line(
+                    b.lines[start..end].to_vec(),
+                    end < b.lines.len(),
+                ));
+                if op == 'd' {
+                    // Remove at the original row, never clamp backwards and delete earlier lines.
+                    for _ in start..end {
+                        b.row = start;
+                        b.delete_line();
+                    }
+                } else {
+                    self.message = format!("{} line(s) copied", end - start);
+                }
+            }
+            (Some(op @ ('>' | '<')), K::Char(c)) if op == c => {
+                let b = &mut self.buffer;
+                let start = b.row;
+                let original_col = b.col;
+                let mut first_col = original_col;
+                for row in start..start.saturating_add(count).min(b.lines.len()) {
+                    b.row = row;
+                    b.col = original_col;
+                    b.indent(op == '>');
+                    if row == start {
+                        first_col = b.col;
+                    }
+                }
+                b.row = start;
+                b.col = first_col;
+            }
+            (Some('g'), K::Char('g')) | (_, K::Char('G')) => {
+                self.buffer.row = if explicit {
+                    count - 1
+                } else if code == K::Char('G') {
+                    self.buffer.lines.len() - 1
+                } else {
+                    0
+                };
+                self.buffer.col = 0;
+            }
+            (_, K::Char('h') | K::Left) => self.buffer.col = self.buffer.col.saturating_sub(count),
+            (_, K::Char('l') | K::Right) => self.buffer.col = self.buffer.col.saturating_add(count),
+            (_, K::Char('k') | K::Up) => self.buffer.row = self.buffer.row.saturating_sub(count),
+            (_, K::Char('j') | K::Down) => self.buffer.row = self.buffer.row.saturating_add(count),
+            (_, K::PageUp) => {
+                self.buffer.row = self
+                    .buffer
+                    .row
+                    .saturating_sub(page_rows.max(1).saturating_mul(count))
+            }
+            (_, K::PageDown) => {
+                self.buffer.row = self
+                    .buffer
+                    .row
+                    .saturating_add(page_rows.max(1).saturating_mul(count))
+            }
+            (_, K::Home | K::Char('0')) => self.buffer.col = 0,
+            (_, K::End | K::Char('$')) => {
+                self.buffer.col = self.buffer.lines[self.buffer.row].len().saturating_sub(1)
+            }
+            (_, K::Char(motion @ ('w' | 'b' | 'e'))) => {
+                for _ in 0..count {
+                    let before = (self.buffer.row, self.buffer.col);
+                    self.buffer.word_motion(motion);
+                    if before == (self.buffer.row, self.buffer.col) {
+                        break;
+                    }
+                }
+            }
+            (_, K::Char('x')) => {
+                let b = &mut self.buffer;
+                let end = b.col.saturating_add(count).min(b.lines[b.row].len());
+                let chars = b.lines[b.row][b.col..end].to_vec();
+                if !chars.is_empty() {
+                    for _ in 0..chars.len() {
+                        b.delete();
+                    }
+                    self.register = Some(Register::Chars(chars));
+                }
+            }
+            (_, K::Char('p' | 'P')) => {
+                if let Some(register) = &self.register {
+                    match register {
+                        Register::Line(lines, terminated) => {
+                            let repeated: Vec<_> =
+                                (0..count).flat_map(|_| lines.iter().cloned()).collect();
+                            self.buffer
+                                .paste_lines(&repeated, code == K::Char('p'), *terminated);
+                        }
+                        Register::Chars(chars) => self
+                            .buffer
+                            .paste_chars(&chars.repeat(count), code == K::Char('p')),
+                    }
+                } else {
+                    self.message = "Nothing to paste".into();
+                }
+            }
+            (_, K::Char('u')) => {
+                let mut changed = false;
+                for _ in 0..count {
+                    if !self.buffer.undo() {
+                        break;
+                    }
+                    changed = true;
+                }
+                self.message = if changed { "Undone" } else { "Nothing to undo" }.into();
+            }
+            (_, K::Char('n' | 'N')) => {
+                for _ in 0..count {
+                    self.find(code == K::Char('n'));
+                }
+            }
+            (_, K::Char('A')) => {
+                self.buffer.col = self.buffer.lines[self.buffer.row].len();
+                self.mode = Mode::Insert;
+            }
+            (_, K::Char('i')) => self.mode = Mode::Insert,
+            (_, K::Char('a')) => {
+                self.buffer.col =
+                    (self.buffer.col + 1).min(self.buffer.lines[self.buffer.row].len());
+                self.mode = Mode::Insert;
+            }
+            (_, K::Char('o')) => {
+                self.buffer.open_line();
+                self.mode = Mode::Insert;
+            }
+            (_, K::Char('/')) => {
+                self.search.clear();
+                self.message.clear();
+                self.mode = Mode::Search;
+            }
+            (_, K::Char(':')) => {
+                self.command.clear();
+                self.mode = Mode::Command;
+            }
+            (_, K::Char('-')) => self.open_explorer(),
+            _ => {}
+        }
     }
     fn find(&mut self, forward: bool) {
         if self.last_search.is_empty() {
@@ -406,7 +515,7 @@ impl Editor {
                 None,
                 std::mem::take(&mut self.explorer_memory),
             ));
-            self.pending = None;
+            self.reset_pending();
             return;
         }
         let path = match self.active_path() {
@@ -424,7 +533,7 @@ impl Editor {
             Some(path),
             std::mem::take(&mut self.explorer_memory),
         ));
-        self.pending = None;
+        self.reset_pending();
     }
     fn close_explorer(&mut self) {
         if let Some(mut explorer) = self.explorer.take() {
@@ -656,7 +765,7 @@ impl Editor {
                 self.mode = Mode::Normal;
                 self.command.clear();
                 self.search.clear();
-                self.pending = None;
+                self.reset_pending();
                 self.message.clear();
                 self.generation += 1;
                 self.picker = None;
@@ -696,7 +805,7 @@ impl Editor {
             Ok(root) => self.picker = Some(crate::picker::Picker::new(root)),
             Err(err) => self.message = format!("Cannot open picker: {err}"),
         }
-        self.pending = None;
+        self.reset_pending();
     }
     fn picker_key(&mut self, key: KeyEvent, page_rows: usize) {
         self.message.clear();
@@ -735,6 +844,21 @@ impl Editor {
         }
     }
     fn execute(&mut self, cmd: &str) -> bool {
+        let cmd = cmd.trim();
+        if !cmd.is_empty() && cmd.bytes().all(|c| c.is_ascii_digit()) {
+            if self.welcome.is_some() {
+                self.message = "No file open".into();
+            } else if let Ok(line) = cmd.parse::<usize>()
+                && line > 0
+            {
+                self.buffer.row = (line - 1).min(self.buffer.lines.len() - 1);
+                self.buffer.col = 0;
+                self.message.clear();
+            } else {
+                self.message = "Invalid line number; use a positive whole number".into();
+            }
+            return false;
+        }
         let text = self.buffer.text();
         match cmd {
             "open" => self.open_picker(),
@@ -863,6 +987,178 @@ mod tests {
         send(e, "/");
         send(e, query);
         press(e, K::Tab);
+    }
+    #[test]
+    fn counts_move_jump_cancel_and_do_not_leak_between_modes() {
+        let (_dir, mut e) = editing_fixture(&"abcdef\n".repeat(30));
+        send(&mut e, "12j3l");
+        assert_eq!((e.buffer.row, e.buffer.col), (12, 3));
+        send(&mut e, "0");
+        assert_eq!(e.buffer.col, 0);
+        send(&mut e, "10gg");
+        assert_eq!(e.buffer.row, 9);
+        send(&mut e, "1G");
+        assert_eq!(e.buffer.row, 0);
+        send(&mut e, "999999999999999999999999999j");
+        assert_eq!(e.buffer.row, 30);
+        send(&mut e, "gg12d3");
+        assert_eq!(e.pending_input(), "12d3");
+        press(&mut e, K::Esc);
+        send(&mut e, "j");
+        assert_eq!(e.buffer.row, 1);
+        assert!(e.pending_input().is_empty());
+        send(&mut e, "20");
+        ctrl(&mut e, 'p');
+        press(&mut e, K::Esc);
+        send(&mut e, "j");
+        assert_eq!(e.buffer.row, 2);
+        send(&mut e, "9i123");
+        press(&mut e, K::Esc);
+        assert!(e.buffer.text().contains("123abcdef"));
+        send(&mut e, "/12");
+        assert_eq!(e.search, "12");
+        press(&mut e, K::Esc);
+        send(&mut e, ":123");
+        assert_eq!(e.command, "123");
+        press(&mut e, K::Esc);
+        send(&mut e, "4");
+        press(&mut e, K::Down);
+        assert_eq!(e.buffer.row, 6);
+        send(&mut e, "2");
+        ctrl(&mut e, 'f');
+        assert_eq!(e.buffer.row, 30);
+    }
+    #[test]
+    fn counted_line_registers_and_indentation_undo_as_one_edit() {
+        let original = "a\nb\nc\nd\ne";
+        let (_dir, mut e) = editing_fixture(original);
+        send(&mut e, "2dd");
+        assert_eq!(e.buffer.text(), "c\nd\ne");
+        send(&mut e, "p");
+        assert_eq!(e.buffer.text(), "c\na\nb\nd\ne");
+        send(&mut e, "uu");
+        assert_eq!(e.buffer.text(), original);
+        send(&mut e, "2yyG2p");
+        assert_eq!(e.buffer.text(), "a\nb\nc\nd\ne\na\nb\na\nb");
+        send(&mut e, "u");
+        assert_eq!(e.buffer.text(), original);
+        send(&mut e, "gg4>>");
+        assert_eq!(e.buffer.text(), "    a\n    b\n    c\n    d\ne");
+        send(&mut e, "u");
+        assert_eq!(e.buffer.text(), original);
+        redo(&mut e);
+        send(&mut e, "2<2<");
+        assert_eq!(e.buffer.text(), original);
+        send(&mut e, "G999dd");
+        assert_eq!(e.buffer.text(), "a\nb\nc\nd");
+        send(&mut e, "u");
+        assert_eq!(e.buffer.text(), original);
+        send(&mut e, "gg999ddP");
+        assert_eq!(e.buffer.text(), original);
+    }
+    #[test]
+    fn counted_words_characters_replacement_and_change_preserve_registers() {
+        let original = "one two three four five six seven";
+        let (_dir, mut e) = editing_fixture(original);
+        send(&mut e, "2d3w");
+        assert_eq!(e.buffer.text(), "seven");
+        send(&mut e, "P");
+        assert_eq!(e.buffer.text(), original);
+        send(&mut e, "uu2w");
+        assert_eq!(e.buffer.col, 8);
+        send(&mut e, "2b2ywG$p");
+        assert_eq!(e.buffer.text(), format!("{original}one two "));
+        send(&mut e, "u0");
+        send(&mut e, "2cwNEW");
+        press(&mut e, K::Esc);
+        assert_eq!(e.buffer.text(), "NEW three four five six seven");
+        send(&mut e, "u0");
+        assert_eq!(e.buffer.text(), original);
+        send(&mut e, "3xP");
+        assert_eq!(e.buffer.text(), original);
+        send(&mut e, "uu2r3");
+        assert_eq!(e.buffer.text(), "33e two three four five six seven");
+        send(&mut e, "u0$999x");
+        assert_eq!(e.buffer.text(), "one two three four five six seve");
+        send(&mut e, "u");
+        assert_eq!(e.buffer.text(), original);
+        let (_dir, mut empty) = editing_fixture("");
+        send(&mut empty, "999x999dw999p");
+        assert_eq!(empty.buffer.text(), "");
+        assert!(!empty.buffer.undo());
+    }
+    #[test]
+    fn go_to_line_command_jumps_clamps_cancels_and_preserves_history() {
+        let (_dir, mut e) = editing_fixture("first\n界 second\n\nlast\n");
+        send(&mut e, "i!");
+        press(&mut e, K::Esc);
+        send(&mut e, ":2");
+        assert_eq!(e.buffer.row, 0);
+        press(&mut e, K::Enter);
+        assert_eq!(e.mode, Mode::Normal);
+        assert_eq!((e.buffer.row, e.buffer.col), (1, 0));
+        send(&mut e, ":3");
+        press(&mut e, K::Enter);
+        assert_eq!((e.buffer.row, e.buffer.col), (2, 0));
+        send(&mut e, ":999999");
+        press(&mut e, K::Enter);
+        assert_eq!((e.buffer.row, e.buffer.col), (4, 0));
+        send(&mut e, ":1");
+        press(&mut e, K::Esc);
+        assert_eq!(e.buffer.row, 4);
+        for invalid in ["0", "9999999999999999999999999999999999999999", "-1", "2x"] {
+            assert!(!e.execute(invalid));
+            assert_eq!((e.buffer.row, e.buffer.col), (4, 0));
+            assert!(!e.message.is_empty());
+        }
+        e.execute("  0002  ");
+        assert_eq!((e.buffer.row, e.buffer.col), (1, 0));
+        assert!(e.message.is_empty());
+        assert_eq!(e.buffer.text(), "!first\n界 second\n\nlast\n");
+        send(&mut e, "u");
+        assert_eq!(e.buffer.text(), "first\n界 second\n\nlast\n");
+        redo(&mut e);
+        assert_eq!(e.buffer.text(), "!first\n界 second\n\nlast\n");
+        let (_dir, mut empty) = editing_fixture("");
+        empty.execute("100");
+        assert_eq!((empty.buffer.row, empty.buffer.col), (0, 0));
+        let dir = tempfile::tempdir().unwrap();
+        let mut welcome = Editor::welcome(dir.path().into());
+        send(&mut welcome, ":2");
+        press(&mut welcome, K::Enter);
+        assert_eq!(welcome.message, "No file open");
+        assert!(welcome.welcome.is_some());
+    }
+    #[test]
+    fn counted_undo_redo_and_search_repeat_without_editing() {
+        let (_dir, mut e) = editing_fixture("a a a a");
+        send(&mut e, "xx2u");
+        assert_eq!(e.buffer.text(), "a a a a");
+        send(&mut e, "2");
+        ctrl(&mut e, 'r');
+        assert_eq!(e.buffer.text(), "a a a");
+        send(&mut e, "2u/a");
+        press(&mut e, K::Enter);
+        assert_eq!(e.buffer.col, 2);
+        send(&mut e, "2n");
+        assert_eq!(e.buffer.col, 6);
+        send(&mut e, "3N");
+        assert_eq!(e.buffer.col, 0);
+        assert_eq!(e.buffer.text(), "a a a a");
+    }
+    #[test]
+    fn counted_unicode_ranges_roundtrip_crlf_and_multiple_lines() {
+        let original = "café 界\r\n\nlast end";
+        let (_dir, mut e) = editing_fixture(original);
+        send(&mut e, "3dwP");
+        assert_eq!(e.buffer.text(), original);
+        send(&mut e, "uu2yyG2p");
+        assert_eq!(
+            e.buffer.text(),
+            "café 界\r\n\nlast end\ncafé 界\r\n\ncafé 界\r\n"
+        );
+        send(&mut e, "u");
+        assert_eq!(e.buffer.text(), original);
     }
     #[test]
     fn word_edits_register_history_and_modes() {
