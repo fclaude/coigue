@@ -36,6 +36,58 @@ impl FilesystemPrompt {
         }
     }
 }
+struct CommandCompletion {
+    candidates: Vec<String>,
+    selected: usize,
+}
+impl CommandCompletion {
+    fn new(input: &str, backwards: bool) -> Option<Self> {
+        const COMMANDS: &[&str] = &[
+            "explore",
+            "lsp-restart",
+            "open",
+            "q",
+            "q!",
+            "theme",
+            "w",
+            "wq",
+        ];
+        let trimmed = input.trim_start();
+        let (prefix, choices) = if let Some(end) = trimmed.find(char::is_whitespace) {
+            if &trimmed[..end] != "theme" {
+                return None;
+            }
+            let argument = trimmed[end..].trim_start();
+            if argument.contains(char::is_whitespace) {
+                return None;
+            }
+            (argument, crate::theme::Theme::COMPLETIONS)
+        } else {
+            (trimmed, COMMANDS)
+        };
+        let before = &input[..input.len() - prefix.len()];
+        let candidates: Vec<_> = choices
+            .iter()
+            .filter(|choice| choice.starts_with(prefix))
+            .map(|choice| format!("{before}{choice}"))
+            .collect();
+        if candidates.is_empty() {
+            return None;
+        }
+        let selected = if backwards { candidates.len() - 1 } else { 0 };
+        Some(Self {
+            candidates,
+            selected,
+        })
+    }
+    fn cycle(&mut self, backwards: bool) {
+        self.selected = if backwards {
+            (self.selected + self.candidates.len() - 1) % self.candidates.len()
+        } else {
+            (self.selected + 1) % self.candidates.len()
+        };
+    }
+}
 pub struct Editor {
     pub theme: crate::theme::Theme,
     pub lsp: crate::lsp::Client,
@@ -44,6 +96,7 @@ pub struct Editor {
     pub file: File,
     pub mode: Mode,
     pub command: String,
+    command_completion: Option<CommandCompletion>,
     pub message: String,
     pending: Option<char>,
     count: Option<usize>,
@@ -68,6 +121,7 @@ impl Editor {
             file,
             mode: Mode::Normal,
             command: String::new(),
+            command_completion: None,
             message: String::new(),
             pending: None,
             count: None,
@@ -117,6 +171,9 @@ impl Editor {
         Ok(())
     }
     fn key_inner(&mut self, mut key: KeyEvent, page_rows: usize) -> bool {
+        if !matches!(key.code, K::Tab | K::BackTab) {
+            self.command_completion = None;
+        }
         if self.switch_prompt.is_some() {
             self.switch_key(key);
             return false;
@@ -231,6 +288,18 @@ impl Editor {
         if self.mode == Mode::Command {
             match key.code {
                 K::Char(c) => self.command.push(c),
+                K::Tab | K::BackTab => {
+                    let backwards =
+                        key.code == K::BackTab || key.modifiers.contains(KeyModifiers::SHIFT);
+                    if let Some(completion) = &mut self.command_completion {
+                        completion.cycle(backwards);
+                    } else {
+                        self.command_completion = CommandCompletion::new(&self.command, backwards);
+                    }
+                    if let Some(completion) = &self.command_completion {
+                        self.command = completion.candidates[completion.selected].clone();
+                    }
+                }
                 K::Backspace => {
                     self.command.pop();
                 }
@@ -928,6 +997,133 @@ impl Editor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn command_completion_cycles_both_directions_without_executing() {
+        let (_dir, mut e) = editing_fixture("original");
+        send(&mut e, "i!");
+        press(&mut e, K::Esc);
+        let revision = e.buffer.revision();
+        send(&mut e, ":w");
+        for expected in ["w", "wq", "w"] {
+            assert!(!e.key(KeyEvent::new(K::Tab, KeyModifiers::NONE), 22));
+            assert_eq!(e.command, expected);
+        }
+        e.key(KeyEvent::new(K::BackTab, KeyModifiers::SHIFT), 22);
+        assert_eq!(e.command, "wq");
+        e.key(KeyEvent::new(K::Tab, KeyModifiers::SHIFT), 22);
+        assert_eq!(e.command, "w");
+        assert_eq!(e.mode, Mode::Command);
+        assert_eq!(e.buffer.revision(), revision);
+        assert!(e.file.dirty(&e.buffer.text()));
+        press(&mut e, K::Esc);
+        send(&mut e, ":q");
+        assert!(!e.key(KeyEvent::new(K::Tab, KeyModifiers::NONE), 22));
+        assert!(!e.key(KeyEvent::new(K::Tab, KeyModifiers::NONE), 22));
+        assert_eq!(e.command, "q!");
+        assert!(e.key(KeyEvent::new(K::Enter, KeyModifiers::NONE), 22));
+    }
+    #[test]
+    fn command_completion_covers_commands_and_resets_after_input_or_cancel() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut e = Editor::welcome(dir.path().into());
+        send(&mut e, ":");
+        for expected in [
+            "explore",
+            "lsp-restart",
+            "open",
+            "q",
+            "q!",
+            "theme",
+            "w",
+            "wq",
+            "explore",
+        ] {
+            press(&mut e, K::Tab);
+            assert_eq!(e.command, expected);
+        }
+        press(&mut e, K::Esc);
+        send(&mut e, ":");
+        press(&mut e, K::BackTab);
+        assert_eq!(e.command, "wq");
+        press(&mut e, K::Backspace);
+        press(&mut e, K::Tab);
+        assert_eq!(e.command, "w");
+        press(&mut e, K::Tab);
+        assert_eq!(e.command, "wq");
+        press(&mut e, K::Esc);
+        send(&mut e, ":the");
+        press(&mut e, K::Tab);
+        assert_eq!(e.command, "theme");
+        send(&mut e, " lat");
+        press(&mut e, K::Tab);
+        assert_eq!(e.command, "theme latte");
+        press(&mut e, K::Enter);
+        assert_eq!(e.theme, crate::theme::Theme::CatppuccinLatte);
+        send(&mut e, ":exp");
+        press(&mut e, K::Tab);
+        assert_eq!(e.command, "explore");
+        press(&mut e, K::Enter);
+        assert!(e.explorer.is_some());
+        assert!(e.welcome.is_some());
+    }
+    #[test]
+    fn theme_completion_handles_aliases_whitespace_and_ambiguous_prefixes() {
+        let (_dir, mut e) = editing_fixture("original");
+        for (input, expected) in [
+            (":theme ", "theme mocha"),
+            (":theme catppuccin-l", "theme catppuccin-latte"),
+            (":theme gruvbox-d", "theme gruvbox-dark"),
+            (":  theme  term", "  theme  terminal"),
+            (":\u{2003}theme\u{2003}lat", "\u{2003}theme\u{2003}latte"),
+        ] {
+            send(&mut e, input);
+            press(&mut e, K::Tab);
+            assert_eq!(e.command, expected);
+            press(&mut e, K::Esc);
+        }
+        send(&mut e, ":theme m");
+        for expected in ["theme mocha", "theme monochrome", "theme mocha"] {
+            press(&mut e, K::Tab);
+            assert_eq!(e.command, expected);
+        }
+        press(&mut e, K::BackTab);
+        assert_eq!(e.command, "theme monochrome");
+        // Completion does not apply a theme until Enter.
+        assert_eq!(e.theme, crate::theme::Theme::CatppuccinMocha);
+        press(&mut e, K::Enter);
+        assert_eq!(e.theme, crate::theme::Theme::Monochrome);
+        for name in crate::theme::Theme::COMPLETIONS {
+            assert!(crate::theme::Theme::parse(name).is_some());
+        }
+    }
+    #[test]
+    fn completion_leaves_unmatched_commands_numbers_and_other_modes_alone() {
+        let (_dir, mut e) = editing_fixture("original");
+        for input in [
+            ":unknown",
+            ":42",
+            ":thé",
+            ":theme nope",
+            ":theme mocha extra",
+            ":open path",
+        ] {
+            send(&mut e, input);
+            press(&mut e, K::Tab);
+            press(&mut e, K::BackTab);
+            assert_eq!(e.command, &input[1..]);
+            press(&mut e, K::Esc);
+        }
+        send(&mut e, "/the");
+        press(&mut e, K::Tab);
+        assert_eq!(e.search, "the");
+        press(&mut e, K::Esc);
+        send(&mut e, "i");
+        press(&mut e, K::Tab);
+        assert_eq!(e.buffer.text(), "\toriginal");
+        press(&mut e, K::Esc);
+        send(&mut e, "u");
+        assert_eq!(e.buffer.text(), "original");
+    }
     #[test]
     fn theme_commands_preserve_edits_history_and_selection_across_files() {
         use crate::theme::Theme;

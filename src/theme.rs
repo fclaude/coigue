@@ -18,6 +18,16 @@ pub enum Theme {
 
 impl Theme {
     pub const CHOICES: &str = "mocha|gruvbox|latte|monochrome|terminal";
+    pub const COMPLETIONS: &[&str] = &[
+        "mocha",
+        "gruvbox",
+        "latte",
+        "monochrome",
+        "terminal",
+        "catppuccin-mocha",
+        "catppuccin-latte",
+        "gruvbox-dark",
+    ];
 
     pub fn name(self) -> &'static str {
         match self {
