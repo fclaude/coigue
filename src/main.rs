@@ -90,6 +90,12 @@ fn run() -> io::Result<()> {
     Ok(())
 }
 fn main() {
+    if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--help")) {
+        println!(
+            "Usage: coigue [FILE]\n\nOpen a file, or start in the current directory.\n\n  --version  Show source version, package build, and commit\n  --help     Show this help"
+        );
+        return;
+    }
     if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--version")) {
         println!(
             "coigue {} (main build {}; commit {})",
