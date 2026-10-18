@@ -167,6 +167,23 @@ impl View {
         let mut out = io::stdout().lock();
         self.draw_to(e, terminal::size()?, &mut out)
     }
+    fn draw_help(&mut self, e: &Editor, out: &mut impl Write) -> io::Result<()> {
+        let help = e.help.as_ref().unwrap();
+        let (_, h) = self.size;
+        let rows = usize::from(h.saturating_sub(2));
+        let mut lines = vec![format!("Help | {} | Tab: next topic", help.topic.title())];
+        lines.extend(
+            help.topic
+                .lines()
+                .iter()
+                .skip(help.scroll)
+                .take(rows)
+                .map(|s| (*s).to_owned()),
+        );
+        lines.resize(usize::from(h.saturating_sub(1)), String::new());
+        lines.push("Esc/F1 return | Tab topics | Up/Down scroll | Page Up/Down".into());
+        self.draw_browser_lines(lines, e, out)
+    }
     fn draw_picker(&mut self, e: &Editor, out: &mut impl Write) -> io::Result<()> {
         let picker = e.picker.as_ref().unwrap();
         let (_, h) = self.size;
@@ -368,6 +385,9 @@ impl View {
             self.revision = None;
             self.generation = e.generation;
         }
+        if e.help.is_some() {
+            return self.draw_help(e, out);
+        }
         if e.picker.is_some() {
             return self.draw_picker(e, out);
         }
@@ -382,6 +402,7 @@ impl View {
                 format!("Directory: {}", directory.display()),
                 "Ctrl-O / - / :explore   Browse and create files".to_owned(),
                 "Ctrl-P / :open         Find a file".to_owned(),
+                "F1 / :help            Getting started and key guide".to_owned(),
                 ":q                     Quit".to_owned(),
             ];
             let available = usize::from(h.saturating_sub(1));
@@ -394,7 +415,7 @@ impl View {
             } else if !e.message.is_empty() {
                 e.message.clone()
             } else {
-                "Ctrl-O browse | Ctrl-P find | :q quit".into()
+                "F1 help | Ctrl-O browse | Ctrl-P find | :q quit".into()
             };
             return self.draw_browser_lines(lines, e, out);
         }
@@ -700,6 +721,27 @@ mod tests {
         assert!(
             rendered.ends_with(&SetForegroundColor(crossterm::style::Color::Reset).to_string())
         );
+    }
+    #[test]
+    fn help_returns_to_scrolled_file_and_survives_tiny_resizes() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let dir = tempfile::tempdir().unwrap();
+        let (file, _) = crate::file::File::open(dir.path().join("guide")).unwrap();
+        let mut e = Editor::new(file, &["a very long line with text"; 40].join("\n"));
+        e.buffer.row = 30;
+        e.buffer.col = 20;
+        let mut view = View::default();
+        view.draw_to(&e, (16, 8), &mut Vec::new()).unwrap();
+        let position = (view.top, view.left);
+        e.key(KeyEvent::new(KeyCode::F(1), KeyModifiers::NONE), 6);
+        for size in [(80, 24), (1, 1), (2, 2), (16, 8)] {
+            let mut out = Vec::new();
+            view.draw_to(&e, size, &mut out).unwrap();
+        }
+        e.key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE), 6);
+        view.draw_to(&e, (16, 8), &mut Vec::new()).unwrap();
+        assert_eq!((view.top, view.left), position);
+        assert_eq!((e.buffer.row, e.buffer.col), (30, 20));
     }
     #[test]
     fn markdown_highlighting_repaints_themes_and_tracks_fence_edits_and_history() {

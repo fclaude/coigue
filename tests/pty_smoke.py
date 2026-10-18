@@ -125,6 +125,17 @@ else: sys.stdout.buffer.write(store.read_bytes())
     path.write_text('one two three four\n\nuntouched paragraph\n')
     session(path, [b':textwidth 10\r', b'gq', b'u', b'\x12', b':wq\r'])
     assert path.read_text() == 'one two\nthree four\n\nuntouched paragraph\n'
+
+with tempfile.TemporaryDirectory() as directory:
+    path = pathlib.Path(directory) / 'help'
+    path.write_text('original')
+    out = session(path, [b'iONE', b'\x1bOP', b'\t', b'\x1b', b'TWO',
+                         b'\x1b', b'u', b':help\r', None, b'\x1b', b':wq\r'])
+    assert path.read_text() == 'original', 'help split the insert undo group'
+    assert b'Help |' in out and b'Editing and movement' in out
+    print('Help PTY: F1, topics, command, resize, return and grouped undo verified')
+
+with tempfile.TemporaryDirectory() as directory:
     path = pathlib.Path(directory) / 'go-to-line'
     path.write_text('\n'.join(f'line{n}' for n in range(1, 61)))
     out = session(path, [b':42\r', b'i@', b'\x1b', b':1', b'\x1b',

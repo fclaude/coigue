@@ -60,6 +60,14 @@ clip the display and resizing redraws it. `coigue --help` shows startup usage.
 
 A nonexistent explicit path starts an empty buffer. Parent directories must already exist.
 
+Press **F1** anywhere for help, including while editing, filtering files, typing
+commands, or confirming a file operation. Help starts on the relevant topic;
+Tab / Shift-Tab switch topics, arrows or Page Up/Down scroll, and Esc / F1
+returns to the exact previous state. Opening help during Insert mode keeps the
+same undo group. **`:help`** opens the guide from the command line. Welcome
+includes a short getting-started guide; the remaining topics cover editing,
+finding files, the directory browser, and commands and confirmations.
+
 Bindings:
 
 - Normal mode: `h j k l`, arrows, `0`, `$`, `gg`, `G`; `i` insert, `a` append, `o` open a line below; `x` delete a character, `dd` delete a line.
