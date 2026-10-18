@@ -7,6 +7,7 @@ mod file;
 mod fileops;
 mod help;
 mod lsp;
+mod navigation;
 mod picker;
 mod reflow;
 mod render;
@@ -72,7 +73,7 @@ fn run() -> io::Result<()> {
             explorer.poll();
             explorer.fit(view.page_rows());
         }
-        view.draw(&editor)?;
+        view.draw(&mut editor)?;
         if !event::poll(std::time::Duration::from_millis(50))? {
             continue;
         }

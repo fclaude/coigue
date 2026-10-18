@@ -77,6 +77,16 @@ an unfinished command or Insert session; choosing a navigation action ends the
 Insert group. Pending save/delete confirmations must be resolved before another
 navigation action can run.
 
+**Alt-Left / Alt-Right** or **`:back` / `:forward`** return through navigation
+history, including file switches, searches, and explicit line jumps. Each location
+remembers the file, cursor, and scroll position. **`:recent`** or Files → Recent
+files opens a searchable list of the last 50 files visited in this session.
+History keeps up to 100 locations in each direction. A new jump clears forward
+history. Failed opens and canceled save/discard choices leave history intact;
+same-file returns keep edits and undo history without reloading. Switching to a
+different file keeps the existing save/discard/cancel protection. History and
+recent files are not persisted across editor restarts.
+
 Bindings:
 
 - Normal mode: `h j k l`, arrows, `0`, `$`, `gg`, `G`; `i` insert, `a` append, `o` open a line below; `x` delete a character, `dd` delete a line.

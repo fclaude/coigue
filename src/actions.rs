@@ -30,6 +30,9 @@ impl Group {
 }
 #[derive(Clone, Copy)]
 pub enum Action {
+    Back,
+    Forward,
+    Recent,
     FindFile,
     Browse,
     FindText,
@@ -45,6 +48,24 @@ pub struct Entry {
     pub action: Action,
 }
 pub const ENTRIES: &[Entry] = &[
+    Entry {
+        group: Group::Files,
+        title: "Recent files",
+        shortcut: ":recent",
+        action: Action::Recent,
+    },
+    Entry {
+        group: Group::Code,
+        title: "Navigate back",
+        shortcut: "Alt-Left / :back",
+        action: Action::Back,
+    },
+    Entry {
+        group: Group::Code,
+        title: "Navigate forward",
+        shortcut: "Alt-Right / :forward",
+        action: Action::Forward,
+    },
     Entry {
         group: Group::Files,
         title: "Find a file",

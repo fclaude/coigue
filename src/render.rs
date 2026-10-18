@@ -20,6 +20,7 @@ pub struct View {
     semantic_revision: u64,
     dirty: bool,
     generation: u64,
+    viewport_revision: u64,
     syntax_path: Option<std::path::PathBuf>,
     theme: Option<Theme>,
 }
@@ -163,9 +164,52 @@ impl View {
     pub fn page_rows(&self) -> usize {
         usize::from(self.size.1.saturating_sub(2)).max(1)
     }
-    pub fn draw(&mut self, e: &Editor) -> io::Result<()> {
+    pub fn draw(&mut self, e: &mut Editor) -> io::Result<()> {
         let mut out = io::stdout().lock();
-        self.draw_to(e, terminal::size()?, &mut out)
+        self.draw_to(e, terminal::size()?, &mut out)?;
+        if e.welcome.is_none()
+            && e.help.is_none()
+            && e.menu.is_none()
+            && e.locations.is_none()
+            && e.picker.is_none()
+            && e.explorer.is_none()
+        {
+            e.viewport = (self.top, self.left);
+        }
+        Ok(())
+    }
+    fn draw_locations(&mut self, e: &Editor, out: &mut impl Write) -> io::Result<()> {
+        let list = e.locations.as_ref().unwrap();
+        let rows = usize::from(self.size.1.saturating_sub(2));
+        let top = list.selected.saturating_sub(rows.saturating_sub(1));
+        let matches = list.matches();
+        let mut lines = vec![format!("{} | Enter open, Esc return", list.title)];
+        lines.extend(
+            matches
+                .iter()
+                .enumerate()
+                .skip(top)
+                .take(rows)
+                .map(|(i, target)| {
+                    format!(
+                        "{} {}",
+                        if i == list.selected { ">" } else { " " },
+                        target.label
+                    )
+                }),
+        );
+        if matches.is_empty() && rows > 0 {
+            lines.push("No matches".into());
+        }
+        lines.resize(usize::from(self.size.1.saturating_sub(1)), String::new());
+        lines.push(if e.switch_prompt.is_some() {
+            switch_prompt(e)
+        } else if !e.message.is_empty() {
+            e.message.clone()
+        } else {
+            format!("Filter: {}", list.query)
+        });
+        self.draw_browser_lines(lines, e, out)
     }
     fn draw_menu(&mut self, e: &Editor, out: &mut impl Write) -> io::Result<()> {
         let menu = e.menu.as_ref().unwrap();
@@ -360,6 +404,7 @@ impl View {
                     || line.starts_with(':')
                     || line.starts_with("Open:")
                     || line.starts_with("Action:")
+                    || line.starts_with("Filter:")
                     || line.starts_with("New ")
                     || line.starts_with("Rename/move"))
             {
@@ -424,16 +469,22 @@ impl View {
             return Ok(());
         }
         if self.generation != e.generation {
-            self.top = 0;
-            self.left = 0;
+            (self.top, self.left) = e.viewport;
             self.revision = None;
             self.generation = e.generation;
+        }
+        if self.viewport_revision != e.viewport_revision {
+            (self.top, self.left) = e.viewport;
+            self.viewport_revision = e.viewport_revision;
         }
         if e.help.is_some() {
             return self.draw_help(e, out);
         }
         if e.menu.is_some() {
             return self.draw_menu(e, out);
+        }
+        if e.locations.is_some() {
+            return self.draw_locations(e, out);
         }
         if e.picker.is_some() {
             return self.draw_picker(e, out);
@@ -773,6 +824,32 @@ mod tests {
         assert!(
             rendered.ends_with(&SetForegroundColor(crossterm::style::Color::Reset).to_string())
         );
+    }
+    #[test]
+    fn history_restores_viewport_without_resetting_same_file_syntax() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("history.rs");
+        let text = ["fn long_function_name_with_more_text() {}"; 60].join("\n");
+        std::fs::write(&path, &text).unwrap();
+        let (file, text) = crate::file::File::open(path).unwrap();
+        let mut e = Editor::new(file, &text);
+        e.buffer.row = 30;
+        e.buffer.col = 25;
+        let mut view = View::default();
+        view.draw_to(&e, (18, 8), &mut Vec::new()).unwrap();
+        let original = (view.top, view.left);
+        e.viewport = original;
+        for c in ":1".chars() {
+            e.key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE), 6);
+        }
+        e.key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE), 6);
+        view.draw_to(&e, (18, 8), &mut Vec::new()).unwrap();
+        e.viewport = (view.top, view.left);
+        e.key(KeyEvent::new(KeyCode::Left, KeyModifiers::ALT), 6);
+        view.draw_to(&e, (18, 8), &mut Vec::new()).unwrap();
+        assert_eq!((e.buffer.row, e.buffer.col), (30, 25));
+        assert_eq!((view.top, view.left), original);
     }
     #[test]
     fn action_strip_and_menu_render_across_surfaces_and_resizes() {
