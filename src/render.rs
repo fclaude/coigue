@@ -183,7 +183,18 @@ impl View {
         let rows = usize::from(self.size.1.saturating_sub(2));
         let top = list.selected.saturating_sub(rows.saturating_sub(1));
         let matches = list.matches();
-        let mut lines = vec![format!("{} | Enter open, Esc return", list.title)];
+        let mut lines = vec![format!(
+            "{} {}/{}{} | {}",
+            list.title,
+            matches.len(),
+            list.targets.len(),
+            if list.busy { " | searching..." } else { "" },
+            if list.notice.is_empty() {
+                "Enter open, Esc return"
+            } else {
+                &list.notice
+            }
+        )];
         lines.extend(
             matches
                 .iter()
@@ -199,7 +210,13 @@ impl View {
                 }),
         );
         if matches.is_empty() && rows > 0 {
-            lines.push("No matches".into());
+            lines.push(if list.busy {
+                "Searching...".into()
+            } else if list.targets.is_empty() && !list.notice.is_empty() {
+                list.notice.clone()
+            } else {
+                "No matches".into()
+            });
         }
         lines.resize(usize::from(self.size.1.saturating_sub(1)), String::new());
         lines.push(if e.switch_prompt.is_some() {
@@ -207,7 +224,15 @@ impl View {
         } else if !e.message.is_empty() {
             e.message.clone()
         } else {
-            format!("Filter: {}", list.query)
+            format!(
+                "{}: {}",
+                if list.source.live() {
+                    "Search"
+                } else {
+                    "Filter"
+                },
+                list.query
+            )
         });
         self.draw_browser_lines(lines, e, out)
     }
@@ -405,6 +430,7 @@ impl View {
                     || line.starts_with("Open:")
                     || line.starts_with("Action:")
                     || line.starts_with("Filter:")
+                    || line.starts_with("Search:")
                     || line.starts_with("New ")
                     || line.starts_with("Rename/move"))
             {
@@ -868,7 +894,7 @@ mod tests {
             .map(|r| String::from_utf8_lossy(r))
             .collect::<Vec<_>>()
             .join("\n");
-        assert!(text.contains("Go to line"));
+        assert!(text.contains("Go to definition"));
         assert!(text.contains("F3 Code"));
         e.menu.as_mut().unwrap().query = "no such action".into();
         view.draw_to(&e, (80, 8), &mut Vec::new()).unwrap();

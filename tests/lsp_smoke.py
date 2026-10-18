@@ -46,6 +46,9 @@ def fake_server():
             capabilities = {
                 'textDocumentSync': {'openClose': True, 'change': 2, 'save': {'includeText': True}}
             }
+            if mode.startswith('navigation'):
+                capabilities.update(definitionProvider=True, referencesProvider=True,
+                                    documentSymbolProvider=True, workspaceSymbolProvider=True)
             if mode.startswith('semantic') and pathlib.Path(sys.argv[0]).name != 'marksman':
                 assert msg['params']['capabilities']['textDocument']['semanticTokens']['requests']['full'] is True
                 if pathlib.Path(sys.argv[0]).name == 'gopls':
@@ -68,6 +71,31 @@ def fake_server():
             send({'jsonrpc': '2.0', 'method': 'textDocument/publishDiagnostics', 'params': {
                 'uri': doc['uri'], 'version': doc['version'], 'diagnostics': diagnostics,
             }})
+        elif method in ('textDocument/definition', 'textDocument/references',
+                         'textDocument/documentSymbol', 'workspace/symbol'):
+            if mode == 'navigation-hang':
+                continue
+            if mode == 'navigation-error':
+                send({'jsonrpc': '2.0', 'id': msg['id'], 'error': {'code': -32603, 'message': 'fixture navigation failure'}})
+                continue
+            def span(line, column):
+                return {'start': {'line': line, 'character': column}, 'end': {'line': line, 'character': column + 1}}
+            source = (pathlib.Path.cwd() / 'navigation-source.rs').as_uri()
+            target = (pathlib.Path.cwd() / 'navigation-target.rs').as_uri()
+            if method == 'textDocument/definition':
+                result = [{'targetUri': target, 'targetRange': span(0, 0), 'targetSelectionRange': span(0, 3)}]
+            elif method == 'textDocument/documentSymbol':
+                result = [{'name': 'Outer', 'kind': 23, 'range': span(0, 0), 'selectionRange': span(0, 3),
+                           'children': [{'name': 'Local', 'kind': 12, 'range': span(1, 0), 'selectionRange': span(1, 3)}]}]
+            elif method == 'textDocument/references':
+                result = [{'uri': source, 'range': span(0, 3)}, {'uri': target, 'range': span(0, 3)}]
+            else:
+                result = [{'name': 'WorkspaceTarget', 'kind': 12, 'location': {'uri': target, 'range': span(1, 3)}}]
+            if mode == 'navigation-null':
+                result = None
+            elif mode == 'navigation-malformed':
+                result = [{'uri': 'https://invalid.example/', 'range': span(0, 0)}]
+            send({'jsonrpc': '2.0', 'id': msg['id'], 'result': result})
         elif method == 'textDocument/semanticTokens/full':
             if mode == 'semantic-error':
                 send({'jsonrpc': '2.0', 'id': msg['id'], 'error': {'code': -32601, 'message': 'unsupported'}})
@@ -159,6 +187,56 @@ def main():
         env.pop('NO_COLOR', None)
         for name in ['Cargo.toml', 'go.mod', '.marksman.toml']:
             (root / name).write_text('')
+        source_path = root / 'navigation-source.rs'
+        target_path = root / 'navigation-target.rs'
+        source_path.write_text('a😀target\nfn local() {}')
+        target_path.write_text('😀 target\nfn target() {}')
+        nav_env = dict(env, COIGUE_LSP_MODE='navigation')
+        editor = Editor(binary, source_path, root, nav_env)
+        editor.wait_for(b'LSP warning')
+        editor.keys(b'2l')
+        editor.output.clear()
+        editor.keys(b':definition\r')
+        editor.wait_for(b'navigation-target.rs')
+        editor.keys(b'i!\x1b')
+        editor.keys(b':w\r')
+        editor.keys(b':back\r')
+        editor.keys(b':symbols\r')
+        editor.wait_for(b'Outer / Local')
+        editor.keys(b'Local\r')
+        editor.keys(b'i#\x1b')
+        editor.keys(b':w\r')
+        editor.output.clear()
+        editor.keys(b':references\r')
+        editor.wait_for(b'navigation-target.rs')
+        editor.keys(b'navigation-target\r')
+        editor.output.clear()
+        editor.keys(b':workspace-symbols\r')
+        editor.keys(b'Target')
+        editor.wait_for(b'WorkspaceTarget')
+        editor.keys(b'\r')
+        editor.close(b':q\r')
+        assert target_path.read_text() == '😀 !target\nfn target() {}'
+        assert source_path.read_text() == 'a😀target\nfn #local() {}'
+        nav_records = records(log, 'rust-analyzer')
+        definition = next(e for e in nav_records if e.get('method') == 'textDocument/definition')
+        assert definition['params']['position'] == {'line': 0, 'character': 3}
+        assert any(e.get('method') == 'workspace/symbol' and e['params']['query'] == 'Target' for e in nav_records)
+        assert any(e.get('method') == 'textDocument/references' and e['params']['context']['includeDeclaration'] for e in nav_records)
+        for mode, expected in [('normal', b'does not support'), ('navigation-error', b'fixture navigation failure'),
+                               ('navigation-null', b'0 results'), ('navigation-malformed', b'No usable local-file'),
+                               ('navigation-hang', b'timed out')]:
+            editor = Editor(binary, source_path, root, dict(env, COIGUE_LSP_MODE=mode))
+            editor.wait_for(b'LSP warning')
+            editor.keys(b':symbols\r')
+            editor.wait_for(expected, timeout=8)
+            editor.keys(b'\x1b')
+            editor.close(b':q\r')
+        print('Navigation LSP PTY: symbols, definitions, references, workspace, Unicode, history and failure isolation verified')
+        assert_reaped(log)
+        for record_path in log.glob('*.jsonl'):
+            record_path.unlink()
+
         for suffix, name, language in [('rs', 'rust-analyzer', 'rust'), ('go', 'gopls', 'go'), ('md', 'marksman', 'markdown')]:
             path = root / ('file café #界.' + suffix)
             path.write_bytes('a😀b\r\nnext'.encode())

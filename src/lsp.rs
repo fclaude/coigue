@@ -1,5 +1,7 @@
-//! Diagnostics and semantic-token LSP client. The UI never touches server pipes.
+//! Diagnostics, semantic tokens, and navigation. The UI never touches server pipes.
 //! This deliberately models only our small protocol subset, rather than an entire LSP SDK.
+mod navigation;
+pub use navigation::Kind as NavigationKind;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{
@@ -128,9 +130,15 @@ struct Stamp {
 }
 enum Input {
     Document(Document),
+    Navigate(navigation::Request),
+    CancelNavigation,
     Stop,
 }
 enum Output {
+    Navigation {
+        request: navigation::Request,
+        result: Result<Vec<crate::navigation::Target>, String>,
+    },
     Ready,
     Diagnostics {
         generation: u64,
@@ -213,6 +221,12 @@ impl Drop for Session {
 
 #[derive(Default)]
 pub struct Client {
+    navigation_serial: u64,
+    navigation_pending: Option<(navigation::Request, Instant)>,
+    pub navigation_result: Option<(
+        NavigationKind,
+        Result<Vec<crate::navigation::Target>, String>,
+    )>,
     enabled: bool,
     session: Option<Session>,
     retired: Vec<Session>,
@@ -227,10 +241,53 @@ pub struct Client {
     failure: bool,
 }
 impl Client {
+    pub fn cancel_navigation(&mut self) {
+        let pending = self.navigation_pending.take().is_some();
+        self.navigation_result = None;
+        if pending && let Some(session) = &self.session {
+            let _ = session.input.try_send(Input::CancelNavigation);
+        }
+    }
+    pub fn navigate(
+        &mut self,
+        kind: NavigationKind,
+        query: String,
+        row: usize,
+        col: usize,
+        lines: &[Vec<char>],
+    ) -> Result<(), String> {
+        self.cancel_navigation();
+        let session = self.session.as_ref().ok_or(
+            "No language server available; use project search or install the server for this file",
+        )?;
+        let stamp = self.stamp.as_ref().ok_or("No document open")?;
+        self.navigation_serial = self.navigation_serial.wrapping_add(1);
+        let request = navigation::Request {
+            serial: self.navigation_serial,
+            kind,
+            query,
+            document: TokenDocument {
+                uri: self.uri.clone(),
+                generation: stamp.generation,
+                version: self.version,
+            },
+            row,
+            character: lines
+                .get(row)
+                .map_or(0, |line| line.iter().take(col).map(|c| c.len_utf16()).sum()),
+        };
+        session
+            .input
+            .try_send(Input::Navigate(request.clone()))
+            .map_err(|_| "Language server busy; retry navigation".to_string())?;
+        self.navigation_pending = Some((request, Instant::now()));
+        Ok(())
+    }
     pub fn enable(&mut self) {
         self.enabled = true;
     }
     pub fn restart(&mut self) {
+        self.cancel_navigation();
         self.retire();
         self.key = None;
         self.stamp = None;
@@ -269,6 +326,9 @@ impl Client {
             .map(|d| d.message.as_str())
     }
     fn fail(&mut self, message: String) {
+        if let Some((request, _)) = self.navigation_pending.take() {
+            self.navigation_result = Some((request.kind, Err(message.clone())));
+        }
         self.retire();
         self.diagnostics.clear();
         self.clear_tokens();
@@ -343,6 +403,7 @@ impl Client {
             }
         }
         if contents_changed {
+            self.cancel_navigation();
             self.version = self.version.checked_add(1).unwrap_or(1);
             self.diagnostics.clear();
             self.clear_tokens();
@@ -363,6 +424,20 @@ impl Client {
         }
     }
     pub fn poll(&mut self, lines: &[Vec<char>]) {
+        if self
+            .navigation_pending
+            .as_ref()
+            .is_some_and(|(_, started)| {
+                started.elapsed() >= navigation::TIMEOUT + Duration::from_secs(1)
+            })
+        {
+            let kind = self.navigation_pending.as_ref().unwrap().0.kind;
+            self.cancel_navigation();
+            self.navigation_result = Some((
+                kind,
+                Err("Language-server navigation timed out; use project search instead".into()),
+            ));
+        }
         self.retired
             .retain(|s| matches!(s.finished.try_recv(), Err(TryRecvError::Empty)));
         // Bound each UI iteration even if a server floods notifications.
@@ -372,6 +447,22 @@ impl Client {
                 None => break,
             };
             match event {
+                Ok(Output::Navigation { request, result }) => {
+                    if self
+                        .navigation_pending
+                        .as_ref()
+                        .is_some_and(|(pending, _)| pending.serial == request.serial)
+                        && self
+                            .stamp
+                            .as_ref()
+                            .is_some_and(|stamp| stamp.generation == request.document.generation)
+                        && self.uri == request.document.uri
+                        && self.version == request.document.version
+                    {
+                        self.navigation_pending = None;
+                        self.navigation_result = Some((request.kind, result));
+                    }
+                }
                 Ok(Output::Tokens {
                     document,
                     legend,
@@ -693,6 +784,7 @@ struct Protocol {
     open_close: bool,
     save: Option<bool>,
     tokens: TokenRequests,
+    navigation: navigation::Requests,
     go: bool,
 }
 impl Protocol {
@@ -707,6 +799,7 @@ impl Protocol {
             ));
         }
         self.tokens.configure(caps);
+        self.navigation.capabilities = caps.clone();
         let sync = &caps["textDocumentSync"];
         if let Some(kind) = sync.as_u64() {
             self.change = kind;
@@ -725,6 +818,7 @@ impl Protocol {
         self.flush(tx)
     }
     fn close(&mut self, tx: &SyncSender<Value>) -> io::Result<()> {
+        self.navigation.cancel(tx)?;
         self.tokens.refresh(tx)?;
         self.tokens.document = None;
         if let Some(old) = self.sent.take()
@@ -904,8 +998,8 @@ fn serve(
             "rootUri":root_uri,"workspaceFolders":[{"uri":root_uri,"name":root.file_name().unwrap_or_default().to_string_lossy()}],
             "initializationOptions": if program == "gopls" { json!({"semanticTokens":true}) } else { Value::Null },
             "capabilities":{"general":{"positionEncodings":["utf-16"]},
-                "workspace":{"configuration":true,"workspaceFolders":true,"applyEdit":false,"semanticTokens":{"refreshSupport":true}},
-                "textDocument":{"semanticTokens":{"dynamicRegistration":false,"requests":{"full":true},"tokenTypes":crate::semantic::TYPES,"tokenModifiers":crate::semantic::MODIFIERS,"formats":["relative"],"overlappingTokenSupport":false,"multilineTokenSupport":false,"serverCancelSupport":true,"augmentsSyntaxTokens":true},"synchronization":{"dynamicRegistration":false,"didSave":true},"publishDiagnostics":{"versionSupport":true}}}
+                "workspace":{"symbol":{"dynamicRegistration":false},"configuration":true,"workspaceFolders":true,"applyEdit":false,"semanticTokens":{"refreshSupport":true}},
+                "textDocument":{"definition":{"dynamicRegistration":false,"linkSupport":true},"references":{"dynamicRegistration":false},"documentSymbol":{"dynamicRegistration":false,"hierarchicalDocumentSymbolSupport":true},"semanticTokens":{"dynamicRegistration":false,"requests":{"full":true},"tokenTypes":crate::semantic::TYPES,"tokenModifiers":crate::semantic::MODIFIERS,"formats":["relative"],"overlappingTokenSupport":false,"multilineTokenSupport":false,"serverCancelSupport":true,"augmentsSyntaxTokens":true},"synchronization":{"dynamicRegistration":false,"didSave":true},"publishDiagnostics":{"versionSupport":true}}}
         }}),
     )?;
     let started = Instant::now();
@@ -940,6 +1034,13 @@ fn serve(
                     protocol.flush(&writer)?;
                     last_sync = Instant::now();
                 }
+            }
+            Ok(Input::Navigate(request)) if stopping.is_none() => {
+                protocol.flush(&writer)?;
+                protocol.navigation.queue(request, &writer)?;
+            }
+            Ok(Input::CancelNavigation) if stopping.is_none() => {
+                protocol.navigation.cancel(&writer)?
             }
             Ok(Input::Stop) | Err(mpsc::RecvTimeoutError::Disconnected) if stopping.is_none() => {
                 stopping = Some(Instant::now());
@@ -1000,6 +1101,7 @@ fn serve(
                 send(&writer, notify("exit", Value::Null))?;
             } else if stopping.is_none() {
                 protocol.tokens.response(&value, events);
+                protocol.navigation.response(&value, events);
             }
         }
         if stopping.is_none()
@@ -1008,6 +1110,11 @@ fn serve(
             && let Some(document) = &protocol.sent
         {
             protocol.tokens.request(document, &writer, events)?;
+        }
+        if stopping.is_none() && protocol.ready {
+            protocol
+                .navigation
+                .tick(protocol.sent.as_ref(), &writer, events)?;
         }
     }
 }

@@ -8,14 +8,16 @@ pub enum Topic {
     Files,
     Explorer,
     Prompts,
+    Code,
 }
 impl Topic {
-    const ALL: [Self; 5] = [
+    const ALL: [Self; 6] = [
         Self::Start,
         Self::Editing,
         Self::Files,
         Self::Explorer,
         Self::Prompts,
+        Self::Code,
     ];
 
     pub fn title(self) -> &'static str {
@@ -25,10 +27,32 @@ impl Topic {
             Self::Files => "Finding files",
             Self::Explorer => "Browsing and creating files",
             Self::Prompts => "Commands and confirmations",
+            Self::Code => "Code navigation",
         }
     }
     pub fn lines(self) -> &'static [&'static str] {
         match self {
+            Self::Code => &[
+                "F3 Code lists every navigation action and its shortcut.",
+                "",
+                "F5 / :project-search      Search text across the launch directory",
+                "F6 / :symbols             Find a symbol in this file",
+                "F7 / :definition          Jump to the definition under the cursor",
+                "F8 / :references          Find references to the current symbol",
+                "F9 / :workspace-symbols   Search the language server's workspace",
+                "Alt-Left / :back          Return to the previous location",
+                "Alt-Right / :forward      Return forward through jump history",
+                "",
+                "Type to search/filter results; arrows choose, Enter opens.",
+                "Esc returns without moving. F1 pauses a result list for help.",
+                "A single definition opens directly; multiple ones show a list.",
+                "Cross-file jumps ask about unsaved changes before opening.",
+                "",
+                "Project search is literal and case-sensitive, one hit per line.",
+                "It respects Git ignore rules and includes the active unsaved text.",
+                "Symbols, definitions and references need an installed language server.",
+                "Unavailable or unsupported features leave project search usable.",
+            ],
             Self::Start => &[
                 "Start here",
                 "F2 Files / F3 Code open searchable actions; F4 shows all actions.",
@@ -153,7 +177,8 @@ impl Help {
             KeyCode::Tab | KeyCode::Right | KeyCode::BackTab | KeyCode::Left => {
                 let index = Topic::ALL.iter().position(|t| *t == self.topic).unwrap();
                 let backwards = matches!(key, KeyCode::BackTab | KeyCode::Left);
-                self.topic = Topic::ALL[(index + if backwards { 4 } else { 1 }) % 5];
+                let length = Topic::ALL.len();
+                self.topic = Topic::ALL[(index + if backwards { length - 1 } else { 1 }) % length];
                 self.scroll = 0;
             }
             KeyCode::Up | KeyCode::Char('k') => self.scroll = self.scroll.saturating_sub(1),

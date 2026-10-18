@@ -9,6 +9,21 @@ use std::{
     thread,
 };
 
+// Shared discovery policy for the file picker and project text search.
+pub fn walker(root: PathBuf) -> ignore::WalkBuilder {
+    let mut walker = ignore::WalkBuilder::new(root);
+    walker
+        .hidden(false)
+        .ignore(false)
+        .git_global(false)
+        .require_git(false)
+        .follow_links(false)
+        .filter_entry(|entry| {
+            entry.file_name() != ".git" && entry.file_name() != crate::fileops::TRASH
+        });
+    walker
+}
+
 pub struct Picker {
     pub root: PathBuf,
     pub query: String,
@@ -32,16 +47,7 @@ impl Picker {
         let stop = cancelled.clone();
         let scan_root = root.clone();
         thread::spawn(move || {
-            let mut walker = ignore::WalkBuilder::new(scan_root);
-            walker
-                .hidden(false)
-                .ignore(false)
-                .git_global(false)
-                .require_git(false)
-                .follow_links(false)
-                .filter_entry(|entry| {
-                    entry.file_name() != ".git" && entry.file_name() != crate::fileops::TRASH
-                });
+            let walker = walker(scan_root);
             let mut batch = Batch {
                 files: Vec::new(),
                 skipped: 0,

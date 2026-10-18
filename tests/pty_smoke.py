@@ -34,6 +34,10 @@ def session(path, steps, command=None, cwd=None, width=80, env_overrides=None):
         if command is None:
             assert proc.poll() is None
         for keys in steps:
+            expected = None
+            if isinstance(keys, tuple):
+                keys, expected = keys
+            beginning = len(output)
             if keys is None:
                 for height, width in [(1, 1), (8, 16)]:
                     fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', height, width, 0, 0))
@@ -42,6 +46,11 @@ def session(path, steps, command=None, cwd=None, width=80, env_overrides=None):
             else:
                 os.write(master, keys)
             drain()
+            if expected is not None:
+                deadline = time.monotonic() + 5
+                while expected not in output[beginning:] and time.monotonic() < deadline:
+                    drain()
+                assert expected in output[beginning:], (expected, output[-6000:])
         assert proc.wait(timeout=3) == 0, output
         drain()
         restored = termios.tcgetattr(slave)
@@ -125,6 +134,19 @@ else: sys.stdout.buffer.write(store.read_bytes())
     path.write_text('one two three four\n\nuntouched paragraph\n')
     session(path, [b':textwidth 10\r', b'gq', b'u', b'\x12', b':wq\r'])
     assert path.read_text() == 'one two\nthree four\n\nuntouched paragraph\n'
+
+with tempfile.TemporaryDirectory() as directory:
+    first = pathlib.Path(directory) / 'search-first.txt'
+    second = pathlib.Path(directory) / 'search-second.txt'
+    first.write_text('original')
+    second.write_text('😀 prefix needle suffix\nnext')
+    out = session(first, [b'i!', b'\x1b', b'\x1b[15~', b'needle', b'\x1bOP', b'\x1b',
+                          b'\r', b'c', b'\r', b's', b'i#', b'\x1b', b':w\r',
+                          b':back\r', b':wq\r'], cwd=directory, width=160)
+    assert first.read_text() == '!original'
+    assert second.read_text() == '😀 prefix #needle suffix\nnext'
+    assert b'Project search' in out and b'Code navigation' in out
+    print('Project search PTY: live search, help, Unicode target, dirty cancel/save and return verified')
 
 with tempfile.TemporaryDirectory() as directory:
     first = pathlib.Path(directory) / 'nav-first'
@@ -315,18 +337,19 @@ with tempfile.TemporaryDirectory() as directory:
     ops_active = ops_root / 'active.txt'
     ops_active.write_text('active')
     ops_out = session(ops_active, [
-        b'\x0f', b'Abox', b'\r', b'a', 'café.txt'.encode(), b'\r',
+        (b'\x0f', b'> active.txt'), b'Abox', (b'\r', b'> box/'),
+        b'a', 'café.txt'.encode(), (b'\r', '> café.txt'.encode()),
         b'r', b'\x15', b'box/moved.txt', b'\r',
-        b'/box', b'\t', b'd', b'\r', b'n', b'd', b'y', b'\x1b', b':q\r',
+        (b'/box', b'> box/'), b'\t', b'd', b'\r', b'n', b'd', b'y', b'\x1b', b':q\r',
     ], cwd=ops_root)
-    assert not ops_root.joinpath('box').exists()
+    assert not ops_root.joinpath('box').exists(), ops_out[-6000:]
     assert list(ops_root.joinpath('.coigue-trash').glob('entry-*/item/moved.txt'))
     # Restart: restoration is discovered from persistent records.
     session(ops_active, [b'\x0f', b'u', b'\x1b', b':q\r'], cwd=ops_root)
     assert ops_root.joinpath('box/moved.txt').read_text() == ''
     assert not ops_root.joinpath('café.txt').exists()
     # Rename the active file while dirty, save to the new path, then undo.
-    session(ops_active, [b'A!', b'\x1b', b'\x0f', b'r', b'\x15', b'new.rs', b'\r',
+    session(ops_active, [b'A!', b'\x1b', (b'\x0f', b'> active.txt'), b'r', b'\x15', b'new.rs', b'\r',
                          b'\x1b', b':w\r', b'u', b':wq\r'], cwd=ops_root)
     assert not ops_active.exists()
     assert ops_root.joinpath('new.rs').read_text() == 'active'

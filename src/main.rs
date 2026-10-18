@@ -11,6 +11,7 @@ mod navigation;
 mod picker;
 mod reflow;
 mod render;
+mod search;
 mod semantic;
 mod syntax;
 mod theme;
