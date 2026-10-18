@@ -4,6 +4,7 @@ mod editor;
 mod explorer;
 mod file;
 mod fileops;
+mod help;
 mod lsp;
 mod picker;
 mod reflow;
@@ -48,7 +49,7 @@ fn run() -> io::Result<()> {
     }
     if path.as_deref().is_some_and(|p| p == "--help" || p == "-h") {
         println!(
-            "Usage: coigue [file]\nWithout a file, welcome opens in the current directory.\nCtrl-O / - / :explore browse; Ctrl-P / :open find files; :q quit."
+            "Usage: coigue [file]\nWithout a file, welcome opens in the current directory.\nCtrl-O / - / :explore browse; Ctrl-P / :open find files; F1 / :help guide; :q quit."
         );
         return Ok(());
     }

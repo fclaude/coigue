@@ -49,6 +49,7 @@ impl CommandCompletion {
             "clipboard-paste",
             "clipboard-paste-before",
             "explore",
+            "help",
             "justify",
             "lsp-restart",
             "open",
@@ -99,6 +100,7 @@ pub struct Editor {
     textwidth: usize,
     selection_anchor: Option<(usize, usize)>,
     clipboard_export: Option<(String, Register)>,
+    pub help: Option<crate::help::Help>,
     pub theme: crate::theme::Theme,
     pub lsp: crate::lsp::Client,
     pub welcome: Option<std::path::PathBuf>,
@@ -127,6 +129,7 @@ impl Editor {
             textwidth: 80,
             selection_anchor: None,
             clipboard_export: None,
+            help: None,
             theme: crate::theme::Theme::default(),
             lsp: crate::lsp::Client::default(),
             welcome: None,
@@ -156,6 +159,23 @@ impl Editor {
         editor
     }
     pub fn key(&mut self, key: KeyEvent, page_rows: usize) -> bool {
+        // Help must not split an Insert session, consume pending keys, or touch
+        // the suspended prompt/browser. Intercept before edit bookkeeping.
+        if self.help.is_some() {
+            if matches!(key.code, K::Esc | K::F(1)) {
+                self.help = None;
+            } else if !key
+                .modifiers
+                .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER)
+            {
+                self.help.as_mut().unwrap().key(key.code, page_rows);
+            }
+            return false;
+        }
+        if key.code == K::F(1) {
+            self.open_help();
+            return false;
+        }
         self.buffer.begin_edit();
         let quit = self.key_inner(key, page_rows);
         if self.mode != Mode::Insert || self.picker.is_some() || self.explorer.is_some() {
@@ -163,6 +183,23 @@ impl Editor {
         }
         self.sync_lsp();
         quit
+    }
+    fn open_help(&mut self) {
+        use crate::help::Topic;
+        let topic = if self.switch_prompt.is_some() || self.filesystem_prompt.is_some() {
+            Topic::Prompts
+        } else if self.picker.is_some() {
+            Topic::Files
+        } else if self.explorer.is_some() {
+            Topic::Explorer
+        } else if matches!(self.mode, Mode::Command | Mode::Search) {
+            Topic::Prompts
+        } else if self.welcome.is_some() {
+            Topic::Start
+        } else {
+            Topic::Editing
+        };
+        self.help = Some(crate::help::Help::new(topic));
     }
     fn sync_lsp(&mut self) {
         self.lsp.sync(
@@ -1214,6 +1251,7 @@ impl Editor {
                 self.lsp.restart();
                 self.message.clear();
             }
+            "help" => self.open_help(),
             "open" => self.open_picker(),
             "explore" => self.open_explorer(),
             "w" | "wq" => match self.save_current() {
@@ -1401,6 +1439,74 @@ mod tests {
         assert_eq!(e.command, "justify");
     }
     #[test]
+    fn help_suspends_insert_commands_browsers_and_confirmations() {
+        use crate::help::Topic;
+        let (dir, mut e) = editing_fixture("original");
+        send(&mut e, "iONE");
+        let position = (e.buffer.row, e.buffer.col);
+        press(&mut e, K::F(1));
+        assert_eq!(e.help.as_ref().unwrap().topic, Topic::Editing);
+        send(&mut e, "dd:q!");
+        press(&mut e, K::Esc);
+        assert_eq!(e.mode, Mode::Insert);
+        assert_eq!((e.buffer.row, e.buffer.col), position);
+        send(&mut e, "TWO");
+        press(&mut e, K::Esc);
+        send(&mut e, "u");
+        assert_eq!(e.buffer.text(), "original");
+        send(&mut e, ":w");
+        press(&mut e, K::Tab);
+        press(&mut e, K::F(1));
+        assert_eq!(e.help.as_ref().unwrap().topic, Topic::Prompts);
+        press(&mut e, K::F(1));
+        assert_eq!(e.command, "w");
+        press(&mut e, K::Tab);
+        assert_eq!(e.command, "wq");
+        press(&mut e, K::Esc);
+        send(&mut e, "2d");
+        let pending = e.pending_input();
+        press(&mut e, K::F(1));
+        press(&mut e, K::Esc);
+        assert_eq!(e.pending_input(), pending);
+        press(&mut e, K::Esc);
+        e.open_explorer();
+        ready_explorer(&mut e);
+        send(&mut e, "/orig");
+        let query = e.explorer.as_ref().unwrap().query.clone();
+        press(&mut e, K::F(1));
+        assert_eq!(e.help.as_ref().unwrap().topic, Topic::Explorer);
+        press(&mut e, K::Esc);
+        assert_eq!(e.explorer.as_ref().unwrap().query, query);
+        assert!(e.explorer.as_ref().unwrap().filtering);
+        e.filesystem_prompt = Some(FilesystemPrompt {
+            action: FilesystemAction::CreateFile,
+            input: "draft".into(),
+        });
+        press(&mut e, K::F(1));
+        assert_eq!(e.help.as_ref().unwrap().topic, Topic::Prompts);
+        press(&mut e, K::Esc);
+        assert_eq!(e.filesystem_prompt.as_ref().unwrap().input, "draft");
+        e.filesystem_prompt = None;
+        e.switch_prompt = Some(dir.path().join("next"));
+        press(&mut e, K::F(1));
+        press(&mut e, K::Esc);
+        assert!(e.switch_prompt.is_some());
+        e.switch_prompt = None;
+        e.open_picker();
+        press(&mut e, K::F(1));
+        assert_eq!(e.help.as_ref().unwrap().topic, Topic::Files);
+        press(&mut e, K::Esc);
+        assert!(e.picker.is_some());
+        let mut welcome = Editor::welcome(dir.path().into());
+        press(&mut welcome, K::F(1));
+        assert_eq!(welcome.help.as_ref().unwrap().topic, Topic::Start);
+        press(&mut welcome, K::Esc);
+        send(&mut welcome, ":help");
+        press(&mut welcome, K::Enter);
+        assert!(welcome.help.is_some());
+        assert!(welcome.welcome.is_some());
+    }
+    #[test]
     fn command_completion_cycles_both_directions_without_executing() {
         let (_dir, mut e) = editing_fixture("original");
         send(&mut e, "i!");
@@ -1435,6 +1541,7 @@ mod tests {
             "clipboard-paste",
             "clipboard-paste-before",
             "explore",
+            "help",
             "justify",
             "lsp-restart",
             "open",
