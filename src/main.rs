@@ -1,3 +1,4 @@
+mod actions;
 mod buffer;
 mod clipboard;
 mod editor;

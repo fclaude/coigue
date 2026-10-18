@@ -31,6 +31,7 @@ impl Topic {
         match self {
             Self::Start => &[
                 "Start here",
+                "F2 Files / F3 Code open searchable actions; F4 shows all actions.",
                 "",
                 "1. Ctrl-P finds a file. Type part of its path; Enter opens it.",
                 "   Ctrl-O browses folders instead. In the browser, a makes a file.",

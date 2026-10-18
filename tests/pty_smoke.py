@@ -127,6 +127,18 @@ else: sys.stdout.buffer.write(store.read_bytes())
     assert path.read_text() == 'one two\nthree four\n\nuntouched paragraph\n'
 
 with tempfile.TemporaryDirectory() as directory:
+    path = pathlib.Path(directory) / 'actions'
+    path.write_text('first\nsecond\nthird')
+    out = session(path, [b'iONE', b'\x1bOQ', b'no such action', b'\r', b'\x1b', b'TWO',
+                         b'\x1b', b'u', b'\x1bOR', b'last line', b'\r',
+                         b'i!', b'\x1b', b'\x1bOS', b'getting started', b'\r',
+                         b'\x1b', b':wq\r'], width=120)
+    assert path.read_text() == 'first\nsecond\n!third'
+    for text in [b'F2 Files', b'F3 Code', b'F1 Help', b'No matching actions', b'Help | Getting started']:
+        assert text in out, (text, out)
+    print('Actions PTY: visible menus, filtering, help, navigation and canceled Insert group verified')
+
+with tempfile.TemporaryDirectory() as directory:
     path = pathlib.Path(directory) / 'help'
     path.write_text('original')
     out = session(path, [b'iONE', b'\x1bOP', b'\t', b'\x1b', b'TWO',

@@ -68,6 +68,15 @@ same undo group. **`:help`** opens the guide from the command line. Welcome
 includes a short getting-started guide; the remaining topics cover editing,
 finding files, the directory browser, and commands and confirmations.
 
+**F2 Files**, **F3 Code**, and **F1 Help** stay visible in the interface.
+F2 / `:files` and F3 / `:code` open searchable action menus; **F4** / `:actions`
+includes every category, including help topics. Type words to filter, use arrows
+or Page Up/Down to choose, Enter to act, and Esc to return unchanged. Tab switches
+categories. Direct shortcuts continue to work. Menu cancellation preserves even
+an unfinished command or Insert session; choosing a navigation action ends the
+Insert group. Pending save/delete confirmations must be resolved before another
+navigation action can run.
+
 Bindings:
 
 - Normal mode: `h j k l`, arrows, `0`, `$`, `gg`, `G`; `i` insert, `a` append, `o` open a line below; `x` delete a character, `dd` delete a line.
