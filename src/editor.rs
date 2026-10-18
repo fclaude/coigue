@@ -1,4 +1,8 @@
-use crate::{buffer::Buffer, file::File};
+use crate::{
+    buffer::Buffer,
+    file::File,
+    navigation::{Location, Travel},
+};
 use crossterm::event::{KeyCode as K, KeyEvent, KeyModifiers};
 #[derive(Debug, PartialEq)]
 pub enum Mode {
@@ -46,18 +50,21 @@ impl CommandCompletion {
     fn new(input: &str, backwards: bool) -> Option<Self> {
         const COMMANDS: &[&str] = &[
             "actions",
+            "back",
             "clipboard-copy",
             "clipboard-paste",
             "clipboard-paste-before",
             "code",
             "explore",
             "files",
+            "forward",
             "help",
             "justify",
             "lsp-restart",
             "open",
             "q",
             "q!",
+            "recent",
             "textwidth",
             "theme",
             "w",
@@ -103,6 +110,11 @@ pub struct Editor {
     textwidth: usize,
     selection_anchor: Option<(usize, usize)>,
     clipboard_export: Option<(String, Register)>,
+    history: crate::navigation::History,
+    pending_jump: Option<(Location, Travel)>,
+    pub locations: Option<crate::navigation::List>,
+    pub viewport: (usize, usize),
+    pub viewport_revision: u64,
     pub menu: Option<crate::actions::Menu>,
     pub help: Option<crate::help::Help>,
     pub theme: crate::theme::Theme,
@@ -129,7 +141,16 @@ pub struct Editor {
 }
 impl Editor {
     pub fn new(file: File, text: &str) -> Self {
+        let mut history = crate::navigation::History::default();
+        if !file.path.as_os_str().is_empty() {
+            history.visit(Location::new(file.path.clone()));
+        }
         Self {
+            history,
+            pending_jump: None,
+            locations: None,
+            viewport: (0, 0),
+            viewport_revision: 0,
             textwidth: 80,
             selection_anchor: None,
             clipboard_export: None,
@@ -203,6 +224,30 @@ impl Editor {
             }
             return false;
         }
+        if key.modifiers == KeyModifiers::ALT
+            && matches!(key.code, K::Left | K::Right)
+            && self.switch_prompt.is_none()
+            && self.filesystem_prompt.is_none()
+        {
+            self.activate(if key.code == K::Left {
+                crate::actions::Action::Back
+            } else {
+                crate::actions::Action::Forward
+            });
+            return false;
+        }
+        if self.locations.is_some() && self.switch_prompt.is_none() {
+            if key.code == K::Esc {
+                self.locations = None;
+            } else if !key
+                .modifiers
+                .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER)
+                && let Some(location) = self.locations.as_mut().unwrap().key(key.code, page_rows)
+            {
+                self.request_location(location, Travel::New);
+            }
+            return false;
+        }
         self.buffer.begin_edit();
         let quit = self.key_inner(key, page_rows);
         if self.mode != Mode::Insert || self.picker.is_some() || self.explorer.is_some() {
@@ -222,6 +267,7 @@ impl Editor {
             return;
         }
         self.buffer.finish_edit();
+        self.locations = None;
         self.mode = Mode::Normal;
         self.selection_anchor = None;
         self.reset_pending();
@@ -234,6 +280,33 @@ impl Editor {
                 self.picker = None;
                 self.open_explorer();
             }
+            Action::Recent => {
+                if let Some(location) = self.location() {
+                    self.history.visit(location);
+                }
+                self.locations = Some(crate::navigation::List::new(
+                    "Recent files",
+                    self.history
+                        .recent
+                        .iter()
+                        .cloned()
+                        .map(|location| {
+                            let label = format!(
+                                "{}:{}:{}",
+                                location.path.display(),
+                                location.row + 1,
+                                location.col + 1
+                            );
+                            crate::navigation::Target { location, label }
+                        })
+                        .collect(),
+                ));
+            }
+            Action::Back | Action::Forward => self.travel(if matches!(action, Action::Back) {
+                Travel::Back
+            } else {
+                Travel::Forward
+            }),
             _ if self.welcome.is_some() => {
                 self.message = "No file open; use F2 to find or create one".into()
             }
@@ -249,11 +322,13 @@ impl Editor {
             Action::FirstLine | Action::LastLine => {
                 self.picker = None;
                 self.close_explorer();
-                self.buffer.row = if matches!(action, Action::FirstLine) {
+                let row = if matches!(action, Action::FirstLine) {
                     0
                 } else {
                     self.buffer.lines.len() - 1
                 };
+                self.remember_jump(row, 0);
+                self.buffer.row = row;
                 self.buffer.col = 0;
             }
             Action::Help(_) => unreachable!(),
@@ -691,13 +766,15 @@ impl Editor {
             }
             (Some('g'), K::Char('q')) => self.justify(self.textwidth),
             (Some('g'), K::Char('g')) | (_, K::Char('G')) => {
-                self.buffer.row = if explicit {
-                    count - 1
+                let row = if explicit {
+                    (count - 1).min(self.buffer.lines.len() - 1)
                 } else if code == K::Char('G') {
                     self.buffer.lines.len() - 1
                 } else {
                     0
                 };
+                self.remember_jump(row, 0);
+                self.buffer.row = row;
                 self.buffer.col = 0;
             }
             (_, K::Char('h') | K::Left) => self.buffer.col = self.buffer.col.saturating_sub(count),
@@ -821,6 +898,7 @@ impl Editor {
             } else {
                 (row, col) >= (self.buffer.row, self.buffer.col)
             };
+            self.remember_jump(row, col);
             self.buffer.row = row;
             self.buffer.col = col;
             self.message = format!(
@@ -848,6 +926,7 @@ impl Editor {
         Ok(parent.join(name))
     }
     fn open_explorer(&mut self) {
+        self.locations = None;
         self.message.clear();
         if let Some(directory) = &self.welcome {
             self.explorer = Some(crate::explorer::Explorer::new(
@@ -1008,6 +1087,7 @@ impl Editor {
                         None
                     };
                     crate::fileops::move_entry(source, &target)?;
+                    self.history.rename(source, &target);
                     if let Some(active) = active
                         && let Ok(suffix) = active.strip_prefix(source)
                     {
@@ -1081,13 +1161,68 @@ impl Editor {
             _ => {}
         }
     }
+    fn location(&self) -> Option<Location> {
+        if self.welcome.is_some() {
+            return None;
+        }
+        let mut location = Location::new(self.file.path.clone());
+        location.row = self.buffer.row;
+        location.col = self.buffer.col;
+        (location.top, location.left) = self.viewport;
+        Some(location)
+    }
+    fn remember_jump(&mut self, row: usize, col: usize) {
+        if (row, col) != (self.buffer.row, self.buffer.col)
+            && let Some(location) = self.location()
+        {
+            self.history.depart(location);
+        }
+    }
+    fn travel(&mut self, direction: Travel) {
+        if let Some(target) = self.history.destination(direction) {
+            self.request_location(target, direction);
+        } else {
+            self.message = "No further navigation history".into();
+        }
+    }
     fn request_open(&mut self, path: std::path::PathBuf) {
+        let location = Location::new(path);
+        self.pending_jump = Some((location.clone(), Travel::New));
         self.message.clear();
         if self.file.dirty(&self.buffer.text()) {
-            self.switch_prompt = Some(path);
+            self.switch_prompt = Some(location.path);
         } else {
-            self.open_path(path);
+            self.open_path(location.path);
         }
+    }
+    fn request_location(&mut self, location: Location, travel: Travel) {
+        self.message.clear();
+        if self
+            .location()
+            .is_some_and(|current| current.path == location.path)
+        {
+            let origin = self.location();
+            self.apply_location(&location);
+            self.history
+                .arrived(origin, self.location().unwrap(), travel);
+            self.locations = None;
+            self.picker = None;
+            self.close_explorer();
+            return;
+        }
+        self.pending_jump = Some((location.clone(), travel));
+        if self.file.dirty(&self.buffer.text()) {
+            self.switch_prompt = Some(location.path);
+        } else {
+            self.open_path(location.path);
+        }
+    }
+    fn apply_location(&mut self, location: &Location) {
+        self.buffer.row = location.row;
+        self.buffer.col = location.col;
+        self.buffer.clamp(false);
+        self.viewport = (location.top.min(self.buffer.lines.len() - 1), location.left);
+        self.viewport_revision += 1;
     }
     fn open_path(&mut self, path: std::path::PathBuf) {
         // Validate before replacing the live buffer, even after choosing discard.
@@ -1095,10 +1230,16 @@ impl Editor {
             if !meta.is_file() {
                 return Err(std::io::Error::other("not a regular file"));
             }
-            File::open(path)
+            File::open(path.clone())
         });
         match opened {
             Ok((file, text)) => {
+                let origin = self.location();
+                let (mut target, travel) = self
+                    .pending_jump
+                    .take()
+                    .unwrap_or_else(|| (Location::new(path), Travel::New));
+                target.path = file.path.clone();
                 self.welcome = None;
                 self.file = file;
                 self.selection_anchor = None;
@@ -1109,10 +1250,17 @@ impl Editor {
                 self.reset_pending();
                 self.message.clear();
                 self.generation += 1;
+                self.apply_location(&target);
+                self.history
+                    .arrived(origin, self.location().unwrap(), travel);
+                self.locations = None;
                 self.picker = None;
                 self.close_explorer();
             }
-            Err(err) => self.message = format!("Cannot open file: {err}"),
+            Err(err) => {
+                self.pending_jump = None;
+                self.message = format!("Cannot open file: {err}");
+            }
         }
     }
     fn switch_key(&mut self, key: KeyEvent) {
@@ -1125,6 +1273,7 @@ impl Editor {
         match key.code {
             K::Esc | K::Char('c') => {
                 self.switch_prompt = None;
+                self.pending_jump = None;
                 self.message.clear();
             }
             K::Char('s' | 'd') => {
@@ -1141,6 +1290,7 @@ impl Editor {
         }
     }
     fn open_picker(&mut self) {
+        self.locations = None;
         self.message.clear();
         match std::env::current_dir() {
             Ok(root) => self.picker = Some(crate::picker::Picker::new(root)),
@@ -1312,7 +1462,9 @@ impl Editor {
             } else if let Ok(line) = cmd.parse::<usize>()
                 && line > 0
             {
-                self.buffer.row = (line - 1).min(self.buffer.lines.len() - 1);
+                let row = (line - 1).min(self.buffer.lines.len() - 1);
+                self.remember_jump(row, 0);
+                self.buffer.row = row;
                 self.buffer.col = 0;
                 self.message.clear();
             } else {
@@ -1330,6 +1482,9 @@ impl Editor {
             "code" => self.menu = Some(crate::actions::Menu::new(crate::actions::Group::Code)),
             "actions" => self.menu = Some(crate::actions::Menu::new(crate::actions::Group::All)),
             "help" => self.open_help(),
+            "back" => self.travel(Travel::Back),
+            "forward" => self.travel(Travel::Forward),
+            "recent" => self.activate(crate::actions::Action::Recent),
             "open" => self.open_picker(),
             "explore" => self.open_explorer(),
             "w" | "wq" => match self.save_current() {
@@ -1517,6 +1672,67 @@ mod tests {
         assert_eq!(e.command, "justify");
     }
     #[test]
+    fn navigation_history_preserves_positions_failures_dirty_choices_and_branches() {
+        let (dir, mut e) = editing_fixture("first\nsecond\nthird");
+        let first = e.file.path.clone();
+        let second = dir.path().join("second.txt");
+        std::fs::write(&second, "alpha\nbeta\ngamma").unwrap();
+        e.buffer.row = 2;
+        e.buffer.col = 3;
+        e.viewport = (1, 2);
+        e.request_open(second.clone());
+        assert_eq!(e.buffer.row, 0);
+        e.buffer.row = 1;
+        e.buffer.col = 2;
+        e.viewport = (1, 1);
+        e.travel(Travel::Back);
+        assert_eq!(e.file.path, first);
+        assert_eq!((e.buffer.row, e.buffer.col, e.viewport), (2, 3, (1, 2)));
+        e.travel(Travel::Forward);
+        assert_eq!(e.file.path, second);
+        assert_eq!((e.buffer.row, e.buffer.col, e.viewport), (1, 2, (1, 1)));
+        send(&mut e, "i!");
+        press(&mut e, K::Esc);
+        e.travel(Travel::Back);
+        assert!(e.switch_prompt.is_some());
+        press(&mut e, K::Esc);
+        assert_eq!(e.file.path, second);
+        assert_eq!(e.history.destination(Travel::Back).unwrap().path, first);
+        e.travel(Travel::Back);
+        send(&mut e, "s");
+        assert_eq!(
+            std::fs::read_to_string(&second).unwrap(),
+            "alpha\nbe!ta\ngamma"
+        );
+        // Removing a destination must not pop the forward stack or current buffer.
+        std::fs::remove_file(&second).unwrap();
+        e.travel(Travel::Forward);
+        assert_eq!(e.file.path, first);
+        assert!(e.message.contains("Cannot open"));
+        assert!(e.history.destination(Travel::Forward).is_some());
+        // A new same-file line jump clears forward history and remains undo-neutral.
+        e.execute("1");
+        assert!(e.history.destination(Travel::Forward).is_none());
+        e.travel(Travel::Back);
+        assert_eq!(e.buffer.row, 2);
+        send(&mut e, "i!");
+        press(&mut e, K::Esc);
+        e.travel(Travel::Forward);
+        assert!(e.switch_prompt.is_none());
+        assert!(e.file.dirty(&e.buffer.text()));
+        send(&mut e, "u");
+        assert_eq!(e.buffer.text(), "first\nsecond\nthird");
+        e.activate(crate::actions::Action::Recent);
+        assert_eq!(e.locations.as_ref().unwrap().targets.len(), 2);
+        e.locations.as_mut().unwrap().query = "second.txt".into();
+        assert_eq!(e.locations.as_ref().unwrap().matches().len(), 1);
+        press(&mut e, K::Enter);
+        assert!(e.locations.is_some());
+        assert_eq!(e.file.path, first);
+        press(&mut e, K::Esc);
+        assert!(e.locations.is_none());
+    }
+    #[test]
     fn action_menus_preserve_canceled_state_and_dispatch_filtered_actions() {
         let (_dir, mut e) = editing_fixture("first\nsecond\nthird");
         send(&mut e, "iONE");
@@ -1659,18 +1875,21 @@ mod tests {
         send(&mut e, ":");
         let expected = [
             "actions",
+            "back",
             "clipboard-copy",
             "clipboard-paste",
             "clipboard-paste-before",
             "code",
             "explore",
             "files",
+            "forward",
             "help",
             "justify",
             "lsp-restart",
             "open",
             "q",
             "q!",
+            "recent",
             "textwidth",
             "theme",
             "w",

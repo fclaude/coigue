@@ -127,6 +127,20 @@ else: sys.stdout.buffer.write(store.read_bytes())
     assert path.read_text() == 'one two\nthree four\n\nuntouched paragraph\n'
 
 with tempfile.TemporaryDirectory() as directory:
+    first = pathlib.Path(directory) / 'nav-first'
+    second = pathlib.Path(directory) / 'nav-second'
+    first.write_text('first\nsecond\nthird')
+    second.write_text('alpha\nbeta')
+    out = session(first, [b':3\r', b'\x10', b'nav-second', b'\r', b'i!', b'\x1b',
+                          b':back\r', b'c', b':back\r', b's', b'i#', b'\x1b',
+                          b':w\r', b':forward\r', b':recent\r', b'nav-first', b'\r',
+                          None, b':wq\r'], cwd=directory, width=120)
+    assert first.read_text() == 'first\nsecond\n#third'
+    assert second.read_text() == '!alpha\nbeta'
+    assert b'Recent files' in out
+    print('History navigation PTY: positions, dirty cancel/save, back/forward, recent files and resize verified')
+
+with tempfile.TemporaryDirectory() as directory:
     path = pathlib.Path(directory) / 'actions'
     path.write_text('first\nsecond\nthird')
     out = session(path, [b'iONE', b'\x1bOQ', b'no such action', b'\r', b'\x1b', b'TWO',
