@@ -60,6 +60,8 @@ clip the display and resizing redraws it. `coigue --help` shows startup usage.
 
 A nonexistent explicit path starts an empty buffer. Parent directories must already exist.
 
+Run `coigue --version` to show the source version, package build, and source commit.
+
 Bindings:
 
 - Normal mode: `h j k l`, arrows, `0`, `$`, `gg`, `G`; `i` insert, `a` append, `o` open a line below; `x` delete a character, `dd` delete a line.
