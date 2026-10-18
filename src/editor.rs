@@ -55,6 +55,7 @@ impl CommandCompletion {
             "clipboard-paste",
             "clipboard-paste-before",
             "code",
+            "definition",
             "explore",
             "files",
             "forward",
@@ -62,13 +63,17 @@ impl CommandCompletion {
             "justify",
             "lsp-restart",
             "open",
+            "project-search",
             "q",
             "q!",
             "recent",
+            "references",
+            "symbols",
             "textwidth",
             "theme",
             "w",
             "wq",
+            "workspace-symbols",
         ];
         let trimmed = input.trim_start();
         let (prefix, choices) = if let Some(end) = trimmed.find(char::is_whitespace) {
@@ -110,6 +115,8 @@ pub struct Editor {
     textwidth: usize,
     selection_anchor: Option<(usize, usize)>,
     clipboard_export: Option<(String, Register)>,
+    pending_query: Option<std::time::Instant>,
+    search_job: Option<crate::search::Search>,
     history: crate::navigation::History,
     pending_jump: Option<(Location, Travel)>,
     pub locations: Option<crate::navigation::List>,
@@ -146,6 +153,8 @@ impl Editor {
             history.visit(Location::new(file.path.clone()));
         }
         Self {
+            pending_query: None,
+            search_job: None,
             history,
             pending_jump: None,
             locations: None,
@@ -187,7 +196,8 @@ impl Editor {
     pub fn key(&mut self, key: KeyEvent, page_rows: usize) -> bool {
         // Help must not split an Insert session, consume pending keys, or touch
         // the suspended prompt/browser. Intercept before edit bookkeeping.
-        if self.help.is_none() && matches!(key.code, K::F(2) | K::F(3) | K::F(4)) {
+        if matches!(key.code, K::F(2) | K::F(3) | K::F(4)) {
+            self.help = None;
             let group = match key.code {
                 K::F(2) => crate::actions::Group::Files,
                 K::F(3) => crate::actions::Group::Code,
@@ -203,7 +213,14 @@ impl Editor {
                 .modifiers
                 .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER)
             {
-                self.help.as_mut().unwrap().key(key.code, page_rows);
+                self.help.as_mut().unwrap().key(
+                    if key.code == K::Tab && key.modifiers.contains(KeyModifiers::SHIFT) {
+                        K::BackTab
+                    } else {
+                        key.code
+                    },
+                    page_rows,
+                );
             }
             return false;
         }
@@ -224,6 +241,20 @@ impl Editor {
             }
             return false;
         }
+        if self.switch_prompt.is_none()
+            && self.filesystem_prompt.is_none()
+            && matches!(key.code, K::F(5..=9))
+        {
+            let action = match key.code {
+                K::F(5) => crate::actions::Action::ProjectSearch,
+                K::F(6) => crate::actions::Action::Symbols,
+                K::F(7) => crate::actions::Action::Definition,
+                K::F(8) => crate::actions::Action::References,
+                _ => crate::actions::Action::WorkspaceSymbols,
+            };
+            self.activate(action);
+            return false;
+        }
         if key.modifiers == KeyModifiers::ALT
             && matches!(key.code, K::Left | K::Right)
             && self.switch_prompt.is_none()
@@ -238,13 +269,29 @@ impl Editor {
         }
         if self.locations.is_some() && self.switch_prompt.is_none() {
             if key.code == K::Esc {
-                self.locations = None;
+                self.close_locations();
             } else if !key
                 .modifiers
                 .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER)
-                && let Some(location) = self.locations.as_mut().unwrap().key(key.code, page_rows)
             {
-                self.request_location(location, Travel::New);
+                let before = self.locations.as_ref().unwrap().query.clone();
+                if let Some(location) = self.locations.as_mut().unwrap().key(key.code, page_rows) {
+                    self.request_location(location, Travel::New);
+                } else if self
+                    .locations
+                    .as_ref()
+                    .is_some_and(|list| list.source.live() && list.query != before)
+                {
+                    // Debounce bursts of typing. Cancel old work immediately,
+                    // then search only once the latest query has settled.
+                    self.search_job = None;
+                    self.lsp.cancel_navigation();
+                    let list = self.locations.as_mut().unwrap();
+                    list.targets.clear();
+                    list.notice.clear();
+                    list.busy = true;
+                    self.pending_query = Some(std::time::Instant::now());
+                }
             }
             return false;
         }
@@ -267,7 +314,7 @@ impl Editor {
             return;
         }
         self.buffer.finish_edit();
-        self.locations = None;
+        self.close_locations();
         self.mode = Mode::Normal;
         self.selection_anchor = None;
         self.reset_pending();
@@ -280,6 +327,11 @@ impl Editor {
                 self.picker = None;
                 self.open_explorer();
             }
+            Action::ProjectSearch => self.open_locations(crate::navigation::Source::Project),
+            Action::Symbols => self.open_locations(crate::navigation::Source::Symbols),
+            Action::Definition => self.open_locations(crate::navigation::Source::Definition),
+            Action::References => self.open_locations(crate::navigation::Source::References),
+            Action::WorkspaceSymbols => self.open_locations(crate::navigation::Source::Workspace),
             Action::Recent => {
                 if let Some(location) = self.location() {
                     self.history.visit(location);
@@ -338,8 +390,15 @@ impl Editor {
         use crate::help::Topic;
         let topic = if self.switch_prompt.is_some() || self.filesystem_prompt.is_some() {
             Topic::Prompts
-        } else if self.picker.is_some() {
+        } else if self.picker.is_some()
+            || self
+                .locations
+                .as_ref()
+                .is_some_and(|list| list.source == crate::navigation::Source::Recent)
+        {
             Topic::Files
+        } else if self.locations.is_some() {
+            Topic::Code
         } else if self.explorer.is_some() {
             Topic::Explorer
         } else if matches!(self.mode, Mode::Command | Mode::Search) {
@@ -363,6 +422,7 @@ impl Editor {
     pub fn poll_lsp(&mut self) {
         self.sync_lsp();
         self.lsp.poll(&self.buffer.lines);
+        self.poll_locations();
     }
     fn save_current(&mut self) -> std::io::Result<()> {
         self.file.save(&self.buffer.text())?;
@@ -926,7 +986,7 @@ impl Editor {
         Ok(parent.join(name))
     }
     fn open_explorer(&mut self) {
-        self.locations = None;
+        self.close_locations();
         self.message.clear();
         if let Some(directory) = &self.welcome {
             self.explorer = Some(crate::explorer::Explorer::new(
@@ -1161,6 +1221,134 @@ impl Editor {
             _ => {}
         }
     }
+    fn close_locations(&mut self) {
+        self.pending_query = None;
+        self.locations = None;
+        self.search_job = None;
+        self.lsp.cancel_navigation();
+    }
+    fn open_locations(&mut self, source: crate::navigation::Source) {
+        use crate::navigation::{List, Source};
+        if source != Source::Project && self.welcome.is_some() {
+            self.message =
+                "Open a source file before asking its language server for navigation".into();
+            return;
+        }
+        let title = match source {
+            Source::Project => "Project search",
+            Source::Symbols => "File symbols",
+            Source::Definition => "Definitions",
+            Source::References => "References",
+            Source::Workspace => "Workspace symbols",
+            Source::Recent => "Recent files",
+        };
+        self.message.clear();
+        let mut list = List::new(title, Vec::new());
+        list.source = source;
+        self.locations = Some(list);
+        self.refresh_locations();
+    }
+    fn refresh_locations(&mut self) {
+        self.pending_query = None;
+        use crate::navigation::Source;
+        self.search_job = None;
+        let list = self.locations.as_mut().unwrap();
+        list.targets.clear();
+        list.selected = 0;
+        list.notice.clear();
+        let source = list.source;
+        let query = list.query.clone();
+        if source.live() && query.is_empty() {
+            self.lsp.cancel_navigation();
+            list.busy = false;
+            list.notice = "Type text to search; Enter opens a result, Esc returns".into();
+            return;
+        }
+        list.busy = true;
+        if source == Source::Project {
+            match std::env::current_dir() {
+                Ok(root) => {
+                    let active = self
+                        .location()
+                        .map(|location| (location.path, self.buffer.text()));
+                    self.search_job = Some(crate::search::Search::start(root, query, active));
+                }
+                Err(error) => {
+                    let list = self.locations.as_mut().unwrap();
+                    list.busy = false;
+                    list.notice = format!("Cannot search project: {error}");
+                }
+            }
+            return;
+        }
+        let kind = match source {
+            Source::Symbols => crate::lsp::NavigationKind::Symbols,
+            Source::Definition => crate::lsp::NavigationKind::Definition,
+            Source::References => crate::lsp::NavigationKind::References,
+            Source::Workspace => crate::lsp::NavigationKind::Workspace,
+            _ => return,
+        };
+        self.sync_lsp();
+        if let Err(message) = self.lsp.navigate(
+            kind,
+            query,
+            self.buffer.row,
+            self.buffer.col,
+            &self.buffer.lines,
+        ) {
+            let list = self.locations.as_mut().unwrap();
+            list.busy = false;
+            list.notice = message;
+        }
+    }
+    fn poll_locations(&mut self) {
+        if self
+            .pending_query
+            .is_some_and(|at| at.elapsed() >= std::time::Duration::from_millis(75))
+        {
+            self.refresh_locations();
+        }
+        if let (Some(job), Some(list)) = (&self.search_job, &mut self.locations) {
+            job.poll(list);
+        }
+        let Some((kind, result)) = self.lsp.navigation_result.take() else {
+            return;
+        };
+        let Some(list) = self.locations.as_mut() else {
+            return;
+        };
+        list.busy = false;
+        match result {
+            Ok(targets) => {
+                if kind == crate::lsp::NavigationKind::Definition
+                    && targets.len() == 1
+                    && self.help.is_none()
+                    && self.menu.is_none()
+                {
+                    let target = targets[0].location.clone();
+                    // Keep the result available if the user cancels a dirty
+                    // switch, or if opening the destination fails.
+                    list.targets = targets;
+                    self.request_location(target, Travel::New);
+                    self.sync_lsp();
+                } else {
+                    list.notice = if targets.len() == 1000 {
+                        "First 1000 results; refine the query".into()
+                    } else {
+                        format!(
+                            "{} results; type to filter, Enter opens, Esc returns",
+                            targets.len()
+                        )
+                    };
+                    list.targets = targets;
+                    list.selected = 0;
+                }
+            }
+            Err(message) => {
+                list.notice = message;
+            }
+        }
+    }
     fn location(&self) -> Option<Location> {
         if self.welcome.is_some() {
             return None;
@@ -1205,7 +1393,7 @@ impl Editor {
             self.apply_location(&location);
             self.history
                 .arrived(origin, self.location().unwrap(), travel);
-            self.locations = None;
+            self.close_locations();
             self.picker = None;
             self.close_explorer();
             return;
@@ -1253,7 +1441,7 @@ impl Editor {
                 self.apply_location(&target);
                 self.history
                     .arrived(origin, self.location().unwrap(), travel);
-                self.locations = None;
+                self.close_locations();
                 self.picker = None;
                 self.close_explorer();
             }
@@ -1290,7 +1478,7 @@ impl Editor {
         }
     }
     fn open_picker(&mut self) {
-        self.locations = None;
+        self.close_locations();
         self.message.clear();
         match std::env::current_dir() {
             Ok(root) => self.picker = Some(crate::picker::Picker::new(root)),
@@ -1482,6 +1670,11 @@ impl Editor {
             "code" => self.menu = Some(crate::actions::Menu::new(crate::actions::Group::Code)),
             "actions" => self.menu = Some(crate::actions::Menu::new(crate::actions::Group::All)),
             "help" => self.open_help(),
+            "project-search" => self.activate(crate::actions::Action::ProjectSearch),
+            "symbols" => self.activate(crate::actions::Action::Symbols),
+            "definition" => self.activate(crate::actions::Action::Definition),
+            "references" => self.activate(crate::actions::Action::References),
+            "workspace-symbols" => self.activate(crate::actions::Action::WorkspaceSymbols),
             "back" => self.travel(Travel::Back),
             "forward" => self.travel(Travel::Forward),
             "recent" => self.activate(crate::actions::Action::Recent),
@@ -1672,11 +1865,67 @@ mod tests {
         assert_eq!(e.command, "justify");
     }
     #[test]
+    fn definition_cancel_keeps_result_and_help_prevents_background_jumps() {
+        let (dir, mut e) = editing_fixture("original");
+        let original = e.file.path.clone();
+        let target_path = dir.path().join("definition.rs");
+        std::fs::write(&target_path, "fn target() {}").unwrap();
+        let target_path = target_path.canonicalize().unwrap();
+        let mut location = Location::new(target_path.clone());
+        location.col = 3;
+        let target = crate::navigation::Target {
+            location,
+            label: "target".into(),
+        };
+        send(&mut e, "i!");
+        press(&mut e, K::Esc);
+        e.activate(crate::actions::Action::Definition);
+        e.lsp.navigation_result = Some((
+            crate::lsp::NavigationKind::Definition,
+            Ok(vec![target.clone()]),
+        ));
+        e.poll_locations();
+        assert!(e.switch_prompt.is_some());
+        assert_eq!(e.locations.as_ref().unwrap().targets.len(), 1);
+        send(&mut e, "c");
+        assert_eq!(e.file.path, original);
+        press(&mut e, K::Enter);
+        assert!(e.switch_prompt.is_some());
+        send(&mut e, "s");
+        assert_eq!(e.file.path, target_path);
+        assert_eq!(e.buffer.col, 3);
+        e.travel(Travel::Back);
+        assert_eq!(e.file.path, original);
+        e.activate(crate::actions::Action::Definition);
+        let mut other = target.clone();
+        other.location.col = 4;
+        other.label = "second definition".into();
+        e.lsp.navigation_result = Some((
+            crate::lsp::NavigationKind::Definition,
+            Ok(vec![target.clone(), other]),
+        ));
+        e.poll_locations();
+        assert_eq!(e.file.path, original);
+        assert_eq!(e.locations.as_ref().unwrap().targets.len(), 2);
+        press(&mut e, K::Esc);
+        e.activate(crate::actions::Action::Definition);
+        e.open_help();
+        e.lsp.navigation_result = Some((crate::lsp::NavigationKind::Definition, Ok(vec![target])));
+        e.poll_locations();
+        assert_eq!(e.file.path, original);
+        assert!(e.help.is_some());
+        assert_eq!(e.locations.as_ref().unwrap().targets.len(), 1);
+        press(&mut e, K::Esc);
+        press(&mut e, K::Enter);
+        assert_eq!(e.file.path, target_path);
+    }
+    #[test]
     fn navigation_history_preserves_positions_failures_dirty_choices_and_branches() {
         let (dir, mut e) = editing_fixture("first\nsecond\nthird");
         let first = e.file.path.clone();
         let second = dir.path().join("second.txt");
         std::fs::write(&second, "alpha\nbeta\ngamma").unwrap();
+        let second = second.canonicalize().unwrap();
         e.buffer.row = 2;
         e.buffer.col = 3;
         e.viewport = (1, 2);
@@ -1841,6 +2090,9 @@ mod tests {
         send(&mut welcome, ":help");
         press(&mut welcome, K::Enter);
         assert!(welcome.help.is_some());
+        press(&mut welcome, K::F(2));
+        assert!(welcome.help.is_none());
+        assert!(welcome.menu.is_some());
         assert!(welcome.welcome.is_some());
     }
     #[test]
@@ -1850,14 +2102,14 @@ mod tests {
         press(&mut e, K::Esc);
         let revision = e.buffer.revision();
         send(&mut e, ":w");
-        for expected in ["w", "wq", "w"] {
+        for expected in ["w", "wq", "workspace-symbols", "w", "wq"] {
             assert!(!e.key(KeyEvent::new(K::Tab, KeyModifiers::NONE), 22));
             assert_eq!(e.command, expected);
         }
         e.key(KeyEvent::new(K::BackTab, KeyModifiers::SHIFT), 22);
-        assert_eq!(e.command, "wq");
-        e.key(KeyEvent::new(K::Tab, KeyModifiers::SHIFT), 22);
         assert_eq!(e.command, "w");
+        e.key(KeyEvent::new(K::Tab, KeyModifiers::SHIFT), 22);
+        assert_eq!(e.command, "workspace-symbols");
         assert_eq!(e.mode, Mode::Command);
         assert_eq!(e.buffer.revision(), revision);
         assert!(e.file.dirty(&e.buffer.text()));
@@ -1880,6 +2132,7 @@ mod tests {
             "clipboard-paste",
             "clipboard-paste-before",
             "code",
+            "definition",
             "explore",
             "files",
             "forward",
@@ -1887,13 +2140,17 @@ mod tests {
             "justify",
             "lsp-restart",
             "open",
+            "project-search",
             "q",
             "q!",
             "recent",
+            "references",
+            "symbols",
             "textwidth",
             "theme",
             "w",
             "wq",
+            "workspace-symbols",
             "actions",
         ];
         for expected in expected {
@@ -1903,7 +2160,9 @@ mod tests {
         press(&mut e, K::Esc);
         send(&mut e, ":");
         press(&mut e, K::BackTab);
-        assert_eq!(e.command, "wq");
+        assert_eq!(e.command, "workspace-symbols");
+        e.command = "wq".into();
+        e.command_completion = None;
         press(&mut e, K::Backspace);
         press(&mut e, K::Tab);
         assert_eq!(e.command, "w");

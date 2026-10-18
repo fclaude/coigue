@@ -66,7 +66,7 @@ Tab / Shift-Tab switch topics, arrows or Page Up/Down scroll, and Esc / F1
 returns to the exact previous state. Opening help during Insert mode keeps the
 same undo group. **`:help`** opens the guide from the command line. Welcome
 includes a short getting-started guide; the remaining topics cover editing,
-finding files, the directory browser, and commands and confirmations.
+finding files, the directory browser, code navigation, and confirmations.
 
 **F2 Files**, **F3 Code**, and **F1 Help** stay visible in the interface.
 F2 / `:files` and F3 / `:code` open searchable action menus; **F4** / `:actions`
@@ -86,6 +86,37 @@ history. Failed opens and canceled save/discard choices leave history intact;
 same-file returns keep edits and undo history without reloading. Switching to a
 different file keeps the existing save/discard/cancel protection. History and
 recent files are not persisted across editor restarts.
+
+Code navigation is available from **F3 Code**, with direct shortcuts:
+
+| Action | Shortcut | Command |
+| --- | --- | --- |
+| Search text across the project | F5 | `:project-search` |
+| Symbols in the current file | F6 | `:symbols` |
+| Go to definition | F7 | `:definition` |
+| Find references, including the declaration | F8 | `:references` |
+| Search workspace symbols | F9 | `:workspace-symbols` |
+
+Project search is literal and case-sensitive, rooted at the launch directory.
+Type to search; arrows choose a result, Enter opens it, and Esc cancels. Results
+show one match per line, with file, line, column, and a short text preview.
+Search uses the file picker's ignore policy and the active file's unsaved text.
+It skips binary, unreadable, non-UTF-8, and over-2-MiB files, reports skips, and
+limits results to the first 1000 matching lines. Refine the query when capped.
+Queries and discovery run in a cancellable background worker; no external search
+program or language server is required.
+
+Symbol, definition, and reference navigation uses the optional language server
+for the active file. File symbols and references can be filtered by typing;
+workspace symbols are requested as you type a query. A single definition opens
+directly; multiple definitions show a list. Every successful jump supports
+back/forward history and the existing unsaved-change choices. Closing a result
+list keeps your cursor, text, and scroll position. Missing servers, unsupported
+features, errors, and timeouts produce a message in the list; Esc returns to
+editing. Navigation replies for older requests, edits, or files are ignored.
+Only local-file locations are opened. Other-file locations over 2 MiB or without
+readable UTF-8 text are omitted. Results are limited to 1000; an empty result means
+the server found no locations. Project search remains available independently.
 
 Bindings:
 
@@ -466,7 +497,8 @@ File switches close the old document; changing language/workspace stops the old
 server. Shutdown has a bounded wait and unresponsive children are killed/reaped.
 Server output never writes into the terminal UI.
 
-This integration supports diagnostics and Rust/Go semantic highlighting. Completion, hover, navigation,
-formatting, rename, workspace edits, file watching, and server configuration are
-not implemented. The LSP smoke test uses disposable fake servers for deterministic
+This integration supports diagnostics, Rust/Go semantic highlighting, definition
+and reference navigation, file symbols, and workspace-symbol search. Completion,
+hover, formatting, rename, workspace edits, file watching, and server configuration
+are not implemented. The LSP smoke test uses disposable fake servers for deterministic
 PTY checks and does not require these language servers to be installed.

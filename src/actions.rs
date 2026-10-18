@@ -30,6 +30,11 @@ impl Group {
 }
 #[derive(Clone, Copy)]
 pub enum Action {
+    ProjectSearch,
+    Symbols,
+    Definition,
+    References,
+    WorkspaceSymbols,
     Back,
     Forward,
     Recent,
@@ -48,6 +53,42 @@ pub struct Entry {
     pub action: Action,
 }
 pub const ENTRIES: &[Entry] = &[
+    Entry {
+        group: Group::Code,
+        title: "Search text across the project",
+        shortcut: "F5 / :project-search",
+        action: Action::ProjectSearch,
+    },
+    Entry {
+        group: Group::Code,
+        title: "Symbols in this file",
+        shortcut: "F6 / :symbols",
+        action: Action::Symbols,
+    },
+    Entry {
+        group: Group::Code,
+        title: "Go to definition",
+        shortcut: "F7 / :definition",
+        action: Action::Definition,
+    },
+    Entry {
+        group: Group::Code,
+        title: "Find references",
+        shortcut: "F8 / :references",
+        action: Action::References,
+    },
+    Entry {
+        group: Group::Code,
+        title: "Search workspace symbols",
+        shortcut: "F9 / :workspace-symbols",
+        action: Action::WorkspaceSymbols,
+    },
+    Entry {
+        group: Group::Help,
+        title: "Code navigation",
+        shortcut: "F1",
+        action: Action::Help(Topic::Code),
+    },
     Entry {
         group: Group::Files,
         title: "Recent files",

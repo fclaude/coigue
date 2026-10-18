@@ -101,7 +101,24 @@ pub struct Target {
     pub location: Location,
     pub label: String,
 }
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Source {
+    Recent,
+    Project,
+    Symbols,
+    Definition,
+    References,
+    Workspace,
+}
+impl Source {
+    pub fn live(self) -> bool {
+        matches!(self, Self::Project | Self::Workspace)
+    }
+}
 pub struct List {
+    pub source: Source,
+    pub busy: bool,
+    pub notice: String,
     pub title: String,
     pub query: String,
     pub selected: usize,
@@ -110,6 +127,9 @@ pub struct List {
 impl List {
     pub fn new(title: &str, targets: Vec<Target>) -> Self {
         Self {
+            source: Source::Recent,
+            busy: false,
+            notice: String::new(),
             title: title.into(),
             query: String::new(),
             selected: 0,
@@ -122,7 +142,7 @@ impl List {
             .iter()
             .filter(|target| {
                 let label = target.label.to_lowercase();
-                query.split_whitespace().all(|word| label.contains(word))
+                self.source.live() || query.split_whitespace().all(|word| label.contains(word))
             })
             .collect()
     }
