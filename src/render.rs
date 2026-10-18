@@ -167,6 +167,37 @@ impl View {
         let mut out = io::stdout().lock();
         self.draw_to(e, terminal::size()?, &mut out)
     }
+    fn draw_menu(&mut self, e: &Editor, out: &mut impl Write) -> io::Result<()> {
+        let menu = e.menu.as_ref().unwrap();
+        let rows = usize::from(self.size.1.saturating_sub(2));
+        let top = menu.selected.saturating_sub(rows.saturating_sub(1));
+        let entries = menu.entries();
+        let mut lines = vec![format!(
+            "{} | Enter select, Esc return, Tab category",
+            menu.group.title()
+        )];
+        lines.extend(
+            entries
+                .iter()
+                .enumerate()
+                .skip(top)
+                .take(rows)
+                .map(|(i, entry)| {
+                    format!(
+                        "{} {}    {}",
+                        if i == menu.selected { ">" } else { " " },
+                        entry.title,
+                        entry.shortcut
+                    )
+                }),
+        );
+        if entries.is_empty() && rows > 0 {
+            lines.push("No matching actions".into());
+        }
+        lines.resize(usize::from(self.size.1.saturating_sub(1)), String::new());
+        lines.push(format!("Action: {}", menu.query));
+        self.draw_browser_lines(lines, e, out)
+    }
     fn draw_help(&mut self, e: &Editor, out: &mut impl Write) -> io::Result<()> {
         let help = e.help.as_ref().unwrap();
         let (_, h) = self.size;
@@ -299,13 +330,25 @@ impl View {
     }
     fn draw_browser_lines(
         &mut self,
-        lines: Vec<String>,
+        mut lines: Vec<String>,
         e: &Editor,
         out: &mut impl Write,
     ) -> io::Result<()> {
         let palette = e.theme.palette();
         let (w, h) = self.size;
         let width = usize::from(w);
+        if h > 1 {
+            let strip = if w < 60 {
+                "F2 Files F3 Code F1 Help"
+            } else {
+                crate::actions::STRIP
+            };
+            lines[0] = if lines[0].is_empty() {
+                strip.into()
+            } else {
+                format!("{strip} | {}", lines[0])
+            };
+        }
         let prompt = lines.last().unwrap();
         let mut frame = Vec::new();
         let mut update = Vec::new();
@@ -316,6 +359,7 @@ impl View {
                 && (line.starts_with('/')
                     || line.starts_with(':')
                     || line.starts_with("Open:")
+                    || line.starts_with("Action:")
                     || line.starts_with("New ")
                     || line.starts_with("Rename/move"))
             {
@@ -387,6 +431,9 @@ impl View {
         }
         if e.help.is_some() {
             return self.draw_help(e, out);
+        }
+        if e.menu.is_some() {
+            return self.draw_menu(e, out);
         }
         if e.picker.is_some() {
             return self.draw_picker(e, out);
@@ -519,7 +566,12 @@ impl View {
         }
 
         let mut status = format!(
-            "{:?} {}{}  {}:{}",
+            "{} | {:?} {}{}  {}:{}",
+            if w < 60 {
+                "F2 Files F3 Code F1 Help"
+            } else {
+                crate::actions::STRIP
+            },
             e.mode,
             e.file.path.display(),
             if self.dirty { " [+]" } else { "" },
@@ -721,6 +773,29 @@ mod tests {
         assert!(
             rendered.ends_with(&SetForegroundColor(crossterm::style::Color::Reset).to_string())
         );
+    }
+    #[test]
+    fn action_strip_and_menu_render_across_surfaces_and_resizes() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut e = Editor::welcome(dir.path().into());
+        let mut view = View::default();
+        view.draw_to(&e, (100, 12), &mut Vec::new()).unwrap();
+        assert!(String::from_utf8_lossy(&view.previous[0]).contains("F2 Files"));
+        e.menu = Some(crate::actions::Menu::new(crate::actions::Group::Code));
+        for size in [(100, 12), (1, 1), (2, 2), (80, 8)] {
+            view.draw_to(&e, size, &mut Vec::new()).unwrap();
+        }
+        let text = view
+            .previous
+            .iter()
+            .map(|r| String::from_utf8_lossy(r))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(text.contains("Go to line"));
+        assert!(text.contains("F3 Code"));
+        e.menu.as_mut().unwrap().query = "no such action".into();
+        view.draw_to(&e, (80, 8), &mut Vec::new()).unwrap();
+        assert!(String::from_utf8_lossy(&view.previous[1]).contains("No matching actions"));
     }
     #[test]
     fn help_returns_to_scrolled_file_and_survives_tiny_resizes() {

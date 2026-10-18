@@ -45,10 +45,13 @@ struct CommandCompletion {
 impl CommandCompletion {
     fn new(input: &str, backwards: bool) -> Option<Self> {
         const COMMANDS: &[&str] = &[
+            "actions",
             "clipboard-copy",
             "clipboard-paste",
             "clipboard-paste-before",
+            "code",
             "explore",
+            "files",
             "help",
             "justify",
             "lsp-restart",
@@ -100,6 +103,7 @@ pub struct Editor {
     textwidth: usize,
     selection_anchor: Option<(usize, usize)>,
     clipboard_export: Option<(String, Register)>,
+    pub menu: Option<crate::actions::Menu>,
     pub help: Option<crate::help::Help>,
     pub theme: crate::theme::Theme,
     pub lsp: crate::lsp::Client,
@@ -129,6 +133,7 @@ impl Editor {
             textwidth: 80,
             selection_anchor: None,
             clipboard_export: None,
+            menu: None,
             help: None,
             theme: crate::theme::Theme::default(),
             lsp: crate::lsp::Client::default(),
@@ -161,6 +166,15 @@ impl Editor {
     pub fn key(&mut self, key: KeyEvent, page_rows: usize) -> bool {
         // Help must not split an Insert session, consume pending keys, or touch
         // the suspended prompt/browser. Intercept before edit bookkeeping.
+        if self.help.is_none() && matches!(key.code, K::F(2) | K::F(3) | K::F(4)) {
+            let group = match key.code {
+                K::F(2) => crate::actions::Group::Files,
+                K::F(3) => crate::actions::Group::Code,
+                _ => crate::actions::Group::All,
+            };
+            self.menu = Some(crate::actions::Menu::new(group));
+            return false;
+        }
         if self.help.is_some() {
             if matches!(key.code, K::Esc | K::F(1)) {
                 self.help = None;
@@ -176,6 +190,19 @@ impl Editor {
             self.open_help();
             return false;
         }
+        if self.menu.is_some() {
+            if key.code == K::Esc {
+                self.menu = None;
+            } else if !key
+                .modifiers
+                .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER)
+                && let Some(action) = self.menu.as_mut().unwrap().key(key.code, page_rows)
+            {
+                self.menu = None;
+                self.activate(action);
+            }
+            return false;
+        }
         self.buffer.begin_edit();
         let quit = self.key_inner(key, page_rows);
         if self.mode != Mode::Insert || self.picker.is_some() || self.explorer.is_some() {
@@ -183,6 +210,54 @@ impl Editor {
         }
         self.sync_lsp();
         quit
+    }
+    fn activate(&mut self, action: crate::actions::Action) {
+        use crate::actions::Action;
+        if let Action::Help(topic) = action {
+            self.help = Some(crate::help::Help::new(topic));
+            return;
+        }
+        if self.switch_prompt.is_some() || self.filesystem_prompt.is_some() {
+            self.message = "Finish or cancel the current confirmation first".into();
+            return;
+        }
+        self.buffer.finish_edit();
+        self.mode = Mode::Normal;
+        self.selection_anchor = None;
+        self.reset_pending();
+        self.command.clear();
+        self.search.clear();
+        self.buffer.clamp(false);
+        match action {
+            Action::FindFile => self.open_picker(),
+            Action::Browse => {
+                self.picker = None;
+                self.open_explorer();
+            }
+            _ if self.welcome.is_some() => {
+                self.message = "No file open; use F2 to find or create one".into()
+            }
+            Action::FindText | Action::GoLine => {
+                self.picker = None;
+                self.close_explorer();
+                self.mode = if matches!(action, Action::FindText) {
+                    Mode::Search
+                } else {
+                    Mode::Command
+                };
+            }
+            Action::FirstLine | Action::LastLine => {
+                self.picker = None;
+                self.close_explorer();
+                self.buffer.row = if matches!(action, Action::FirstLine) {
+                    0
+                } else {
+                    self.buffer.lines.len() - 1
+                };
+                self.buffer.col = 0;
+            }
+            Action::Help(_) => unreachable!(),
+        }
     }
     fn open_help(&mut self) {
         use crate::help::Topic;
@@ -1251,6 +1326,9 @@ impl Editor {
                 self.lsp.restart();
                 self.message.clear();
             }
+            "files" => self.menu = Some(crate::actions::Menu::new(crate::actions::Group::Files)),
+            "code" => self.menu = Some(crate::actions::Menu::new(crate::actions::Group::Code)),
+            "actions" => self.menu = Some(crate::actions::Menu::new(crate::actions::Group::All)),
             "help" => self.open_help(),
             "open" => self.open_picker(),
             "explore" => self.open_explorer(),
@@ -1439,6 +1517,49 @@ mod tests {
         assert_eq!(e.command, "justify");
     }
     #[test]
+    fn action_menus_preserve_canceled_state_and_dispatch_filtered_actions() {
+        let (_dir, mut e) = editing_fixture("first\nsecond\nthird");
+        send(&mut e, "iONE");
+        press(&mut e, K::F(2));
+        send(&mut e, "impossible action");
+        press(&mut e, K::Enter);
+        assert!(e.menu.is_some());
+        press(&mut e, K::Esc);
+        assert_eq!(e.mode, Mode::Insert);
+        send(&mut e, "TWO");
+        press(&mut e, K::Esc);
+        send(&mut e, "u");
+        assert_eq!(e.buffer.text(), "first\nsecond\nthird");
+        send(&mut e, ":the");
+        press(&mut e, K::F(3));
+        press(&mut e, K::Esc);
+        assert_eq!(e.command, "the");
+        assert_eq!(e.mode, Mode::Command);
+        press(&mut e, K::Esc);
+        press(&mut e, K::F(3));
+        send(&mut e, "last line");
+        press(&mut e, K::Enter);
+        assert_eq!(e.buffer.row, 2);
+        assert!(e.menu.is_none());
+        press(&mut e, K::F(4));
+        send(&mut e, "getting started");
+        press(&mut e, K::Enter);
+        assert_eq!(e.help.as_ref().unwrap().topic, crate::help::Topic::Start);
+        press(&mut e, K::Esc);
+        press(&mut e, K::F(2));
+        send(&mut e, "find");
+        press(&mut e, K::Enter);
+        assert!(e.picker.is_some());
+        assert_eq!(e.buffer.row, 2);
+        press(&mut e, K::Esc);
+        e.switch_prompt = Some("pending".into());
+        press(&mut e, K::F(3));
+        send(&mut e, "first");
+        press(&mut e, K::Enter);
+        assert!(e.switch_prompt.is_some());
+        assert_eq!(e.buffer.row, 2);
+    }
+    #[test]
     fn help_suspends_insert_commands_browsers_and_confirmations() {
         use crate::help::Topic;
         let (dir, mut e) = editing_fixture("original");
@@ -1536,11 +1657,14 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mut e = Editor::welcome(dir.path().into());
         send(&mut e, ":");
-        for expected in [
+        let expected = [
+            "actions",
             "clipboard-copy",
             "clipboard-paste",
             "clipboard-paste-before",
+            "code",
             "explore",
+            "files",
             "help",
             "justify",
             "lsp-restart",
@@ -1551,11 +1675,9 @@ mod tests {
             "theme",
             "w",
             "wq",
-            "clipboard-copy",
-            "clipboard-paste",
-            "clipboard-paste-before",
-            "explore",
-        ] {
+            "actions",
+        ];
+        for expected in expected {
             press(&mut e, K::Tab);
             assert_eq!(e.command, expected);
         }
