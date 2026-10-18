@@ -90,6 +90,15 @@ fn run() -> io::Result<()> {
     Ok(())
 }
 fn main() {
+    if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--version")) {
+        println!(
+            "coigue {} (main build {}; commit {})",
+            env!("CARGO_PKG_VERSION"),
+            option_env!("COIGUE_PACKAGE_REVISION").unwrap_or("development"),
+            option_env!("COIGUE_SOURCE_COMMIT").unwrap_or("unknown"),
+        );
+        return;
+    }
     let previous = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         let _ = execute!(
