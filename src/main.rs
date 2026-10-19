@@ -50,12 +50,6 @@ fn run() -> io::Result<()> {
     if args.next().is_some() {
         return Err(io::Error::other("usage: coigue [file]"));
     }
-    if path.as_deref().is_some_and(|p| p == "--help" || p == "-h") {
-        println!(
-            "Usage: coigue [file]\nWithout a file, welcome opens in the current directory.\nCtrl-O / - / :explore browse; Ctrl-P / :open find files; F1 / :help guide; :q quit."
-        );
-        return Ok(());
-    }
     let mut editor = if let Some(path) = path {
         let (file, text) = file::File::open(PathBuf::from(path))?;
         editor::Editor::new(file, &text)
@@ -94,6 +88,25 @@ fn run() -> io::Result<()> {
     Ok(())
 }
 fn main() {
+    if std::env::args_os()
+        .nth(1)
+        .as_deref()
+        .is_some_and(|p| p == "--help" || p == "-h")
+    {
+        println!(
+            "Usage: coigue [FILE]\n\nWithout a file, welcome opens in the current directory.\nCtrl-O / - / :explore browse; Ctrl-P / :open find files; F1 / :help guide; :q quit.\n\n  --version   Show source version, package build, and commit\n  --help, -h  Show this help"
+        );
+        return;
+    }
+    if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--version")) {
+        println!(
+            "coigue {} (main build {}; commit {})",
+            env!("CARGO_PKG_VERSION"),
+            option_env!("COIGUE_PACKAGE_REVISION").unwrap_or("development"),
+            option_env!("COIGUE_SOURCE_COMMIT").unwrap_or("unknown"),
+        );
+        return;
+    }
     let previous = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         let _ = execute!(

@@ -118,6 +118,9 @@ Only local-file locations are opened. Other-file locations over 2 MiB or without
 readable UTF-8 text are omitted. Results are limited to 1000; an empty result means
 the server found no locations. Project search remains available independently.
 
+Run `coigue --version` to show the source version, package build, and source commit.
+Run `coigue --help` for command-line usage without entering the terminal editor.
+
 Bindings:
 
 - Normal mode: `h j k l`, arrows, `0`, `$`, `gg`, `G`; `i` insert, `a` append, `o` open a line below; `x` delete a character, `dd` delete a line.
