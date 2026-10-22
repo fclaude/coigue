@@ -32,6 +32,17 @@ func newEditor(t *testing.T, path, text string) *editor.Editor {
 	return e
 }
 
+// shortDir is a fresh directory whose path is as short as the system allows.
+func shortDir(t *testing.T) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "c")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	return dir
+}
+
 func newWelcome(t *testing.T, dir string) *editor.Editor {
 	t.Helper()
 	e := editor.NewWelcome(t.Context(), dir)
@@ -431,7 +442,9 @@ func TestWelcomeAndBrowsersRepaintThemesIncludingSelectedRowsAfterResize(t *test
 // Rust: render::tests::diagnostics_redraw_while_idle_and_preserve_gutter_width_and_prompt_priority
 // Parity: DIA, REN.
 func TestDiagnosticsRedrawWhileIdleAndPreserveGutterWidthAndPromptPriority(t *testing.T) {
-	e := newEditor(t, filepath.Join(t.TempDir(), "test.rs"), "a😀b\nsecond\nthird")
+	// t.TempDir() names the test, which on macOS (a long TMPDIR) pushes the language
+	// server status off a 200-column status line; the Rust test used a short path.
+	e := newEditor(t, filepath.Join(shortDir(t), "test.rs"), "a😀b\nsecond\nthird")
 	var v View
 	draw(t, &v, e, 200, 6)
 	e.LSP.Status = "rust-analyzer"

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"slices"
 	"sync"
 	"testing"
@@ -272,6 +273,9 @@ func TestManifestRoundTripPreservesNativePathBytes(t *testing.T) {
 
 // Rust: fileops::tests::non_utf8_names_round_trip_through_persistent_recovery
 func TestNonUTF8NamesRoundTripThroughPersistentRecovery(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("the Rust test is Linux-only: APFS and HFS+ reject file names that are not UTF-8")
+	}
 	root := root(t)
 	path := fsx.Join(root, "f\xff")
 	write(t, path, []byte("data"))

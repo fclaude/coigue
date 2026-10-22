@@ -1,4 +1,4 @@
-//go:build unix
+//go:build linux || darwin
 
 // Command guardcheck is the Go counterpart of the Rust unit test
 // terminal_guard_restores_after_error_and_unwind, which cannot run under
@@ -16,7 +16,9 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"strings"
 
+	"golang.org/x/sys/unix"
 	xterm "golang.org/x/term"
 
 	"github.com/fclaude/coigue/internal/term"
@@ -41,6 +43,49 @@ func main() {
 
 func mode() (*xterm.State, error) { return xterm.GetState(int(os.Stdin.Fd())) }
 
+// termios is the terminal's raw termios, kept only to say what differs when the
+// modes are not back: xterm.State does not expose its fields.
+func termios() (unix.Termios, error) {
+	t, err := unix.IoctlGetTermios(int(os.Stdin.Fd()), ioctlReadTermios)
+	if err != nil {
+		return unix.Termios{}, err
+	}
+	return *t, nil
+}
+
+// explain lists the termios fields that differ, so that a failure on a
+// platform nobody can try by hand (macOS in CI) says what changed.
+func explain(before, after unix.Termios) string {
+	var parts []string
+	add := func(name string, a, b uint64) {
+		if a != b {
+			parts = append(parts, fmt.Sprintf("%s %#x -> %#x", name, a, b))
+		}
+	}
+	add("iflag", uint64(before.Iflag), uint64(after.Iflag))
+	add("oflag", uint64(before.Oflag), uint64(after.Oflag))
+	add("cflag", uint64(before.Cflag), uint64(after.Cflag))
+	add("lflag", uint64(before.Lflag), uint64(after.Lflag))
+	add("ispeed", uint64(before.Ispeed), uint64(after.Ispeed))
+	add("ospeed", uint64(before.Ospeed), uint64(after.Ospeed))
+	if before.Cc != after.Cc {
+		parts = append(parts, fmt.Sprintf("cc %v -> %v", before.Cc, after.Cc))
+	}
+	if len(parts) == 0 {
+		return "the termios fields are equal"
+	}
+	return strings.Join(parts, "; ")
+}
+
+// notRestored is the error for modes that are not back, with what differs.
+func notRestored(when string, before unix.Termios) error {
+	after, err := termios()
+	if err != nil {
+		return fmt.Errorf("terminal modes not restored after %s", when)
+	}
+	return fmt.Errorf("terminal modes not restored after %s: %s", when, explain(before, after))
+}
+
 // run enters the terminal and leaves it again by a returned error and by a
 // panic, checking after each that the original terminal modes are back.
 func run() error {
@@ -48,6 +93,10 @@ func run() error {
 		return errors.New("needs a terminal on stdin and stdout")
 	}
 	original, err := mode()
+	if err != nil {
+		return err
+	}
+	originalTermios, err := termios()
 	if err != nil {
 		return err
 	}
@@ -67,7 +116,7 @@ func run() error {
 		return fmt.Errorf("unexpected result %v", err)
 	}
 	if restored, _ := mode(); !reflect.DeepEqual(restored, original) {
-		return errors.New("terminal modes not restored after an error")
+		return notRestored("an error", originalTermios)
 	}
 	var recovered any
 	func() {
@@ -83,7 +132,7 @@ func run() error {
 		return fmt.Errorf("panic not propagated: %v", recovered)
 	}
 	if restored, _ := mode(); !reflect.DeepEqual(restored, original) {
-		return errors.New("terminal modes not restored after a panic")
+		return notRestored("a panic", originalTermios)
 	}
 	return nil
 }
