@@ -8,7 +8,6 @@ import (
 	"github.com/fclaude/coigue/internal/clipboard"
 	"github.com/fclaude/coigue/internal/fsx"
 	"github.com/fclaude/coigue/internal/navigation"
-	"github.com/fclaude/coigue/internal/theme"
 	"github.com/fclaude/coigue/internal/ucd"
 )
 
@@ -171,16 +170,16 @@ func widthCommand(e *Editor, name string, args []string) bool {
 func themeCommand(e *Editor, _ string, args []string) bool {
 	switch len(args) {
 	case 0:
-		e.Message = "Theme: " + e.Theme.Name() + " | :theme <" + theme.Choices + ">"
+		e.Message = "Theme: " + e.Themes.Name(e.Theme) + " | :theme <" + e.Themes.Choices() + ">"
 	case 1:
-		if t, ok := theme.Parse(args[0]); ok {
+		if t, ok := e.Themes.Parse(args[0]); ok {
 			e.Theme = t
-			e.Message = "Theme: " + t.Name()
+			e.Message = "Theme: " + e.Themes.Name(t)
 		} else {
 			e.Message = "Unknown theme: " + args[0] + "; use :theme"
 		}
 	default:
-		e.Message = "Usage: :theme <" + theme.Choices + ">"
+		e.Message = "Usage: :theme <" + e.Themes.Choices() + ">"
 	}
 	return false
 }
@@ -234,7 +233,7 @@ type commandCompletion struct {
 	selected   int
 }
 
-func (t *commandTable) newCompletion(input string, backwards bool) *commandCompletion {
+func (t *commandTable) newCompletion(input string, backwards bool, themes []string) *commandCompletion {
 	trimmed := strings.TrimLeftFunc(input, ucd.IsWhitespace)
 	var prefix string
 	var choices []string
@@ -246,7 +245,7 @@ func (t *commandTable) newCompletion(input string, backwards bool) *commandCompl
 		if strings.IndexFunc(argument, ucd.IsWhitespace) >= 0 {
 			return nil
 		}
-		prefix, choices = argument, theme.Completions()
+		prefix, choices = argument, themes
 	} else {
 		prefix = trimmed
 		for _, spec := range t.specs {

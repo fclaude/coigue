@@ -7,6 +7,7 @@ import (
 	"github.com/fclaude/coigue/internal/ext"
 	"github.com/fclaude/coigue/internal/fsx"
 	"github.com/fclaude/coigue/internal/help"
+	"github.com/fclaude/coigue/internal/theme"
 )
 
 // Extensions are Scheme commands defined in the user's init file; see
@@ -42,6 +43,8 @@ func (e *Editor) LoadInit(path string) {
 	if e.extensions == nil {
 		e.extensions = ext.New(ext.Options{
 			Define:   e.defineExtensionCommand,
+			Themes:   &e.Themes,
+			SetTheme: func(t theme.Theme) { e.Theme = t },
 			Deadline: e.extDeadline,
 			Watch: func(interrupt func()) func() {
 				if e.interrupter == nil {
@@ -55,6 +58,9 @@ func (e *Editor) LoadInit(path string) {
 		e.Message = "init.scm: " + ext.Tidy(err.Error())
 	}
 }
+
+// Palette is the colours of the current theme.
+func (e *Editor) Palette() theme.Palette { return e.Themes.Palette(e.Theme) }
 
 // defineExtensionCommand adds :name to the command table, so completion and
 // execution treat it like a built-in one.

@@ -142,7 +142,7 @@ func (e *Editor) keyInner(k key.Key, pageRows int) bool {
 			if e.commandCompletion != nil {
 				e.commandCompletion.cycle(backwards)
 			} else {
-				e.commandCompletion = e.commands.newCompletion(e.Command, backwards)
+				e.commandCompletion = e.commands.newCompletion(e.Command, backwards, e.Themes.Completions())
 			}
 			if c := e.commandCompletion; c != nil {
 				e.Command = c.candidates[c.selected]

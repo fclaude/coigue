@@ -2,7 +2,8 @@
 
 Coigüe embeds [Brote](https://github.com/fclaude/brote), a small Scheme for Go programs. A
 Scheme program in your own configuration file can define editor commands: `:name` runs a Scheme
-procedure that reads the text you selected and asks the editor to change it. This page is the
+procedure that reads the text you selected and asks the editor to change it. The same file can
+define themes and pick the one the editor starts in (see *Themes* below). This page is the
 contract for that capability. Each statement is tested; the last section says where.
 
 This is the first slice. It has one way to run Scheme (a command), one place Scheme is loaded from
@@ -96,6 +97,8 @@ interpreter is refused (see *Trust*).
 | Operation | Does | Available |
 | --- | --- | --- |
 | `(define-command name proc [doc])` | Defines `:name` as a command that applies `proc` to its arguments. `name` is 1 to 32 characters: a lowercase letter, then lowercase letters, digits and `-`. It must not be a built-in command or already defined, and at most 100 commands can be defined. `doc` is a one-line description. | only while `init.scm` loads |
+| `(define-theme name spec)` | Defines the theme `name`, which `:theme` and `set-theme` can then use. `name` follows the rule for command names, cannot be the name or alias of a built-in theme or of a theme already defined, and at most 16 themes can be defined. `spec` is a list of `("key" . value)` pairs (see *Themes*). | only while `init.scm` loads |
+| `(set-theme name)` | Starts the editor in the theme `name`, a built-in one or one defined earlier. An unknown name is an error that lists the choices. | only while `init.scm` loads |
 | `(selection?)` | `#t` if the command was started from a Visual selection and no edit has happened yet. | in a command |
 | `(selection-text)` | The selected text (see above). Error if there is no selection, it is longer than 65,536 characters, or an edit already happened in this command. | in a command |
 | `(buffer-text start [end])` | The text of lines `start` to `end` (1-based, inclusive; `end` defaults to `start`) of the current buffer as it is at this point of the command (edits already made are visible), joined with `\n` and without a trailing newline. Error if a line is outside the buffer or the text is longer than 65,536 characters. | in a command |
@@ -107,11 +110,70 @@ interpreter is refused (see *Trust*).
 
 "In a command" means: while the editor is running a `:name` command. Called any other way (while
 `init.scm` loads, or by anything that is not an invocation the editor started) these operations raise
-`name: not inside an extension command`; `define-command` outside loading raises
-`define-command: only allowed while init.scm loads`.
+`name: not inside an extension command`; `define-command`, `define-theme` and `set-theme` outside
+loading raise `define-command: only allowed while init.scm loads` (with their own name).
 
 Line numbers in the interface are 1-based, columns do not appear (the interface works on text, not
 screen positions), and every size is in characters.
+
+## Themes
+
+A theme is a set of colours. The editor comes with five and `:theme` switches between them.
+`define-theme` adds one of your own, built from a built-in theme and a few changes, and
+`set-theme` picks the one the editor starts in. This is `docs/examples/theme.scm`:
+
+```scheme
+; A theme called dusk. It starts from Gruvbox and changes two colours
+; and the weight of keywords.
+(define-theme "dusk"
+  '(("base" . "gruvbox")
+    ("keyword" . "#ff79c6")
+    ("string" . "#8be9fd")
+    ("bold-keywords" . #t)))
+
+; Start the editor with it. :theme mocha (or any other theme) still switches
+; while you're editing, and nothing is saved, so the next start is dusk again.
+(set-theme "dusk")
+```
+
+The spec is a list of pairs whose keys are strings. The key `"base"` names the built-in theme to
+start from (any name or alias `:theme` accepts, and `mocha` when it is left out), and a theme can't
+start from one that `init.scm` defined. Every other key changes one entry, and the entries we leave
+alone keep the colours of the base.
+
+| Key | What it colours |
+| --- | --- |
+| `background` | the background behind the text |
+| `foreground` | plain text, punctuation and variables |
+| `muted` | the line numbers |
+| `surface` | the status line, and the title and chosen rows of menus and file browsers |
+| `keyword` | keywords and Markdown headings |
+| `comment` | comments |
+| `string` | strings |
+| `number` | numbers |
+| `macro` | macros and Markdown strong text |
+| `lifetime` | lifetimes and Markdown emphasis |
+| `type` | types |
+| `function` | functions and Markdown links |
+| `property` | properties |
+| `constant` | constants |
+| `namespace` | namespaces |
+| `error`, `warning`, `info`, `hint` | the gutter letter of a language-server diagnostic of that severity |
+| `bold-keywords` | `#t` or `#f`: whether keywords and macros are drawn bold (Monochrome does) |
+
+A colour is a string of six hex digits after a `#`, in either case, such as `"#ff79c6"`, or
+`"default"`, which leaves the choice to the terminal. `bold-keywords` takes a boolean and every
+other key takes a colour.
+
+A key that isn't in the table, a colour that doesn't parse, a key given twice and a name that is
+taken are errors, and the message names the key: `init.scm: failed: define-theme: keyword: "pink"
+is not a colour; use #rrggbb or default`. The theme that had the mistake isn't defined, the themes
+before it stay, and `init.scm` stops there like it does for any other error.
+
+`set-theme` takes the name of a built-in theme or of one defined above it. Without a `set-theme`
+the editor starts in Mocha, as it always did. Nothing is saved: `:theme` still switches while we
+edit, and the next start goes back to what `init.scm` says. `:theme` with no argument lists the
+defined themes after the built-in ones, and Tab completes their names.
 
 ## How edits are applied
 

@@ -6,6 +6,8 @@ import (
 	"unicode"
 
 	"github.com/fclaude/brote/scheme"
+
+	"github.com/fclaude/coigue/internal/theme"
 )
 
 // sessionFor returns the live session of a call, or the error that explains
@@ -56,6 +58,27 @@ func (r *Runtime) hostOperations() []*scheme.Prim {
 				Origin: "builtin",
 			},
 			Handler: r.defineCommand,
+		},
+		{
+			Name: "define-theme",
+			Meta: scheme.Meta{
+				Doc: "Define the theme NAME, usable with :theme and set-theme. SPEC is a list of (\"key\" . value) pairs: base names the built-in theme to start from (mocha when left out), every other key sets one palette entry to a \"#rrggbb\" colour or \"default\", and bold-keywords takes #t or #f. Only while init.scm loads.",
+				Params: []scheme.Param{
+					{Name: "name", Type: "string", Doc: "lowercase letters, digits and -, starting with a letter, up to 32 characters"},
+					{Name: "spec", Type: "alist", Doc: "the pairs described above"},
+				},
+				Origin: "builtin",
+			},
+			Handler: r.defineTheme,
+		},
+		{
+			Name: "set-theme",
+			Meta: scheme.Meta{
+				Doc:    "Start the editor with the theme NAME, a built-in one or one define-theme made. Only while init.scm loads.",
+				Params: []scheme.Param{{Name: "name", Type: "string", Doc: "the theme to start with"}},
+				Origin: "builtin",
+			},
+			Handler: r.setTheme,
 		},
 		inCommand("selection?", "True if the command was started from a Visual selection and no edit has happened yet.", nil,
 			func(_ *scheme.Call, s *Session) (scheme.Value, error) {
@@ -220,5 +243,67 @@ func (r *Runtime) defineCommand(c *scheme.Call) (scheme.Value, error) {
 	}
 	r.commands[name] = &Command{Name: name, Doc: doc, proc: proc}
 	r.order = append(r.order, name)
+	return scheme.Void, nil
+}
+
+func (r *Runtime) defineTheme(c *scheme.Call) (scheme.Value, error) {
+	if _, err := sessionFor(c, kindInit); err != nil {
+		return scheme.Value{}, err
+	}
+	name, err := c.String(0)
+	if err != nil {
+		return scheme.Value{}, err
+	}
+	items, err := c.List(1)
+	if err != nil {
+		return scheme.Value{}, err
+	}
+	base, baseGiven := "", false
+	var entries []theme.Entry
+	for _, item := range items {
+		if item.Kind != scheme.KPair || item.P.Car.Kind != scheme.KString {
+			return scheme.Value{}, fmt.Errorf("spec is a list of (\"key\" . value) pairs")
+		}
+		key, value := item.P.Car.S, item.P.Cdr
+		if key == "base" {
+			if baseGiven {
+				return scheme.Value{}, fmt.Errorf("base is given twice")
+			}
+			if value.Kind != scheme.KString {
+				return scheme.Value{}, fmt.Errorf("base takes a theme name as a string")
+			}
+			base, baseGiven = value.S, true
+			continue
+		}
+		switch value.Kind {
+		case scheme.KString:
+			entries = append(entries, theme.Entry{Key: key, Value: value.S})
+		case scheme.KBool:
+			entries = append(entries, theme.Entry{Key: key, Value: value.I != 0})
+		default:
+			return scheme.Value{}, fmt.Errorf("%s takes a string, or #t or #f for bold-keywords", key)
+		}
+	}
+	if _, err := r.themes.Define(name, base, entries); err != nil {
+		return scheme.Value{}, err
+	}
+	return scheme.Void, nil
+}
+
+func (r *Runtime) setTheme(c *scheme.Call) (scheme.Value, error) {
+	if _, err := sessionFor(c, kindInit); err != nil {
+		return scheme.Value{}, err
+	}
+	name, err := c.String(0)
+	if err != nil {
+		return scheme.Value{}, err
+	}
+	t, ok := r.themes.Parse(name)
+	if !ok {
+		return scheme.Value{}, fmt.Errorf("there is no theme %q; use %s", name, r.themes.Choices())
+	}
+	if r.opts.SetTheme != nil {
+		r.opts.SetTheme(t)
+	}
 	return scheme.Void, nil
 }
