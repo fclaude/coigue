@@ -416,6 +416,7 @@ func (e *Editor) openPath(path string) {
 	e.Welcome = ""
 	e.File = opened
 	e.selectionAnchor = nil
+	e.commandVisual = 0
 	e.Buffer = buffer.New(text)
 	e.Mode = ModeNormal
 	e.Command = ""

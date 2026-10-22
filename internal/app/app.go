@@ -12,9 +12,11 @@ import (
 	"time"
 
 	"github.com/fclaude/coigue/internal/editor"
+	"github.com/fclaude/coigue/internal/ext"
 	"github.com/fclaude/coigue/internal/file"
 	"github.com/fclaude/coigue/internal/fsx"
 	"github.com/fclaude/coigue/internal/guard"
+	"github.com/fclaude/coigue/internal/key"
 	"github.com/fclaude/coigue/internal/render"
 	"github.com/fclaude/coigue/internal/term"
 	"github.com/fclaude/coigue/internal/version"
@@ -77,13 +79,62 @@ func run(args []string) error {
 	// deferred calls above; restore the terminal first.
 	guard.OnPanic(t.Close)
 	ed.LSP.Enable(ctx)
-	return loop(ed, t)
+	in := &input{events: t.Events()}
+	ed.SetInterrupter(in.watchForInterrupt)
+	// Scheme is loaded from the user's own configuration file only, never
+	// from the directory of the file being edited.
+	if path, ok := ext.InitPath(os.Getenv, os.UserHomeDir); ok {
+		ed.LoadInit(path)
+	}
+	return loop(ed, t, in)
 }
 
-func loop(ed *editor.Editor, t *term.Terminal) error {
+// input is the terminal's event stream. While an extension runs the editor is
+// busy, so a watcher reads the keyboard for Ctrl-C; the other events it reads
+// are kept in pending, in order, for the loop to handle afterwards.
+type input struct {
+	events  <-chan term.Event
+	pending []term.Event
+}
+
+func isInterrupt(event term.Event) bool {
+	return event.Type == term.KeyEvent && event.Kind != term.Release &&
+		event.Key.Mods == key.Ctrl && event.Key.Code == 'c'
+}
+
+// watchForInterrupt calls interrupt when Ctrl-C arrives before stop is called.
+// stop returns after the watcher goroutine has exited, so the loop and the
+// watcher never read the stream at the same time.
+func (in *input) watchForInterrupt(interrupt func()) (stop func()) {
+	done, exited := make(chan struct{}), make(chan struct{})
+	guard.Go(func() {
+		defer close(exited)
+		for {
+			select {
+			case <-done:
+				return
+			case event, ok := <-in.events:
+				switch {
+				case !ok:
+					// The loop sees the closed stream on its next read.
+					return
+				case isInterrupt(event):
+					interrupt()
+				default:
+					in.pending = append(in.pending, event)
+				}
+			}
+		}
+	})
+	return func() {
+		close(done)
+		<-exited
+	}
+}
+
+func loop(ed *editor.Editor, t *term.Terminal, in *input) error {
 	var view render.View
 	view.SetNoColor(os.Getenv("NO_COLOR") != "")
-	events := t.Events()
 	timer := time.NewTimer(pollInterval)
 	defer timer.Stop()
 	for {
@@ -98,24 +149,31 @@ func loop(ed *editor.Editor, t *term.Terminal) error {
 			}
 		}
 		timer.Reset(pollInterval)
-		select {
-		case <-timer.C:
-		case event, ok := <-events:
-			if !ok {
-				return term.ErrInputClosed
-			}
-			if event.Type != term.KeyEvent || event.Kind == term.Release {
+		var event term.Event
+		if len(in.pending) > 0 {
+			event, in.pending = in.pending[0], in.pending[1:]
+		} else {
+			select {
+			case <-timer.C:
 				continue
+			case next, ok := <-in.events:
+				if !ok {
+					return term.ErrInputClosed
+				}
+				event = next
 			}
-			// Resize notifications can arrive after a queued key. Page by
-			// the current terminal height rather than the last drawn frame.
-			_, rows, err := t.Size()
-			if err != nil {
-				return err
-			}
-			if ed.Key(event.Key, max(rows-2, 1)) {
-				return nil
-			}
+		}
+		if event.Type != term.KeyEvent || event.Kind == term.Release {
+			continue
+		}
+		// Resize notifications can arrive after a queued key. Page by
+		// the current terminal height rather than the last drawn frame.
+		_, rows, err := t.Size()
+		if err != nil {
+			return err
+		}
+		if ed.Key(event.Key, max(rows-2, 1)) {
+			return nil
 		}
 	}
 }

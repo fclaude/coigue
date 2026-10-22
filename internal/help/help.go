@@ -18,6 +18,9 @@ const (
 	Explorer
 	Prompts
 	Code
+	// Extensions lists the commands the user's init.scm defined. It is
+	// offered only when there are some: see Help.Extension.
+	Extensions
 )
 
 var allTopics = [...]Topic{Start, Editing, Files, Explorer, Prompts, Code}
@@ -35,6 +38,8 @@ func (t Topic) Title() string {
 		return "Browsing and creating files"
 	case Prompts:
 		return "Commands and confirmations"
+	case Extensions:
+		return "Your commands"
 	}
 	return "Code navigation"
 }
@@ -197,6 +202,28 @@ var promptsLines = []string{
 type Help struct {
 	Topic  Topic
 	Scroll int
+	// Extension is the text of the Extensions topic: one line per command the
+	// user defined. When it is empty the topic does not exist, so the guide is
+	// the same as it was before extensions.
+	Extension []string
+}
+
+func (h *Help) topics() []Topic {
+	if len(h.Extension) == 0 {
+		return allTopics[:]
+	}
+	return append(allTopics[:], Extensions)
+}
+
+// Title is the heading of the topic being shown.
+func (h *Help) Title() string { return h.Topic.Title() }
+
+// Lines is the text of the topic being shown.
+func (h *Help) Lines() []string {
+	if h.Topic == Extensions {
+		return h.Extension
+	}
+	return h.Topic.Lines()
 }
 
 // New opens help at a topic.
@@ -207,18 +234,19 @@ func (h *Help) Key(code key.Code, rows int) {
 	rows = max(rows, 1)
 	switch {
 	case code == key.Tab || code == key.Right || code == key.BackTab || code == key.Left:
+		topics := h.topics()
 		index := 0
-		for i, t := range allTopics {
+		for i, t := range topics {
 			if t == h.Topic {
 				index = i
 			}
 		}
-		length := len(allTopics)
+		length := len(topics)
 		step := 1
 		if code == key.BackTab || code == key.Left {
 			step = length - 1
 		}
-		h.Topic = allTopics[(index+step)%length]
+		h.Topic = topics[(index+step)%length]
 		h.Scroll = 0
 	case code == key.Up || code == 'k':
 		h.Scroll = max(h.Scroll-1, 0)
@@ -231,7 +259,7 @@ func (h *Help) Key(code key.Code, rows int) {
 	case code == key.Home:
 		h.Scroll = 0
 	case code == key.End:
-		h.Scroll = max(len(h.Topic.Lines())-rows, 0)
+		h.Scroll = max(len(h.Lines())-rows, 0)
 	}
-	h.Scroll = min(h.Scroll, max(len(h.Topic.Lines())-1, 0))
+	h.Scroll = min(h.Scroll, max(len(h.Lines())-1, 0))
 }
