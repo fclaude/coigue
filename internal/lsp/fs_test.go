@@ -74,6 +74,14 @@ func checkFSCorpus(t *testing.T, path string) (checked, mismatches int) {
 		return hex.EncodeToString(bytes.ReplaceAll([]byte(b), []byte(root), []byte("<R>")))
 	}
 	substitute := func(s string) string { return strings.ReplaceAll(strings.ReplaceAll(s, "<RU>", root), "<R>", root) }
+	// The corpus was recorded on Linux, where /tmp is a directory. absolute_path
+	// canonicalizes in the Rust editor and in this one, so where /tmp is a symlink
+	// (macOS: /private/tmp) both answer the real path and the recorded bytes for a
+	// literal /tmp input cannot apply.
+	tmpIsLink := false
+	if real, err := filepath.EvalSymlinks("/tmp"); err == nil && real != "/tmp" {
+		tmpIsLink = true
+	}
 	for scanner.Scan() {
 		var entry struct {
 			In  map[string]json.RawMessage `json:"in"`
@@ -84,6 +92,13 @@ func checkFSCorpus(t *testing.T, path string) (checked, mismatches int) {
 		}
 		var op string
 		json.Unmarshal(entry.In["op"], &op)
+		if op == "absolute" && tmpIsLink {
+			var literal string
+			json.Unmarshal(entry.In["t"], &literal)
+			if strings.HasPrefix(literal, "/tmp") {
+				continue
+			}
+		}
 		var got any
 		switch op {
 		case "absolute":

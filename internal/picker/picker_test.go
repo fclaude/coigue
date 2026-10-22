@@ -2,12 +2,14 @@ package picker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -304,7 +306,11 @@ func labelsOf(p *Picker) []string {
 func TestNonUTF8NamesGetLossyLabelsButKeepTheirPaths(t *testing.T) {
 	dir := t.TempDir()
 	name := "f\xff\xe2\x82"
-	write(t, filepath.Join(dir, name), "")
+	if err := os.WriteFile(filepath.Join(dir, name), nil, 0o644); errors.Is(err, syscall.EILSEQ) {
+		t.Skip("this file system rejects file names that are not UTF-8, as APFS does")
+	} else if err != nil {
+		t.Fatal(err)
+	}
 	p := New(context.Background(), dir)
 	defer p.Close()
 	finish(t, p)

@@ -335,3 +335,22 @@ the Unix epoch; other `git` versions than 2.56 for the `check-ignore` test; beha
 `unicode-width` change (regenerate with `go generate` in `internal/width` and `internal/ucd`); running the tests as
 root (the unreadable-directory cases skip). `internal/walk`'s golden test skips if a `.gitignore` exists above
 the temporary directory, because it would change the recorded listings.
+
+## macOS test notes
+
+GitHub's macOS runners (2026-10-22) were the first real macOS run of the Go tests. Six tests assumed
+a Linux file system; none showed a difference in the editor's behaviour, which matches the Rust
+editor's there (its `absolute_path` canonicalizes too). Each is now explicit about it:
+
+- `TestNonUTF8NamesRoundTripThroughPersistentRecovery` skips off Linux, as the Rust test is
+  `#[cfg(target_os = "linux")]`; `TestNonUTF8NamesGetLossyLabelsButKeepTheirPaths` skips when the file
+  system rejects the name (`EILSEQ`, as APFS does).
+- `TestEntriesComeInNameOrderDepthFirst` skips on a case-insensitive volume, where `B` and `b` cannot
+  both exist.
+- `TestPathsRootsAndNavigationTargetsAgreeWithRustGolden` skips the recorded cases whose input is the
+  literal `/tmp` where `/tmp` is a symlink (macOS: `/private/tmp`); the corpus was recorded on Linux.
+- `TestFullMailboxIsReportedNotWaitedFor` uses a canonical temporary directory instead of the literal
+  `/tmp`, which `Sync` canonicalizes.
+- `TestDiagnosticsRedrawWhileIdleAndPreserveGutterWidthAndPromptPriority` uses a short directory: a
+  `t.TempDir()` path names the test, and on macOS that pushed the language-server status off a
+  200-column status line. With a 63-character `TMPDIR` the old test fails on Linux too.

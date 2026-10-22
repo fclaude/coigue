@@ -12,6 +12,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/fclaude/coigue/internal/fsx"
 )
 
 // These tests cover what the Rust Drop guards and mpsc channels gave for free
@@ -283,13 +285,20 @@ func TestNavigateWithoutAnOpenDocumentSaysSo(t *testing.T) {
 }
 
 func TestFullMailboxIsReportedNotWaitedFor(t *testing.T) {
+	// A real directory with no symlinks: Sync canonicalizes the path it is given, and
+	// /tmp is a symlink on macOS.
+	dir, err := fsx.Canonicalize(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "x.rs")
 	input, in := mailbox()
 	events := make(chan output, 1)
 	var c Client
 	c.Enable(context.Background())
 	c.session = &session{input: input, output: events, finished: make(chan struct{})}
-	c.stamp = &stamp{path: "/tmp/x.rs"}
-	c.key = &languageKey{languageRust, "/tmp"}
+	c.stamp = &stamp{path: path}
+	c.key = &languageKey{languageRust, dir}
 	// Saves are never coalesced, so each Sync adds one command.
 	for i := 0; i < queueLimit; i++ {
 		input.trySend(inputDocument{document{uri: "file:///x" + strconv.Itoa(i), saveEvent: true}})
@@ -304,7 +313,7 @@ func TestFullMailboxIsReportedNotWaitedFor(t *testing.T) {
 		t.Errorf("serial = %d: the Rust client spends a serial on a refused request", c.navigationSerial)
 	}
 	c.stamp = nil
-	c.Sync("/tmp/x.rs", 0, 0, 0, func() string { return "" })
+	c.Sync(path, 0, 0, 0, func() string { return "" })
 	if message, failed := c.Failure(); !failed || message != "LSP: server cannot keep up; :lsp-restart to retry" {
 		t.Errorf("Sync with a full mailbox: %q, %v", message, failed)
 	}

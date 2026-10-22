@@ -13,8 +13,112 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # The Go editor. The Makefile (`make check`, `make acceptance`) runs the same
+  # checks locally; the steps are spelled out here so each one reports on its own.
   test:
     name: Test (${{ matrix.name }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x86-64
+            runner: ubuntu-24.04
+          - name: macOS Intel
+            runner: macos-15-intel
+          - name: macOS Apple Silicon
+            runner: macos-15
+    env:
+      TERM: xterm-256color
+      # Use the Go that setup-go installs; never fetch another toolchain when
+      # go.mod asks for a newer release. Raise go.mod's go line deliberately.
+      GOTOOLCHAIN: local
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.13'
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26.x'
+
+      - name: Show toolchain
+        run: go version
+
+      # go.mod requires github.com/fclaude/brote, which is public on GitHub, so
+      # no credentials or module settings are needed.
+      - name: Download Go modules
+        run: go mod download
+
+      - name: Check formatting
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "These files need gofmt:" >&2
+            echo "$unformatted" >&2
+            exit 1
+          fi
+
+      - name: Run go vet
+        run: go vet ./...
+
+      - name: Run staticcheck
+        run: |
+          go install honnef.co/go/tools/cmd/staticcheck@v0.8.1
+          "$(go env GOPATH)/bin/staticcheck" ./...
+
+      - name: Run unit tests
+        run: go test -race ./...
+
+      - name: Check third-party notices
+        run: python3 scripts/licenses.py --check
+
+      - name: Check the Go and Cargo versions agree
+        run: python3 tests/version_agreement.py
+
+      - name: Build editor
+        run: |
+          make build REVISION="ci-$GITHUB_RUN_NUMBER" COMMIT="$GITHUB_SHA"
+          version="$(bin/coigue --version)"
+          echo "$version"
+          case "$version" in
+            "coigue "*" (main build ci-$GITHUB_RUN_NUMBER; commit $GITHUB_SHA)") ;;
+            *) echo "--version does not report the build identity" >&2; exit 1 ;;
+          esac
+
+      - name: Run terminal smoke tests
+        run: python3 tests/pty_smoke.py bin/coigue
+
+      - name: Run language-server smoke tests
+        run: python3 tests/lsp_smoke.py bin/coigue
+
+      - name: Run signal-exit tests
+        run: python3 tests/pty_signals.py bin/coigue
+
+      # Replays 42 sessions recorded from the Rust editor and compares terminal
+      # bytes. Linux only: the suite skips itself elsewhere because the status
+      # line shows /tmp paths.
+      - name: Replay recorded terminal sessions
+        run: python3 tests/pty_golden.py bin/coigue
+
+      # Needs no ~/.config/coigue/init.scm on the runner; the suite sets its own
+      # XDG_CONFIG_HOME, but the suites above read the real one.
+      - name: Run the Scheme extension tests
+        run: python3 tests/pty_extension.py bin/coigue
+
+  # The Rust editor is the reference implementation the Go port was checked
+  # against. It stays, with every check it had, until the Go editor is accepted;
+  # docs/rust-removal.md lists what to delete then (this job included).
+  rust-reference:
+    name: Rust reference (${{ matrix.name }})
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 15
     strategy:

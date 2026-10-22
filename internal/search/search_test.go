@@ -168,8 +168,11 @@ func TestUnreadableFilesAreSkippedAndTheActiveCopyIsSizeLimited(t *testing.T) {
 	write(t, big, []byte("needle"))
 	list := collect(t, root, "needle", &Active{Path: big, Text: strings.Repeat("x", fileLimit+1)})
 	wantSkipped := 2
-	if os.Geteuid() == 0 {
-		wantSkipped = 1 // root can read the locked file
+	// Root with the usual capabilities can read the locked file; root without
+	// them (a container that drops CAP_DAC_OVERRIDE) cannot, like anyone else.
+	if f, err := os.Open(locked); err == nil {
+		_ = f.Close()
+		wantSkipped = 1
 	}
 	if want := fmt.Sprintf("%d matching lines; %d skipped", len(list.Targets), wantSkipped); list.Notice != want {
 		t.Errorf("notice %q, want %q", list.Notice, want)

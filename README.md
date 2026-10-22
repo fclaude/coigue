@@ -1,40 +1,63 @@
 # Coigüe
 
-A small Rust terminal modal editor. One UTF-8 file at a time; no interpreter integration.
+A small terminal modal editor written in Go. One UTF-8 file at a time. Your own commands can be
+written in Scheme, run by [Brote](https://github.com/fclaude/brote); see
+[Extending with Scheme](#extending-with-scheme).
 
 Licensed under the [MIT License](LICENSE).
-Built-in theme attribution and license terms are in
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md); include these notices with
-distributions containing the palettes.
+Theme attribution and the licenses of the Go libraries linked into the executable
+are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md); include it with every
+distribution of the executable.
 
-Install a current stable Rust toolchain (Rust 2024 edition), then:
+## Build and run
+
+Install Go 1.26 or newer (`go.mod` asks for 1.26.0), then:
 
 ```sh
 git clone https://github.com/fclaude/coigue.git
 cd coigue
-cargo run --                 # welcome in the current directory
-cargo run -- path/to/file
+make build                   # bin/coigue
+bin/coigue                   # welcome in the current directory
+bin/coigue path/to/file
+go run ./cmd/coigue          # the same without make
 ```
+
+`make build` also builds `bin/deps/coigue-terminal-guard`, a helper that the
+terminal test suite runs; it is not part of the editor. The Go sources are
+`cmd/coigue` and `internal/`; `go.mod` lists the three runtime dependencies
+(goldmark, `golang.org/x/sys`, `golang.org/x/term`).
+
+### The Rust reference
+
+The editor was first written in Rust and then ported to Go. The Rust sources
+(`Cargo.toml`, `Cargo.lock`, `src/`, `tests/version.rs`) stay in the tree, unchanged
+and buildable (`cargo test --locked`), as the reference the Go port was checked
+against: the 42 recorded terminal sessions in `tests/golden/` and the differential
+runs listed in [docs/port-decisions.md](docs/port-decisions.md) come from it. They
+are removed once the Go editor is accepted; [docs/rust-removal.md](docs/rust-removal.md)
+lists exactly what goes and what stays.
 
 ## Compatibility
 
 Linux and macOS terminals are the intended platforms. [GitHub Actions CI](.github/workflows/ci.yml)
 tests Linux x86-64, macOS Intel, and macOS Apple Silicon natively, including
-formatting, unit tests, Clippy, builds, and both terminal and language-server
-PTY integration suites.
+gofmt, `go vet`, staticcheck, unit tests under the race detector, the build, and
+the terminal, language-server, signal-exit and extension PTY suites. The recorded-session
+replay runs on Linux only. A separate job runs the Rust reference's own checks on
+the same three systems.
 
 | System | Status | Evidence and limitations |
 | --- | --- | --- |
-| Linux x86-64 | Tested in CI | Native `ubuntu-24.04` runner; builds, unit tests, and both PTY integration suites pass. |
-| macOS Intel | Tested in CI | Native `macos-15-intel` runner; builds, unit tests, and both PTY integration suites pass. |
-| macOS Apple Silicon | Tested in CI | Native `macos-15` ARM64 runner; builds, unit tests, and both PTY integration suites pass. |
+| Linux x86-64 | Tested in CI | Native `ubuntu-24.04` runner; builds, unit tests, and all five PTY suites pass, including the replay of the recorded Rust sessions. |
+| macOS Intel | Tested in CI | Native `macos-15-intel` runner; builds, unit tests, and the terminal, language-server and signal suites pass. The recorded-session replay skips itself. |
+| macOS Apple Silicon | Tested in CI | Native `macos-15` ARM64 runner; builds, unit tests, and the terminal, language-server and signal suites pass. The recorded-session replay skips itself. |
 | Linux ARM64 and other architectures | Unverified | No architecture-specific application code, but compilation and runtime behavior have not been verified. |
 | Windows native | Not an intended platform | Core editing is unverified; explorer rename, delete, and restore operations explicitly fail. |
 | BSD and other Unix systems | Not an intended platform | Core editing is unverified; explorer rename, delete, and restore operations explicitly fail. |
 
 CI coverage applies to the runner systems listed above; minimum OS versions
-are not documented. Unix-specific permission and symlink tests are gated with
-`cfg(unix)`; the Python PTY integration tests require Unix.
+are not documented. Platform-specific code and tests sit behind build tags
+(`_linux`, `_darwin`, `unix`); the Python PTY integration tests require Unix.
 
 Across supported systems:
 
@@ -358,25 +381,86 @@ on terminals that support them. LF and existing trailing newlines are preserved 
 
 Saving compares the file's bytes with the last loaded/saved snapshot, writes and syncs a same-directory temporary file, then atomically replaces the destination. Failed writes leave existing contents intact. New files are created without clobbering an existing destination. Existing symlinks are resolved at opening, so later changes to the original link do not redirect the session. Saves refuse read-only destinations or a resolved target replaced by a symlink. Unix permission bits are preserved; new files use private temporary-file permissions (0600 on Unix). Atomic replacement changes inode identity (including hard-link relationships); ownership, ACLs and extended attributes are not preserved. If another program writes after the final byte comparison but before the atomic rename, its update can still be overwritten without detection; this is not a locking editor. Use one writer per file. No force-write command bypasses conflicts.
 
-Limits: in-memory files, scalar-value rather than grapheme-cluster editing (combining marks may be edited independently), fixed four-column tabs, terminal-dependent emoji/combining display width. No multiple buffers or persistent configuration yet. Raw mode, cursor and alternate screen are restored on normal exits, returned errors and Rust panics; uncatchable termination cannot run cleanup.
+Limits: in-memory files, scalar-value rather than grapheme-cluster editing (combining marks may be edited independently), fixed four-column tabs, terminal-dependent emoji/combining display width. No multiple buffers or persistent settings yet; the one file read at startup is your optional Scheme `init.scm` (see [Extending with Scheme](#extending-with-scheme)). Raw mode, cursor and alternate screen are restored on normal exits, returned errors, panics, and SIGHUP, SIGTERM and SIGINT; uncatchable termination (SIGKILL) cannot run cleanup.
 
-Development checks:
+## Extending with Scheme
+
+Coigüe embeds [Brote](https://github.com/fclaude/brote), a small Scheme for Go programs. A Scheme file
+in your own configuration directory, `$XDG_CONFIG_HOME/coigue/init.scm` (or
+`~/.config/coigue/init.scm`), can define editor commands that read the selected text and ask the
+editor to change it:
+
+```scheme
+(define (wrap open close)
+  (replace-selection (string-append open (selection-text) close)))
+
+(define-command "wrap" wrap
+  "Wrap the selection in OPEN and CLOSE, for example :wrap ( ) or :wrap ** **")
+```
+
+Select text with `v` or `V`, press `!`, type `wrap ( )` and Enter. The whole command is one undo
+step; a command that fails, or that runs away and is stopped by Ctrl-C or its five-second limit,
+changes nothing. Scheme is loaded only from that one file, never from a project directory, and it
+cannot read files, run programs or reach the network. [docs/extending.md](docs/extending.md) is the
+contract: the host operations, the exact behaviour, every failure, and how it is tested.
+
+## Development checks
 
 [GitHub Actions CI](.github/workflows/ci.yml) runs the checks below on pushes,
-pull requests, and manual dispatches using stable Rust and Python 3.13. Jobs run
-natively on Linux x86-64 (`ubuntu-24.04`), macOS Intel (`macos-15-intel`), and
-macOS Apple Silicon (`macos-15`), including both PTY integration suites.
+pull requests, and manual dispatches using Go 1.26 and Python 3.13, natively on
+Linux x86-64 (`ubuntu-24.04`), macOS Intel (`macos-15-intel`), and macOS Apple
+Silicon (`macos-15`). Go modules, Brote included, are downloaded from their public sources.
+
+```sh
+make check        # gofmt, go vet, staticcheck, go test -race, notices and version checks
+make build        # bin/coigue and bin/deps/coigue-terminal-guard
+make acceptance   # builds, then runs the five Python suites below against bin/coigue
+make notices      # rewrite the Go-library section of THIRD_PARTY_NOTICES.md after go.mod changes
+```
+
+`make check` finds `staticcheck` on `PATH` or in `~/go/bin`; CI installs
+`honnef.co/go/tools/cmd/staticcheck@v0.8.1` (`go install` it the same way).
+`staticcheck.conf` allows capitalised error strings because user-visible messages are
+copied from the Rust editor. The PTY suites need `TERM=xterm-256color`, which
+`make acceptance` sets. `make build REVISION=123 COMMIT=$(git rev-parse HEAD)` fixes
+the identity `coigue --version` prints (`coigue 0.1.0 (main build 123; commit ...)`);
+without them it prints `development` and `unknown`.
+
+The acceptance suites take the binary as their argument and import nothing from the
+repository:
+
+```sh
+TERM=xterm-256color python3 tests/pty_smoke.py bin/coigue
+TERM=xterm-256color python3 tests/lsp_smoke.py bin/coigue
+TERM=xterm-256color python3 tests/pty_signals.py bin/coigue
+TERM=xterm-256color python3 tests/pty_golden.py bin/coigue
+TERM=xterm-256color python3 tests/pty_extension.py bin/coigue
+```
+
+The Unix PTY smoke test uses only disposable files and checks save/reopen, repeated edits, resize, quit safeguards and terminal restoration after errors and unwinding. Its last step runs `bin/deps/coigue-terminal-guard`, the Go counterpart of the Rust unit test that restores the terminal after an error. The additional `/dev/full` output-failure test runs on Linux and is skipped when that device is unavailable (including macOS). The language-server suite starts itself as a fake server, so no real server is needed. `pty_signals.py` checks the signal exits, which differ from the Rust editor on purpose. `pty_golden.py` replays 42 sessions recorded from the Rust editor and requires the same terminal bytes (or at least the same screens); it is Linux only because the status line shows `/tmp` paths.
+
+`pty_extension.py` drives the Scheme command in a real terminal (undo, failures, cancellation, file
+switching, loading rules) with a temporary `XDG_CONFIG_HOME`. The other suites read the caller's real
+`~/.config`, so a machine that runs them must not have a `coigue/init.scm` there.
+
+The licenses of the Go libraries are generated, not typed: `python3 scripts/licenses.py`
+writes them into `THIRD_PARTY_NOTICES.md` (the `go test` run fails until it has been
+run after a dependency changes, and `scripts/licenses.py --check` fails when the file
+is stale). `python3 tests/version_agreement.py` checks that `internal/version`
+and `Cargo.toml` name the same version while both exist.
+
+The Rust reference has its own checks, run by the CI job "Rust reference":
 
 ```sh
 cargo fmt --check
-cargo test
-cargo clippy --all-targets -- -D warnings
-cargo build
+cargo test --locked
+cargo clippy --locked --all-targets -- -D warnings
+cargo build --locked
 python3 tests/pty_smoke.py target/debug/coigue
 python3 tests/lsp_smoke.py target/debug/coigue
 ```
 
-The Unix PTY smoke test uses only disposable files and checks save/reopen, repeated edits, resize, quit safeguards and terminal restoration after errors and unwinding. The additional `/dev/full` output-failure test runs on Linux and is skipped when that device is unavailable (including macOS).
+Use a separate `CARGO_TARGET_DIR` if you run them next to a Go build in one workspace.
 
 Rust (`.rs`), Go (`.go`), and Markdown (`.md`, `.markdown`) files receive built-in
 lexical highlighting immediately, including when no language server is installed.

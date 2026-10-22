@@ -137,7 +137,9 @@ func TestHostOperations(t *testing.T) {
 `
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			r := loaded(t, Options{}, program+"(define (t . args) "+c.body+")\n(define-command \"t\" t)")
+			// These cases test the limits and errors, not the deadline: 17 inserts of 64 KiB take
+			// 5.5 s under -race on a GitHub macOS Intel runner, which is the default deadline.
+			r := loaded(t, Options{Deadline: time.Minute}, program+"(define (t . args) "+c.body+")\n(define-command \"t\" t)")
 			s := session(c.text, c.row, c.col, c.anchor, c.linewise)
 			err := r.Run(context.Background(), "t", c.args, s)
 			if c.err != "" {

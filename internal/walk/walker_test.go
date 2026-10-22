@@ -283,7 +283,21 @@ func TestIgnoreFileErrorsAreAttachedToTheDirectoryEntry(t *testing.T) {
 	}
 }
 
+// requireCaseSensitive skips a test that creates names differing only in case,
+// which a case-insensitive volume (macOS by default) cannot hold.
+func requireCaseSensitive(t *testing.T) {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "x"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "X")); err == nil {
+		t.Skip("this test needs a case-sensitive file system")
+	}
+}
+
 func TestEntriesComeInNameOrderDepthFirst(t *testing.T) {
+	requireCaseSensitive(t)
 	root := tree(t, "b/z", "b/a", "a/b/c", "a.txt", "B")
 	got := run(t, root, walk.Options{})
 	want := []string{"B", "a", "a/b", "a/b/c", "a.txt", "b", "b/a", "b/z"}
