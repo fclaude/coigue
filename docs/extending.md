@@ -222,8 +222,7 @@ updated. Nothing else in the editor changed.
 
 ## Building
 
-Coigüe depends on `github.com/fclaude/brote`, pinned at commit `9d54fb38ce27`
-(`v0.0.0-20261022105232-9d54fb38ce27`; `go.sum` records its hashes). It is a public module, so a
+Coigüe depends on `github.com/fclaude/brote`, at `v0.1.0` (`go.sum` records its hashes). It is a public module, so a
 plain `go build ./cmd/coigue` downloads it. Brote is MIT licensed; its notice is in
 `THIRD_PARTY_NOTICES.md`, which `scripts/licenses.py` generates.
 
