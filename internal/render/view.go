@@ -461,7 +461,7 @@ func startsWithAny(s string, prefixes ...string) bool {
 }
 
 func (v *View) drawBrowserLines(lines []string, e *editor.Editor, out io.Writer) error {
-	palette := e.Theme.Palette()
+	palette := e.Palette()
 	w, h := v.cols, v.rows
 	if h > 1 {
 		strip := actions.Strip
@@ -596,7 +596,7 @@ func (v *View) DrawTo(e *editor.Editor, w, h int, out io.Writer) error {
 }
 
 func (v *View) drawBuffer(e *editor.Editor, w, h int, out io.Writer) error {
-	palette := e.Theme.Palette()
+	palette := e.Palette()
 	rows := max(h-2, 0)
 	b := e.Buffer
 	lines := b.Lines()

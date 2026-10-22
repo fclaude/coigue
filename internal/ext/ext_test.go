@@ -12,6 +12,8 @@ import (
 	"github.com/fclaude/brote/scheme"
 
 	"github.com/fclaude/coigue/internal/buffer"
+	"github.com/fclaude/coigue/internal/syntax"
+	"github.com/fclaude/coigue/internal/theme"
 )
 
 const wrapProgram = `
@@ -248,7 +250,7 @@ func TestOperationsRefuseOutsideInvocation(t *testing.T) {
 	}
 	stale := context.WithValue(context.Background(), sessionKey{}, s)
 	for _, p := range r.hostOperations() {
-		if p.Name == "define-command" {
+		if p.Name == "define-command" || p.Name == "define-theme" || p.Name == "set-theme" {
 			continue
 		}
 		_, err := p.Handler(&scheme.Call{Ctx: stale, In: r.interp, Name: p.Name, Args: []scheme.Value{scheme.Str("y")}})
@@ -267,6 +269,92 @@ func TestOperationsRefuseOutsideInvocation(t *testing.T) {
 		Args: []scheme.Value{scheme.Str("late"), scheme.Sym("car")}})
 	if !errors.Is(err, errNotInInit) {
 		t.Fatalf("define-command with no session: %v", err)
+	}
+	// The theme operations are init-only too, in a command and with no session.
+	for _, name := range []string{"define-theme", "set-theme"} {
+		p, _ := r.interp.Lookup(name)
+		args := []scheme.Value{scheme.Str("late")}
+		if name == "define-theme" {
+			args = append(args, scheme.Nil)
+		}
+		for _, ctx := range []context.Context{context.Background(), stale} {
+			_, err = p.Handler(&scheme.Call{Ctx: ctx, In: r.interp, Name: p.Name, Args: args})
+			if !errors.Is(err, errNotInInit) {
+				t.Errorf("%s outside init: %v", name, err)
+			}
+		}
+	}
+}
+
+func TestDefineThemeAndSetTheme(t *testing.T) {
+	var set theme.Set
+	var chosen []theme.Theme
+	r := New(Options{Themes: &set, SetTheme: func(th theme.Theme) { chosen = append(chosen, th) }})
+	err := r.Load(context.Background(), `
+(define-theme "dusk" '(("base" . "gruvbox") ("keyword" . "#ff79c6") ("bold-keywords" . #t) ("background" . "default")))
+(define-theme "plain" '())
+(set-theme "dusk")`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dusk, ok := set.Parse("dusk")
+	if !ok || len(chosen) != 1 || chosen[0] != dusk {
+		t.Fatalf("dusk %v %v, chosen %v", dusk, ok, chosen)
+	}
+	p := set.Palette(dusk)
+	if got := p.Syntax(syntax.Keyword); got != (theme.Color{Kind: theme.ColorRGB, R: 0xff, G: 0x79, B: 0xc6}) {
+		t.Fatalf("keyword %+v", got)
+	}
+	if p.Background.Kind != theme.ColorReset || !p.Bold(syntax.Keyword) || p.Foreground != theme.GruvboxDark.Palette().Foreground {
+		t.Fatalf("background %+v bold %v foreground %+v", p.Background, p.Bold(syntax.Keyword), p.Foreground)
+	}
+	plain, _ := set.Parse("plain")
+	if set.Palette(plain) != theme.CatppuccinMocha.Palette() {
+		t.Fatal("an empty spec is not mocha")
+	}
+	// Built-in themes can be chosen too, and a runtime with no set of its own keeps one.
+	own := New(Options{})
+	if err := own.Load(context.Background(), `(define-theme "x" '()) (set-theme "x") (set-theme "latte")`); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestThemeOperationErrors(t *testing.T) {
+	for program, want := range map[string]string{
+		`(define-theme "dusk" '(("keywrd" . "#ffffff")))`:                          `"keywrd" is not a theme entry`,
+		`(define-theme "dusk" '(("keyword" . "#fff")))`:                            `keyword: "#fff" is not a colour`,
+		`(define-theme "dusk" '(("keyword" . 7)))`:                                 "keyword takes a string",
+		`(define-theme "dusk" '(("keyword" . "#ffffff") ("keyword" . "#000000")))`: "keyword is given twice",
+		`(define-theme "dusk" '(("base" . "latte") ("base" . "mocha")))`:           "base is given twice",
+		`(define-theme "dusk" '(("base" . 3)))`:                                    "base takes a theme name",
+		`(define-theme "dusk" '(("base" . "nord")))`:                               `base "nord" is not a built-in theme`,
+		`(define-theme "dusk" '(keyword "#ffffff"))`:                               "spec is a list of",
+		`(define-theme "dusk" '((1 . "#ffffff")))`:                                 "spec is a list of",
+		`(define-theme "dusk" "keyword")`:                                          "expected list",
+		`(define-theme "Dusk" '())`:                                                "is not a theme name",
+		`(define-theme "mocha" '())`:                                               "already exists",
+		`(define-theme "a" '()) (define-theme "a" '())`:                            `the theme "a" already exists`,
+		`(set-theme "nord")`:                                                       `there is no theme "nord"; use mocha|gruvbox|latte|monochrome|terminal`,
+		`(define-theme "dusk" '()) (set-theme "dusky")`:                            "terminal|dusk",
+		`(set-theme 'latte)`:                                                       "expected string",
+	} {
+		if err := New(Options{}).Load(context.Background(), program); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%s: error %v, want %q", program, err, want)
+		}
+	}
+}
+
+func TestAThemeDefinedBeforeAnErrorStays(t *testing.T) {
+	var set theme.Set
+	err := New(Options{Themes: &set}).Load(context.Background(), `(define-theme "kept" '()) (define-theme "bad" '(("x" . "#ffffff")))`)
+	if err == nil {
+		t.Fatal("no error")
+	}
+	if _, ok := set.Parse("kept"); !ok {
+		t.Fatal("the first theme was dropped")
+	}
+	if _, ok := set.Parse("bad"); ok {
+		t.Fatal("the failed theme was kept")
 	}
 }
 

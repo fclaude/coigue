@@ -149,7 +149,10 @@ type Editor struct {
 	Menu             *actions.Menu
 	Help             *help.Help
 	Theme            theme.Theme
-	LSP              *lsp.Client
+	// Themes holds the built-in themes and those the init file defined; Theme
+	// is one of them.
+	Themes theme.Set
+	LSP    *lsp.Client
 	// Welcome is the launch directory while no file is open, else "".
 	Welcome string
 	Buffer  *buffer.Buffer

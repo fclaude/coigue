@@ -368,8 +368,8 @@ available choices, or `:theme <name>` to switch immediately:
 The full names `catppuccin-mocha`, `gruvbox-dark`, and `catppuccin-latte` are also
 accepted. Theme selection applies to the whole session, including welcome,
 file browsers, syntax, gutter diagnostics, and the status row; opening another
-file keeps the selection. There is no config file or persistence: restarting
-returns to Mocha. Built-in palettes use 24-bit RGB colors and need a truecolor
+file keeps the selection. Nothing is saved: restarting returns to Mocha, unless your
+`init.scm` picks another theme (see below). Built-in palettes use 24-bit RGB colors and need a truecolor
 terminal for faithful rendering; `terminal` retains the previous ANSI behavior.
 
 Lines scroll vertically and horizontally; terminal resize triggers a redraw.
@@ -400,6 +400,22 @@ step; a command that fails, or that runs away and is stopped by Ctrl-C or its fi
 changes nothing. Scheme is loaded only from that one file, never from a project directory, and it
 cannot read files, run programs or reach the network. [docs/extending.md](docs/extending.md) is the
 contract: the host operations, the exact behaviour, every failure, and how it is tested.
+
+The same file can define themes. This one starts from Gruvbox, changes two colours and makes
+keywords bold, and the editor starts in it:
+
+```scheme
+(define-theme "dusk"
+  '(("base" . "gruvbox")
+    ("keyword" . "#ff79c6")
+    ("string" . "#8be9fd")
+    ("bold-keywords" . #t)))
+
+(set-theme "dusk")
+```
+
+`:theme dusk` switches to it later, and Tab completes its name. The keys a theme can change are
+listed in [docs/extending.md](docs/extending.md#themes).
 
 ## Development checks
 

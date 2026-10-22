@@ -26,6 +26,7 @@ import (
 	"github.com/fclaude/brote/scheme"
 
 	"github.com/fclaude/coigue/internal/guard"
+	"github.com/fclaude/coigue/internal/theme"
 )
 
 // Limits. They are part of the documented contract.
@@ -60,6 +61,12 @@ type Options struct {
 	// program defines, after the name was checked. Returning an error
 	// rejects the definition and raises it in the program.
 	Define func(name, doc string) error
+	// Themes holds the themes define-theme adds to and set-theme chooses
+	// from; nil means the runtime keeps a set of its own.
+	Themes *theme.Set
+	// SetTheme is called, while the init file loads, with the theme
+	// set-theme chose; nil means the choice is checked and dropped.
+	SetTheme func(theme.Theme)
 	// Watch lets the user interrupt a run; nil means no one can.
 	Watch Watcher
 	// Deadline bounds each run; 0 means DefaultDeadline.
@@ -85,6 +92,7 @@ type Runtime struct {
 	memoryLimit uint64
 	commands    map[string]*Command
 	order       []string
+	themes      *theme.Set
 	busy        atomic.Bool
 }
 
@@ -99,6 +107,10 @@ func newRuntime(opts Options, extra ...*scheme.Prim) *Runtime {
 		deadline:    opts.Deadline,
 		memoryLimit: opts.MemoryLimit,
 		commands:    map[string]*Command{},
+		themes:      opts.Themes,
+	}
+	if r.themes == nil {
+		r.themes = &theme.Set{}
 	}
 	if r.deadline <= 0 {
 		r.deadline = DefaultDeadline

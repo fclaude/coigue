@@ -4,7 +4,8 @@ Runs the real binary on a PTY with a temporary HOME and XDG_CONFIG_HOME holding 
 init.scm, and checks docs/extending.md end to end: a command on a multibyte selection,
 one undo and one redo, failures that change nothing, runaway loops that are interrupted
 or stopped, a command that survives switching files, (load ...) refused, a project-local
-init.scm that is never run, and a missing or broken init.scm that does not block start-up.
+init.scm that is never run, a missing or broken init.scm that does not block start-up, and
+themes defined and chosen from init.scm.
 """
 import fcntl
 import os
@@ -378,6 +379,60 @@ def missing_or_broken_init(root):
     print('start-up: a missing, broken or runaway init.scm is reported and never blocks the editor')
 
 
+def themes_from_init(root):
+    pink, mocha_keyword, navy = b'38;2;255;121;198', b'38;2;203;166;247', b'48;2;16;32;48'
+    source = 'fn main() {}\n'
+    theme = """
+(define-theme "dusk"
+  '(("keyword" . "#ff79c6") ("background" . "#102030")))
+(define-theme "dawn" '(("base" . "latte")))
+"""
+    # Defined and chosen: the first screen is already dusk.
+    box = Sandbox(root, 'theme-chosen', theme + '(set-theme "dusk")', files={'main.rs': source})
+    s = box.start('main.rs')
+    assert pink in s.output and navy in s.output, bytes(s.output)[-1500:]
+    assert mocha_keyword not in s.output
+    # :theme still switches at run time, and Tab offers the defined names.
+    out = s.send(b':theme mocha\r', expect=b'Theme: catppuccin-mocha')
+    assert mocha_keyword in out, out
+    s.send(b':theme d')
+    s.send(b'\t', expect=b'theme dusk')
+    s.send(b'\t', expect=b'theme dawn')
+    s.send(b'\t', expect=b'theme dusk')
+    out = s.send(b'\r', expect=b'Theme: dusk')
+    assert pink in out and navy in out, out
+    out = s.send(b':theme\r')
+    assert b'|dusk|dawn>' in out, out
+    s.quit()
+    # Defined but not chosen: nothing changes until :theme says so.
+    box = Sandbox(root, 'theme-defined', theme, files={'main.rs': source})
+    s = box.start('main.rs')
+    assert mocha_keyword in s.output and pink not in s.output, bytes(s.output)[-1500:]
+    out = s.send(b':theme dusk\r', expect=b'Theme: dusk')
+    assert pink in out, out
+    s.quit()
+    # A bad spec is reported, the theme before it stays, and the editor starts in mocha.
+    box = Sandbox(root, 'theme-bad', theme + '(define-theme "oops" \'(("keyword" . "pink")))', files={'main.rs': source})
+    s = box.start('main.rs')
+    s.drain(0.3)
+    assert b'init.scm: failed: define-theme: keyword: "pink" is not a colour' in s.output, bytes(s.output)[-1500:]
+    assert mocha_keyword in s.output and pink not in s.output
+    s.send(b':theme dusk\r', expect=b'Theme: dusk')
+    s.send(b':theme oops\r', expect=b'Unknown theme: oops')
+    s.quit()
+    box = Sandbox(root, 'theme-unknown', '(set-theme "nord")', files={'main.rs': source})
+    s = box.start('main.rs')
+    s.drain(0.3)
+    assert b'there is no theme "nord"; use mocha|gruvbox|latte|monochrome|terminal' in s.output, bytes(s.output)[-1500:]
+    s.quit()
+    # Without an init file the :theme listing is what it was.
+    box = Sandbox(root, 'theme-none', None, files={'main.rs': source})
+    s = box.start('main.rs')
+    out = s.send(b':theme\r', expect=b'Theme: catppuccin-mocha | :theme <mocha|gruvbox|latte|monochrome|terminal>')
+    s.quit()
+    print('themes: define-theme and set-theme from init.scm, :theme and Tab completion, a bad spec, no init file')
+
+
 def command_line_contract(root):
     # --version and --help are answered before any configuration is read.
     box = Sandbox(root, 'contract', '(let loop () (loop))')
@@ -398,6 +453,6 @@ def command_line_contract(root):
 with tempfile.TemporaryDirectory() as directory:
     for scenario in (wrap_undo_redo, failures_change_nothing, runaway, file_switching, load_is_refused,
                      only_the_user_configuration_is_loaded, where_the_user_file_lives,
-                     missing_or_broken_init, command_line_contract):
+                     missing_or_broken_init, themes_from_init, command_line_contract):
         scenario(directory)
 print('PTY extension suite passed')
