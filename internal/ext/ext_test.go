@@ -416,16 +416,36 @@ func TestGateRefusesLoadAndEverythingThatTouchesTheSystem(t *testing.T) {
 	}
 }
 
+// The guarded loop does its work inside the guard body, and the loop itself is
+// a tail call, so it never ends by itself and the deadline always arrives
+// inside a guard. An earlier version wrapped the recursive call in the guard
+// (guard (e (#t #f)) (loop)): that nests one guard per call, runs into
+// Brote's depth limit in about the time of the deadline, and the innermost
+// guard catches that ordinary error, so the program ended with #f and the run
+// returned nil on about three runs in four.
 func TestDeadlineStopsARunawayLoopAndTheRuntimeSurvives(t *testing.T) {
 	r := loaded(t, Options{Deadline: 50 * time.Millisecond}, wrapProgram+`
 (define (spin) (let loop () (loop)))
-(define (spin-guarded) (let loop () (guard (e (#t #f)) (loop))))
+(define (spin-guarded)
+  (let loop ()
+    (guard (e (#t #f))
+      (let inner ((i 0)) (if (< i 100000) (inner (+ i 1)))))
+    (loop)))
 (define-command "spin" spin)
 (define-command "spin-guarded" spin-guarded)`)
 	for _, name := range []string{"spin", "spin-guarded"} {
 		s := session("abc", 0, 1, &[2]int{0, 0}, false)
 		start := time.Now()
-		err := r.Run(context.Background(), name, nil, s)
+		// A deadline the guard swallowed would leave the run spinning for ever,
+		// so the run goes on a goroutine and the test says so instead of hanging.
+		finished := make(chan error, 1)
+		go func() { finished <- r.Run(context.Background(), name, nil, s) }()
+		var err error
+		select {
+		case err = <-finished:
+		case <-time.After(10 * time.Second):
+			t.Fatalf("%s: still running after 10s, so the deadline did not stop it", name)
+		}
 		var re *RunError
 		if !errors.As(err, &re) || re.Stop != Deadline || re.Error() != "stopped after 50ms" || !re.Stopped() {
 			t.Fatalf("%s: %v", name, err)
