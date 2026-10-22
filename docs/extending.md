@@ -38,25 +38,25 @@ from the Rust editor*.)
 
 ### Exactly what `:wrap OPEN CLOSE` does
 
-* **Arguments.** The words after the command name, split on whitespace, each passed to the procedure
+* Arguments. The words after the command name, split on whitespace, each passed to the procedure
   as a Scheme string. There is no quoting: `:wrap " "` passes the one-character string `"` twice,
   and an argument cannot contain a space. The procedure here takes exactly two; with another number
   Scheme reports `wrap: expected 2 argument(s), got 1` and nothing changes.
-* **What is read.** The selection, through `selection-text`: the characters from one end of the
+* What is read. The selection, through `selection-text`: the characters from one end of the
   selection to the other, inclusive of both ends, exactly as `d` would cut them in Visual mode.
   A `v` selection can span lines and includes each newline it crosses (and the newline of an
   empty line it ends on); a `V` selection is whole lines joined with `\n`, without a trailing
   newline. Text is read in characters (Unicode scalar values), so multibyte text is never split.
-* **What is changed.** `replace-selection` replaces the selected characters (for `V`: the text of
-  the selected lines, not the newline after the last one) with the given string. Nothing else in
+* What is changed. `replace-selection` replaces the selected characters (for `V`: the text of
+  the selected lines, leaving the newline after the last one alone) with the given string. Nothing else in
   the buffer changes.
-* **After the command.** The editor is in Normal mode and the selection is gone. The cursor is on
+* After the command. The editor is in Normal mode and the selection is gone. The cursor is on
   the first character of the inserted text (like every Normal-mode cursor it stays on a character
   of its line, so for text that starts with a newline it is the last character before it). A
   command that makes no edit leaves the cursor where it was. The status line says `Ran :wrap`, or the last text the
   procedure passed to `message`. The screen is not redrawn while the procedure runs (see
   *Cancellation*).
-* **Undo.** The whole command is one undo step. `u` restores the text exactly as it was before the
+* Undo. The whole command is one undo step. `u` restores the text exactly as it was before the
   command and puts the cursor where it was when you pressed Enter (the end of the old selection);
   `Ctrl-R` applies the whole command again. A command that leaves the text identical (for
   example, replacing the selection with itself) creates no undo step and keeps the redo history.
@@ -199,21 +199,21 @@ it, because the positions it named no longer mean the same text.
 
 ## Threading and reentrancy
 
-* **One interpreter per editor**, created the first time `init.scm` is loaded and used by one
+* One interpreter per editor, created the first time `init.scm` is loaded and used by one
   goroutine at a time. Brote's `*Interp` has no locking.
-* **Scheme is evaluated on the editor goroutine**: the goroutine that calls `Editor.Key`, which in
+* Scheme is evaluated on the editor goroutine: the goroutine that calls `Editor.Key`, which in
   the `coigue` command is the main goroutine running the event loop. Only `Editor.Key` (running a
   command) and `Editor.LoadInit` evaluate Scheme. The call is synchronous: the editor does nothing
   else until it returns.
-* **Host operations run on that same goroutine**, inside Brote's call, and they touch only the
+* Host operations run on that same goroutine, inside Brote's call, and they touch only the
   invocation's private copy (above), never the live buffer, registers, messages or command table.
   The live state is read before the call starts and written after it returns, both on the editor
   goroutine. An extension therefore cannot change editor state concurrently, because it holds no
   reference to it.
-* **Other goroutines.** While Scheme runs, two goroutines exist, both started through `guard.Go`:
+* Other goroutines. While Scheme runs, two goroutines exist, both started through `guard.Go`:
   the input watcher the `coigue` command supplies (it reads the keyboard and calls a `cancel`
   function when it sees Ctrl-C) and a memory watchdog. They call `cancel` and nothing else.
-* **Accidental callbacks are refused.** Every operation first checks three things: the
+* Accidental callbacks are refused. Every operation first checks three things: the
   evaluation's context carries an invocation the editor started, that invocation is still live
   (it is only between the editor starting the command and the command returning), and the
   operation is running on the goroutine that started it. Go has no portable goroutine identity, so
@@ -223,7 +223,7 @@ it, because the positions it named no longer mean the same text.
   all fail with `not inside an extension command` and change nothing. (No primitive starts a
   goroutine and Brote has no concurrency of its own, so this is a backstop, tested by calling an
   operation from a second goroutine while the command runs.)
-* **No reentrancy.** No operation starts a command or loads a file. As a backstop, starting an
+* No reentrancy. No operation starts a command or loads a file. As a backstop, starting an
   invocation while another is running on the same interpreter returns an error instead of racing.
 
 ## Cancellation and limits
@@ -237,7 +237,7 @@ it, because the positions it named no longer mean the same text.
 * A **memory watchdog** stops a command whose heap has grown by more than 128 MiB since it started
   (for example repeated `(string-append s s)`). Brote does not meter memory; this is a heuristic
   backstop that polls every 10 ms, so the peak can exceed the limit briefly. It makes data loss from
-  a runaway string unlikely, not impossible.
+  a runaway string unlikely, and it can't promise more than that.
 * The screen is not redrawn while a command runs. A command that takes visible time shows a frozen
   screen until it finishes, is interrupted, or reaches the deadline.
 
