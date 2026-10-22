@@ -185,3 +185,98 @@ func TestJustifyUsesByteOffsetsOfTheCursorAndReplacesTheRange(t *testing.T) {
 		t.Fatal("identical replacement reported a change")
 	}
 }
+
+func TestSelectionSpanAgreesWithSelectionChars(t *testing.T) {
+	text := "héllo 界\n\nthird 🦀 line\n"
+	for _, anchor := range [][2]int{{0, 0}, {0, 3}, {1, 0}, {2, 6}, {3, 0}, {9, 40}} {
+		for row := 0; row < 4; row++ {
+			for col := 0; col < 18; col++ {
+				b := New(text)
+				b.Row, b.Col = row, col
+				b.Clamp(false)
+				start, end := b.SelectionSpan(anchor)
+				rows, cols, rev := b.Row, b.Col, b.Revision()
+				if got := string(b.Span(start, end)); got != string(New(text).selectionCharsAt(anchor, rows, cols)) {
+					t.Fatalf("anchor %v cursor (%d,%d): span %q", anchor, rows, cols, got)
+				}
+				if b.Row != rows || b.Col != cols || b.Revision() != rev {
+					t.Fatal("SelectionSpan or Span moved the cursor or changed the buffer")
+				}
+			}
+		}
+	}
+}
+
+// selectionCharsAt is the reference: the cutting selection the editor has always used.
+func (b *Buffer) selectionCharsAt(anchor [2]int, row, col int) []rune {
+	b.Row, b.Col = row, col
+	b.Clamp(false)
+	return b.SelectionChars(anchor, false)
+}
+
+func TestSpanLineSpanAndReplaceSpan(t *testing.T) {
+	b := New("ab\ncd\n界e")
+	if got := string(b.Span(1, 7)); got != "b\ncd\n界" {
+		t.Fatalf("Span = %q", got)
+	}
+	if got := string(b.Span(-5, 100)); got != b.Text() {
+		t.Fatalf("clamped Span = %q", got)
+	}
+	if got := b.Span(4, 4); len(got) != 0 {
+		t.Fatalf("empty Span = %q", string(got))
+	}
+	for _, c := range []struct {
+		a, z       int
+		start, end int
+	}{{0, 0, 0, 2}, {1, 1, 3, 5}, {2, 1, 3, 8}, {1, 2, 3, 8}, {0, 99, 0, 8}} {
+		if s, e := b.LineSpan(c.a, c.z); s != c.start || e != c.end {
+			t.Fatalf("LineSpan(%d,%d) = %d,%d, want %d,%d", c.a, c.z, s, e, c.start, c.end)
+		}
+	}
+	b.ReplaceSpan(3, 5, []rune("(界\nx)"))
+	if b.Text() != "ab\n(界\nx)\n界e" || b.Row != 1 || b.Col != 0 {
+		t.Fatalf("text %q at (%d,%d)", b.Text(), b.Row, b.Col)
+	}
+	b.ReplaceSpan(0, 0, []rune("\n"))
+	if b.Text() != "\nab\n(界\nx)\n界e" {
+		t.Fatalf("insert at start: %q", b.Text())
+	}
+	b.ReplaceSpan(-3, 1000, nil)
+	if b.Text() != "" || b.LineCount() != 1 {
+		t.Fatalf("replace everything: %q (%d lines)", b.Text(), b.LineCount())
+	}
+}
+
+func TestCloneIsIndependentAndAdoptIsOneUndoStep(t *testing.T) {
+	b := New("one\ntwo")
+	b.Row, b.Col = 1, 1
+	scratch := b.Clone()
+	scratch.ReplaceSpan(0, 3, []rune("1"))
+	scratch.ReplaceSpan(0, 0, []rune("# "))
+	if b.Text() != "one\ntwo" || b.Revision() != 0 {
+		t.Fatalf("a clone's edits reached the original: %q rev %d", b.Text(), b.Revision())
+	}
+	if len(scratch.undo) != 0 || len(scratch.redo) != 0 {
+		t.Fatal("a clone carries history")
+	}
+	b.Edit(func() { b.Adopt(scratch) })
+	if b.Text() != "# 1\ntwo" {
+		t.Fatalf("adopted %q", b.Text())
+	}
+	if !b.Undo() || b.Text() != "one\ntwo" || b.Row != 1 || b.Col != 1 {
+		t.Fatalf("undo gave %q at (%d,%d)", b.Text(), b.Row, b.Col)
+	}
+	if b.Undo() {
+		t.Fatal("the adoption took more than one undo step")
+	}
+	if !b.Redo() || b.Text() != "# 1\ntwo" {
+		t.Fatalf("redo gave %q", b.Text())
+	}
+	// Adopting identical text records no step and keeps redo history.
+	b.Undo()
+	same := b.Clone()
+	b.Edit(func() { b.Adopt(same) })
+	if !b.Redo() || b.Text() != "# 1\ntwo" {
+		t.Fatal("adopting identical text discarded the redo history")
+	}
+}

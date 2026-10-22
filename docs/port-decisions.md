@@ -23,6 +23,7 @@ screen layout. Reasons for the move are embedding and maintenance, not performan
 | `internal/lsp`, `internal/semantic` | `lsp.rs`, `semantic.rs` | session lifetime bounded by the context given to `Client.Enable` |
 | `internal/syntax`, `internal/theme`, `internal/reflow`, `internal/clipboard` | same names | |
 | `internal/width`, `internal/ucd`, `internal/fsx`, `internal/key`, `internal/guard`, `internal/version` | crate/std replacements | see below |
+| `internal/ext` | none (new after the port) | the Brote interpreter, host operations and limits; see `docs/extending.md` |
 
 Seams the Scheme extension uses:
 
@@ -293,6 +294,11 @@ test; the Rust tests were ported with the same scenarios and assertions.
    1.1.0). Go has no equivalent in the standard library; `internal/lsp/idna_data.go` is a table of what the
    crate accepted for every scalar value above U+007F. Exotic hosts (mapped characters, Punycode edge cases)
    may produce a different URI. Host names only occur when a path starts with `//host/`.
+9. **Visual-mode `!` (new key, after the port).** `!` in Visual or Visual-line mode opens the command line (shown
+   as `:`) and keeps the selection for the one command typed, so a Scheme command from `init.scm` can read and replace
+   it; the Rust editor ignored `!` there. `:` is left ignored in Visual mode on purpose: `tests/pty_golden.py`
+   (`no-color-rust`) types `:theme terminal` in Visual-line mode and the ported `visual_lines_switch_cancel_swap_and_motion_counts`
+   test asserts it, and neither may be edited to follow a change. See `docs/extending.md`.
 Further entries are added when the evidence for a new package is collected.
 
 ## Rust behaviour that looks like a bug and is preserved

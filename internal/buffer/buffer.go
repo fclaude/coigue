@@ -391,23 +391,113 @@ func (b *Buffer) PasteChars(chars []rune, after bool) {
 	b.Clamp(false)
 }
 
+// Offset is the cursor's character offset in the text, counting each newline.
+func (b *Buffer) Offset() int { return b.offset() }
+
+// SelectionSpan returns the half-open range [start, end) of character offsets
+// (a newline counts as one character) covered by the inclusive selection
+// between anchor (row, col) and the cursor, clamped to the text. It moves
+// nothing.
+func (b *Buffer) SelectionSpan(anchor [2]int) (start, end int) {
+	row := min(anchor[0], len(b.lines))
+	a := anchor[1]
+	for _, line := range b.lines[:row] {
+		a += len(line) + 1
+	}
+	c := b.offset()
+	total := b.length()
+	start = min(min(a, c), total)
+	end = min(max(a, c)+1, total)
+	return start, end
+}
+
+// LineSpan returns the range of character offsets from the start of the first
+// of two rows to the end of the later one, excluding that row's newline. Rows
+// outside the text are clamped.
+func (b *Buffer) LineSpan(rowA, rowB int) (start, end int) {
+	first := max(min(min(rowA, rowB), len(b.lines)-1), 0)
+	last := max(min(max(rowA, rowB), len(b.lines)-1), 0)
+	for i, line := range b.lines[:last+1] {
+		if i < first {
+			start += len(line) + 1
+		}
+		end += len(line) + 1
+	}
+	return start, end - 1
+}
+
+// length is the number of characters Text would have, counting each newline.
+func (b *Buffer) length() int {
+	n := len(b.lines) - 1
+	for _, line := range b.lines {
+		n += len(line)
+	}
+	return n
+}
+
+// Span returns a copy of the characters in [start, end) (see SelectionSpan),
+// clamped to the text.
+func (b *Buffer) Span(start, end int) []rune {
+	start = max(start, 0)
+	var out []rune
+	at := 0
+	for i, line := range b.lines {
+		if i > 0 {
+			if at >= start && at < end {
+				out = append(out, '\n')
+			}
+			at++
+		}
+		from, to := max(start-at, 0), min(end-at, len(line))
+		if from < to {
+			out = append(out, line[from:to]...)
+		}
+		at += len(line)
+		if at >= end {
+			break
+		}
+	}
+	return out
+}
+
+// ReplaceSpan replaces the characters in [start, end) with text and leaves the
+// cursor on the first inserted character (clamped like any Normal-mode
+// cursor). Offsets outside the text are clamped.
+func (b *Buffer) ReplaceSpan(start, end int, text []rune) {
+	b.change()
+	chars := b.flatChars()
+	start = max(min(start, len(chars)), 0)
+	end = max(min(end, len(chars)), start)
+	spliced := make([]rune, 0, len(chars)-(end-start)+len(text))
+	spliced = append(append(append(spliced, chars[:start]...), text...), chars[end:]...)
+	b.lines = splitChars(spliced)
+	b.setOffset(start)
+	b.Clamp(false)
+}
+
+// Clone returns an independent buffer with the same text and cursor and no
+// history. Edits to the clone never reach b.
+func (b *Buffer) Clone() *Buffer {
+	return &Buffer{lines: CloneLines(b.lines), Row: b.Row, Col: b.Col}
+}
+
+// Adopt makes b hold the text and cursor of from as one change, so that the
+// surrounding edit-transaction records it as one undo step. It takes over the
+// lines of from, which must not be used afterwards.
+func (b *Buffer) Adopt(from *Buffer) {
+	b.change()
+	b.lines = from.lines
+	b.Row, b.Col = from.Row, from.Col
+	from.lines = nil
+	b.Clamp(false)
+}
+
 // SelectionChars returns the inclusive character selection between anchor
 // (row, col) and the cursor, clamped to real scalars (newlines included).
 // With cut it also removes them.
 func (b *Buffer) SelectionChars(anchor [2]int, cut bool) []rune {
-	offsetAt := func(row, col int) int {
-		row = min(row, len(b.lines))
-		n := col
-		for _, line := range b.lines[:row] {
-			n += len(line) + 1
-		}
-		return n
-	}
-	a := offsetAt(anchor[0], anchor[1])
-	c := b.offset()
+	start, end := b.SelectionSpan(anchor)
 	chars := b.flatChars()
-	start := min(min(a, c), len(chars))
-	end := min(max(a, c)+1, len(chars))
 	selected := append([]rune(nil), chars[start:end]...)
 	if cut && start < end {
 		b.change()

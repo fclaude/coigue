@@ -98,7 +98,7 @@ func (e *Editor) keyInner(k key.Key, pageRows int) bool {
 		}
 	}
 	if k.Code == key.Esc {
-		if e.Mode == ModeVisual || e.Mode == ModeVisualLine {
+		if e.Mode == ModeVisual || e.Mode == ModeVisualLine || e.commandVisual != 0 {
 			e.Message = ""
 		}
 		if e.Mode == ModeInsert {
@@ -106,6 +106,7 @@ func (e *Editor) keyInner(k key.Key, pageRows int) bool {
 		}
 		e.Mode = ModeNormal
 		e.selectionAnchor = nil
+		e.commandVisual = 0
 		e.resetPending()
 		e.Command = ""
 		e.Search = ""
@@ -151,8 +152,11 @@ func (e *Editor) keyInner(k key.Key, pageRows int) bool {
 		case k.Code == key.Enter:
 			cmd := e.Command
 			e.Command = ""
+			e.invocationSelection = e.takeCommandSelection()
 			e.Mode = ModeNormal
-			return e.execute(cmd)
+			quit := e.execute(cmd)
+			e.invocationSelection = nil
+			return quit
 		}
 		return false
 	}
@@ -233,6 +237,14 @@ func (e *Editor) visualKey(code key.Code, pageRows int) {
 		} else {
 			e.Mode = mode
 		}
+		e.resetPending()
+	case code == '!':
+		// ":" stays ignored here, as in the Rust editor (the recorded sessions
+		// in tests/pty_golden.py type it in Visual mode). "!" opens the same
+		// command line and keeps the selection for the one command typed.
+		e.commandVisual = e.Mode
+		e.Command = ""
+		e.Mode = ModeCommand
 		e.resetPending()
 	case code == 'o':
 		anchor := e.selectionAnchor

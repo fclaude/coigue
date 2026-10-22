@@ -340,8 +340,8 @@ func (v *View) drawMenu(e *editor.Editor, out io.Writer) error {
 func (v *View) drawHelp(e *editor.Editor, out io.Writer) error {
 	h := e.Help
 	rows := max(v.rows-2, 0)
-	lines := []string{"Help | " + h.Topic.Title() + " | Tab: next topic"}
-	text := h.Topic.Lines()
+	lines := []string{"Help | " + h.Title() + " | Tab: next topic"}
+	text := h.Lines()
 	for i := h.Scroll; i < len(text) && i < h.Scroll+rows; i++ {
 		lines = append(lines, text[i])
 	}

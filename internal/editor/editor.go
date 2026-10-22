@@ -13,6 +13,7 @@ import (
 	"github.com/fclaude/coigue/internal/actions"
 	"github.com/fclaude/coigue/internal/buffer"
 	"github.com/fclaude/coigue/internal/explorer"
+	"github.com/fclaude/coigue/internal/ext"
 	"github.com/fclaude/coigue/internal/file"
 	"github.com/fclaude/coigue/internal/fsx"
 	"github.com/fclaude/coigue/internal/help"
@@ -127,6 +128,18 @@ type Editor struct {
 	history         navigation.History
 	pendingJump     *pendingJump
 	commands        *commandTable
+
+	// extensions is the Scheme interpreter, created when an init file is
+	// loaded. interrupter lets the user stop a running extension.
+	extensions  *ext.Runtime
+	interrupter ext.Watcher
+	// extDeadline overrides the extension deadline; tests shorten it.
+	extDeadline time.Duration
+	// commandVisual is the Visual mode a command line was opened from (0 if
+	// it was not); invocationSelection is the selection handed to the
+	// extension command being executed.
+	commandVisual       Mode
+	invocationSelection *ext.Selection
 
 	// Locations is the open result list (project search, symbols, recent files...).
 	Locations *navigation.List
@@ -313,7 +326,7 @@ func (e *Editor) locationsKey(k key.Key, pageRows int) {
 
 func (e *Editor) activate(action actions.Action) {
 	if action.Kind == actions.ShowHelp {
-		e.Help = help.New(action.Topic)
+		e.Help = e.newHelp(action.Topic)
 		return
 	}
 	if e.SwitchPrompt != "" || e.FilesystemPrompt != nil {
@@ -324,6 +337,7 @@ func (e *Editor) activate(action actions.Action) {
 	e.closeLocations()
 	e.Mode = ModeNormal
 	e.selectionAnchor = nil
+	e.commandVisual = 0
 	e.resetPending()
 	e.Command = ""
 	e.Search = ""
@@ -404,7 +418,7 @@ func (e *Editor) openHelp() {
 	default:
 		topic = help.Editing
 	}
-	e.Help = help.New(topic)
+	e.Help = e.newHelp(topic)
 }
 
 func (e *Editor) syncLSP() {
@@ -480,7 +494,12 @@ func (e *Editor) takeCount() (count int, explicit bool) {
 // Selection returns the selected columns of a row [start, end), with a virtual
 // cell for a selected newline or empty line.
 func (e *Editor) Selection(row int) (start, end int, ok bool) {
-	if e.Mode != ModeVisual && e.Mode != ModeVisualLine {
+	mode := e.Mode
+	if mode == ModeCommand {
+		// A command line opened from Visual mode keeps the selection visible.
+		mode = e.commandVisual
+	}
+	if mode != ModeVisual && mode != ModeVisualLine {
 		return 0, 0, false
 	}
 	if e.selectionAnchor == nil {
@@ -500,7 +519,7 @@ func (e *Editor) Selection(row int) (start, end int, ok bool) {
 		return 0, 0, false
 	}
 	length := len(lines[row])
-	if e.Mode == ModeVisualLine {
+	if mode == ModeVisualLine {
 		return 0, length + 1, true
 	}
 	start, end = 0, length+1
