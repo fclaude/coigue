@@ -13,9 +13,9 @@ import (
 // a few hundred texts together with the rows that the real src/syntax.rs and
 // src/syntax/markdown.rs produced for them (one letter per character, see
 // styleCodes). The cases are the hand-written snippets of every construct the
-// lexers handle plus seeded random documents; testdata/regenerate.py rebuilds
-// the file from the Rust sources and can also write the whole 37,000-case
-// corpus for a full differential run.
+// lexers handle plus seeded random documents; testdata/regenerate.py (in the git
+// tag rust-reference) rebuilt the file from the Rust sources and could also write the whole
+// 37,000-case corpus for a full differential run.
 func TestGoldenRowsMatchTheRustLexers(t *testing.T) {
 	file, err := os.Open(filepath.Join("testdata", "golden.jsonl"))
 	if err != nil {

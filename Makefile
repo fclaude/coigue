@@ -1,7 +1,7 @@
 # Developer shortcuts for the Go editor.
 #
 #   make build          bin/coigue and the PTY suite helper bin/deps/coigue-terminal-guard
-#   make check          gofmt, go vet, staticcheck, go test -race, notices and version checks
+#   make check          gofmt, go vet, staticcheck, go test -race and the notices check
 #   make acceptance     the Python PTY and language-server suites against bin/coigue
 #   make notices        rewrite the Go-library section of THIRD_PARTY_NOTICES.md after go.mod changes
 #
@@ -30,7 +30,6 @@ check:
 	$(STATICCHECK) ./...
 	go test -race ./...
 	python3 scripts/licenses.py --check
-	python3 tests/version_agreement.py
 
 notices:
 	python3 scripts/licenses.py

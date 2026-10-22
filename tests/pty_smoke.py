@@ -447,13 +447,7 @@ with tempfile.TemporaryDirectory() as directory:
     else:
         print("SKIP: /dev/full output-failure test (device unavailable)")
     # Exercise guard unwinding for returned errors and panics in a real terminal.
-    test_bins = [p for p in pathlib.Path(binary).parent.joinpath('deps').glob('coigue-*')
-                 if p.is_file() and os.access(p, os.X_OK) and p.suffix != '.d']
-    assert test_bins, 'run cargo test first'
-    # Cargo can leave older test binaries with different dependency hashes.
-    test_bins.sort(key=lambda p: p.stat().st_mtime_ns, reverse=True)
-    test_bin = next(p for p in test_bins if b'terminal_guard_restores_after_error_and_unwind'
-                    in subprocess.run([str(p), '--list'], capture_output=True).stdout)
-    session(path, [], [str(test_bin), '--exact',
-                      'tests::terminal_guard_restores_after_error_and_unwind', '--nocapture'])
+    guard = pathlib.Path(binary).parent / 'deps' / 'coigue-terminal-guard'
+    assert guard.is_file(), 'run make build first'
+    session(path, [], [str(guard)])
 print('PTY smoke passed: repeated edits, save/reopen, resize, quit protection, cleanup')

@@ -2,8 +2,7 @@
 
 Coigüe's built-in palettes adapt color values from the projects below, and the
 editor executable links the Go libraries listed in the last section. Include this
-file with every distribution of the executable. The Rust reference sources under
-`src/` are not part of that executable; their dependencies keep their own licenses.
+file with every distribution of the executable.
 
 The theme notices are written by hand. The Go libraries section is generated:
 run `python3 scripts/licenses.py` after changing `go.mod`.

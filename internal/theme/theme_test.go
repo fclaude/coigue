@@ -8,7 +8,7 @@ import (
 )
 
 // The Rust file has no tests of its own. expected_test.go is derived from
-// src/theme.rs by testdata/gen_expected.py (the Rust enum order, the palettes,
+// src/theme.rs by testdata/gen_expected.py, both in the git tag rust-reference (the Rust enum order, the palettes,
 // the name/parse tables and the arms of syntax() and diagnostic()), so these
 // tests compare the hand-typed Go tables with a second, mechanical reading.
 

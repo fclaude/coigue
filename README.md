@@ -27,15 +27,13 @@ terminal test suite runs; it is not part of the editor. The Go sources are
 `cmd/coigue` and `internal/`; `go.mod` lists the three runtime dependencies
 (goldmark, `golang.org/x/sys`, `golang.org/x/term`).
 
-### The Rust reference
+### The Rust origin
 
-The editor was first written in Rust and then ported to Go. The Rust sources
-(`Cargo.toml`, `Cargo.lock`, `src/`, `tests/version.rs`) stay in the tree, unchanged
-and buildable (`cargo test --locked`), as the reference the Go port was checked
-against: the 42 recorded terminal sessions in `tests/golden/` and the differential
-runs listed in [docs/port-decisions.md](docs/port-decisions.md) come from it. They
-are removed once the Go editor is accepted; [docs/rust-removal.md](docs/rust-removal.md)
-lists exactly what goes and what stays.
+The editor was first written in Rust and then ported to Go. The Rust sources were
+removed once the Go editor was accepted; the git tag `rust-reference` is the last
+commit that contains them. The 42 recorded terminal sessions in `tests/golden/` and the
+differential runs listed in [docs/port-decisions.md](docs/port-decisions.md) come from
+that editor.
 
 ## Compatibility
 
@@ -43,8 +41,7 @@ Linux and macOS terminals are the intended platforms. [GitHub Actions CI](.githu
 tests Linux x86-64, macOS Intel, and macOS Apple Silicon natively, including
 gofmt, `go vet`, staticcheck, unit tests under the race detector, the build, and
 the terminal, language-server, signal-exit and extension PTY suites. The recorded-session
-replay runs on Linux only. A separate job runs the Rust reference's own checks on
-the same three systems.
+replay runs on Linux only.
 
 | System | Status | Evidence and limitations |
 | --- | --- | --- |
@@ -421,7 +418,7 @@ make notices      # rewrite the Go-library section of THIRD_PARTY_NOTICES.md aft
 `make check` finds `staticcheck` on `PATH` or in `~/go/bin`; CI installs
 `honnef.co/go/tools/cmd/staticcheck@v0.8.1` (`go install` it the same way).
 `staticcheck.conf` allows capitalised error strings because user-visible messages are
-copied from the Rust editor. The PTY suites need `TERM=xterm-256color`, which
+kept from the original Rust editor. The PTY suites need `TERM=xterm-256color`, which
 `make acceptance` sets. `make build REVISION=123 COMMIT=$(git rev-parse HEAD)` fixes
 the identity `coigue --version` prints (`coigue 0.1.0 (main build 123; commit ...)`);
 without them it prints `development` and `unknown`.
@@ -437,7 +434,7 @@ TERM=xterm-256color python3 tests/pty_golden.py bin/coigue
 TERM=xterm-256color python3 tests/pty_extension.py bin/coigue
 ```
 
-The Unix PTY smoke test uses only disposable files and checks save/reopen, repeated edits, resize, quit safeguards and terminal restoration after errors and unwinding. Its last step runs `bin/deps/coigue-terminal-guard`, the Go counterpart of the Rust unit test that restores the terminal after an error. The additional `/dev/full` output-failure test runs on Linux and is skipped when that device is unavailable (including macOS). The language-server suite starts itself as a fake server, so no real server is needed. `pty_signals.py` checks the signal exits, which differ from the Rust editor on purpose. `pty_golden.py` replays 42 sessions recorded from the Rust editor and requires the same terminal bytes (or at least the same screens); it is Linux only because the status line shows `/tmp` paths.
+The Unix PTY smoke test uses only disposable files and checks save/reopen, repeated edits, resize, quit safeguards and terminal restoration after errors and unwinding. Its last step runs `bin/deps/coigue-terminal-guard`, which enters and leaves the terminal by an error and by a panic and checks that the modes are back. The additional `/dev/full` output-failure test runs on Linux and is skipped when that device is unavailable (including macOS). The language-server suite starts itself as a fake server, so no real server is needed. `pty_signals.py` checks the signal exits, which differ from the Rust editor on purpose. `pty_golden.py` replays 42 sessions recorded from the Rust editor and requires the same terminal bytes (or at least the same screens); it is Linux only because the status line shows `/tmp` paths.
 
 `pty_extension.py` drives the Scheme command in a real terminal (undo, failures, cancellation, file
 switching, loading rules) with a temporary `XDG_CONFIG_HOME`. The other suites read the caller's real
@@ -446,21 +443,7 @@ switching, loading rules) with a temporary `XDG_CONFIG_HOME`. The other suites r
 The licenses of the Go libraries are generated, not typed: `python3 scripts/licenses.py`
 writes them into `THIRD_PARTY_NOTICES.md` (the `go test` run fails until it has been
 run after a dependency changes, and `scripts/licenses.py --check` fails when the file
-is stale). `python3 tests/version_agreement.py` checks that `internal/version`
-and `Cargo.toml` name the same version while both exist.
-
-The Rust reference has its own checks, run by the CI job "Rust reference":
-
-```sh
-cargo fmt --check
-cargo test --locked
-cargo clippy --locked --all-targets -- -D warnings
-cargo build --locked
-python3 tests/pty_smoke.py target/debug/coigue
-python3 tests/lsp_smoke.py target/debug/coigue
-```
-
-Use a separate `CARGO_TARGET_DIR` if you run them next to a Go build in one workspace.
+is stale).
 
 Rust (`.rs`), Go (`.go`), and Markdown (`.md`, `.markdown`) files receive built-in
 lexical highlighting immediately, including when no language server is installed.

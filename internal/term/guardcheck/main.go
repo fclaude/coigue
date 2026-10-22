@@ -1,14 +1,11 @@
 //go:build linux || darwin
 
-// Command guardcheck is the Go counterpart of the Rust unit test
-// terminal_guard_restores_after_error_and_unwind, which cannot run under
-// `go test` because it needs a real terminal. tests/pty_smoke.py runs it
-// inside a PTY, looking for an executable named coigue-* next to the editor
-// binary (bin/deps/) that lists the Rust test name and accepts the arguments
-// cargo's test harness takes:
-//
-//	guardcheck --list
-//	guardcheck --exact tests::terminal_guard_restores_after_error_and_unwind --nocapture
+// Command guardcheck enters the terminal and leaves it again by a returned
+// error and by a panic, and exits 1 if the terminal modes are not back. It needs
+// a real terminal on stdin and stdout, so it cannot run under `go test`:
+// tests/pty_smoke.py runs it inside a PTY (make build puts it at
+// bin/deps/coigue-terminal-guard). The check descends from a Rust unit test of
+// the original editor.
 package main
 
 import (
@@ -23,20 +20,14 @@ import (
 	"github.com/fclaude/coigue/internal/term"
 )
 
-const name = "tests::terminal_guard_restores_after_error_and_unwind"
-
 func main() {
-	switch {
-	case len(os.Args) == 2 && os.Args[1] == "--list":
-		fmt.Printf("%s: test\n", name)
-	case len(os.Args) >= 3 && os.Args[1] == "--exact" && os.Args[2] == name:
-		if err := run(); err != nil {
-			fmt.Fprintln(os.Stderr, "guardcheck:", err)
-			os.Exit(1)
-		}
-	default:
-		fmt.Fprintln(os.Stderr, "usage: guardcheck --list | --exact", name, "[--nocapture]")
+	if len(os.Args) != 1 {
+		fmt.Fprintln(os.Stderr, "usage: guardcheck (takes no arguments; needs a terminal)")
 		os.Exit(2)
+	}
+	if err := run(); err != nil {
+		fmt.Fprintln(os.Stderr, "guardcheck:", err)
+		os.Exit(1)
 	}
 }
 
