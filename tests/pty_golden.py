@@ -1,13 +1,13 @@
-"""Replay recorded terminal sessions against an editor binary and compare with the Rust editor.
+"""Replay recorded terminal sessions against an editor binary and compare with the recordings of the original Rust editor.
 
 usage: python3 tests/pty_golden.py BINARY            # compare against tests/golden/pty-sessions.json
-       python3 tests/pty_golden.py BINARY --record   # re-record the goldens from BINARY (the Rust build)
+       python3 tests/pty_golden.py BINARY --record   # re-record the goldens from BINARY (the Go build: it records its own output)
 
 Each scenario starts the editor in a PTY with a fixed working directory and a
 PATH that contains no language servers, sends scripted keys and resizes, and
 keeps the raw bytes the editor wrote after every step. The goldens in
-tests/golden/pty-sessions.json were recorded from the Rust editor (commit
-87bc248). The Go editor must write identical bytes; when the byte stream
+tests/golden/pty-sessions.json were recorded from the Rust editor (the last Rust-only
+commit, ba72614; tag rust-reference holds it with the Go port). The Go editor must write identical bytes; when the byte stream
 differs only in how output is batched into frames, the reconstructed screens
 (text and cursor) must still be identical. Files left on disk must be equal.
 

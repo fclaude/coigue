@@ -65,7 +65,7 @@ func decodeChunks(t *testing.T, label string) [][]byte {
 
 // TestParserMatchesCrossterm replays ~1100 byte sequences against the golden
 // recorded from the real crossterm 0.29 event reader on a PTY (the harness is
-// kept in testdata/keydump; regenerate with testdata/keydump-drive.py). Inputs
+// in the git tag rust-reference, as testdata/keydump). Inputs
 // cover every control byte, Alt-chords, SS3/CSI/tilde/kitty "CSI u" keys with
 // modifiers and event kinds, bracketed paste, mouse and report sequences,
 // UTF-8 and invalid UTF-8, malformed sequences followed by text, and

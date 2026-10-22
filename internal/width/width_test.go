@@ -132,7 +132,7 @@ func TestPredicatesAllScalars(t *testing.T) {
 
 // TestStringGolden checks String against strings whose widths come from the Rust crate
 // (testdata/string_golden.txt: "width<TAB>hex(utf-8)"). The strings were chosen to cover every
-// state transition of the reverse fold, see testdata/dump/main.rs.
+// state transition of the reverse fold, see testdata/dump/main.rs in the git tag rust-reference.
 func TestStringGolden(t *testing.T) {
 	f, err := os.Open("testdata/string_golden.txt")
 	if err != nil {

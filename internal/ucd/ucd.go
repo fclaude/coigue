@@ -7,8 +7,8 @@
 // Unicode 15.0 while the Rust standard library the editor was built with is
 // Unicode 17.0, which would otherwise change where a word ends or which paths
 // a query matches for characters added since. The predicates therefore read
-// range tables dumped from the Rust standard library (testdata/dump.rs,
-// regenerated with go generate).
+// range tables dumped from the Rust standard library (the dump program,
+// testdata/dump.rs, is in the git tag rust-reference; go generate turns the dumps into tables).
 package ucd
 
 //go:generate go run gen.go

@@ -16,12 +16,12 @@
 //
 //	go generate ./internal/width
 //
-// The dumps themselves come from the crate: testdata/dump/main.rs is a small Rust program that is
+// The dumps themselves come from the Rust crate: testdata/dump/main.rs was a small Rust program
 // built next to a copy of unicode-width-0.2.2/src/tables.rs with testdata/dump/tables_patch.rs
-// appended (the patch only exposes private functions). See the header of main.rs for the commands;
-// "wdump dump testdata" rewrites the *.txt dumps. To move to another unicode-width release, refresh
-// the dumps, regenerate, and compare widthInStr and lookupWidth with the new tables.rs by hand,
-// because those two functions are hand-ported code and not generated.
+// appended (the patch only exposed private functions). Both are in the git tag rust-reference,
+// with the commands in the header of main.rs. To move to another unicode-width release, produce
+// new dumps with that program, regenerate, and compare widthInStr and lookupWidth with the new
+// tables.rs by hand, because those two functions are hand-ported code and not generated.
 package width
 
 import (

@@ -2,7 +2,7 @@
 
 This records how the Go editor replaces each Rust crate and platform primitive, what was
 verified against the Rust reference, and every place where the behaviour intentionally or
-unavoidably differs. The reference is the Rust editor at commit `87bc248`; the behaviour
+unavoidably differs. The reference was the Rust editor at commit `ba72614`, kept under the tag `rust-reference`, whose tree still holds the Rust sources; the behaviour
 checklist is `docs/port-parity.md` on branch `claude/go-port-parity-687a76` (ids such as
 `BUF-12` or `ODD-19` below refer to it).
 

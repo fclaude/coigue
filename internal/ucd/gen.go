@@ -1,7 +1,8 @@
 //go:build ignore
 
 // Generates tables.go from the range lists in testdata/, which were dumped from
-// Rust's standard library by testdata/dump.rs. Run with `go generate ./internal/ucd`.
+// Rust's standard library (the dump program is in the git tag rust-reference,
+// as internal/ucd/testdata/dump.rs). Run with `go generate ./internal/ucd`.
 package main
 
 import (
