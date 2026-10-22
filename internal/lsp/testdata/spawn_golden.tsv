@@ -1,0 +1,200 @@
+<S>/bin	absent	<S>	unavailable (No such file or directory (os error 2))
+<S>/bin	absent	<S>/nodir	unavailable (No such file or directory (os error 2))
+<S>/bin	absent	<S>/bin/noexec	unavailable (Not a directory (os error 20))
+<S>/bin	noexec	<S>	unavailable (Permission denied (os error 13))
+<S>/bin	noexec	<S>/nodir	unavailable (No such file or directory (os error 2))
+<S>/bin	noexec	<S>/bin/noexec	unavailable (Not a directory (os error 20))
+<S>/bin	badfmt	<S>	unavailable (Exec format error (os error 8))
+<S>/bin	adir	<S>	unavailable (Permission denied (os error 13))
+<S>/bin	ok-prog	<S>	ok
+<S>/bin	ok-prog	<S>/nodir	unavailable (No such file or directory (os error 2))
+<S>/bin	ok-prog	<S>/bin/noexec	unavailable (Not a directory (os error 20))
+<S>/bin	.	<S>	unavailable (Permission denied (os error 13))
+<S>/bin		<S>	unavailable (No such file or directory (os error 2))
+<S>/bin	<S>/bin/absent	<S>	unavailable (No such file or directory (os error 2))
+<S>/bin	<S>/bin/noexec	<S>	unavailable (Permission denied (os error 13))
+<S>/bin	<S>/bin/badfmt	<S>	unavailable (Exec format error (os error 8))
+<S>/bin	<S>/bin/adir	<S>	unavailable (Permission denied (os error 13))
+<S>/bin	<S>/bin/ok-prog	<S>	ok
+<S>/bin	<S>/bin/ok-prog	<S>/nodir	unavailable (No such file or directory (os error 2))
+<S>/bin	<S>/bin/ok-prog	<S>/bin/noexec	unavailable (Not a directory (os error 20))
+<S>/bin	<S>/bin2/noexec	<S>	ok
+<S>/bin	<S>/bin2/badfmt	<S>	unavailable (Permission denied (os error 13))
+<S>/bin	bin/ok-prog	<S>	ok
+<S>/bin	./bin/ok-prog	<S>	ok
+<S>/bin	../spawn/bin/ok-prog	<S>	ok
+<S>/bin:<S>/bin2	absent	<S>	unavailable (No such file or directory (os error 2))
+<S>/bin:<S>/bin2	absent	<S>/nodir	unavailable (No such file or directory (os error 2))
+<S>/bin:<S>/bin2	absent	<S>/bin/noexec	unavailable (Not a directory (os error 20))
+<S>/bin:<S>/bin2	noexec	<S>	ok
+<S>/bin:<S>/bin2	noexec	<S>/nodir	unavailable (No such file or directory (os error 2))
+<S>/bin:<S>/bin2	noexec	<S>/bin/noexec	unavailable (Not a directory (os error 20))
+<S>/bin:<S>/bin2	badfmt	<S>	unavailable (Exec format error (os error 8))
+<S>/bin:<S>/bin2	adir	<S>	unavailable (Permission denied (os error 13))
+<S>/bin:<S>/bin2	ok-prog	<S>	ok
+<S>/bin:<S>/bin2	ok-prog	<S>/nodir	unavailable (No such file or directory (os error 2))
+<S>/bin:<S>/bin2	ok-prog	<S>/bin/noexec	unavailable (Not a directory (os error 20))
+<S>/bin:<S>/bin2	.	<S>	unavailable (Permission denied (os error 13))
+<S>/bin:<S>/bin2		<S>	unavailable (No such file or directory (os error 2))
+<S>/bin:<S>/bin2	<S>/bin/absent	<S>	unavailable (No such file or directory (os error 2))
+<S>/bin:<S>/bin2	<S>/bin/noexec	<S>	unavailable (Permission denied (os error 13))
+<S>/bin:<S>/bin2	<S>/bin/badfmt	<S>	unavailable (Exec format error (os error 8))
+<S>/bin:<S>/bin2	<S>/bin/adir	<S>	unavailable (Permission denied (os error 13))
+<S>/bin:<S>/bin2	<S>/bin/ok-prog	<S>	ok
+<S>/bin:<S>/bin2	<S>/bin/ok-prog	<S>/nodir	unavailable (No such file or directory (os error 2))
+<S>/bin:<S>/bin2	<S>/bin/ok-prog	<S>/bin/noexec	unavailable (Not a directory (os error 20))
+<S>/bin:<S>/bin2	<S>/bin2/noexec	<S>	ok
+<S>/bin:<S>/bin2	<S>/bin2/badfmt	<S>	unavailable (Permission denied (os error 13))
+<S>/bin:<S>/bin2	bin/ok-prog	<S>	ok
+<S>/bin:<S>/bin2	./bin/ok-prog	<S>	ok
+<S>/bin:<S>/bin2	../spawn/bin/ok-prog	<S>	ok
+<S>/bin2:<S>/bin	absent	<S>	unavailable (No such file or directory (os error 2))
+<S>/bin2:<S>/bin	absent	<S>/nodir	unavailable (No such file or directory (os error 2))
+<S>/bin2:<S>/bin	absent	<S>/bin/noexec	unavailable (Not a directory (os error 20))
+<S>/bin2:<S>/bin	noexec	<S>	ok
+<S>/bin2:<S>/bin	noexec	<S>/nodir	unavailable (No such file or directory (os error 2))
+<S>/bin2:<S>/bin	noexec	<S>/bin/noexec	unavailable (Not a directory (os error 20))
+<S>/bin2:<S>/bin	badfmt	<S>	unavailable (Exec format error (os error 8))
+<S>/bin2:<S>/bin	adir	<S>	unavailable (Permission denied (os error 13))
+<S>/bin2:<S>/bin	ok-prog	<S>	ok
+<S>/bin2:<S>/bin	ok-prog	<S>/nodir	unavailable (No such file or directory (os error 2))
+<S>/bin2:<S>/bin	ok-prog	<S>/bin/noexec	unavailable (Not a directory (os error 20))
+<S>/bin2:<S>/bin	.	<S>	unavailable (Permission denied (os error 13))
+<S>/bin2:<S>/bin		<S>	unavailable (No such file or directory (os error 2))
+<S>/bin2:<S>/bin	<S>/bin/absent	<S>	unavailable (No such file or directory (os error 2))
+<S>/bin2:<S>/bin	<S>/bin/noexec	<S>	unavailable (Permission denied (os error 13))
+<S>/bin2:<S>/bin	<S>/bin/badfmt	<S>	unavailable (Exec format error (os error 8))
+<S>/bin2:<S>/bin	<S>/bin/adir	<S>	unavailable (Permission denied (os error 13))
+<S>/bin2:<S>/bin	<S>/bin/ok-prog	<S>	ok
+<S>/bin2:<S>/bin	<S>/bin/ok-prog	<S>/nodir	unavailable (No such file or directory (os error 2))
+<S>/bin2:<S>/bin	<S>/bin/ok-prog	<S>/bin/noexec	unavailable (Not a directory (os error 20))
+<S>/bin2:<S>/bin	<S>/bin2/noexec	<S>	ok
+<S>/bin2:<S>/bin	<S>/bin2/badfmt	<S>	unavailable (Permission denied (os error 13))
+<S>/bin2:<S>/bin	bin/ok-prog	<S>	ok
+<S>/bin2:<S>/bin	./bin/ok-prog	<S>	ok
+<S>/bin2:<S>/bin	../spawn/bin/ok-prog	<S>	ok
+	absent	<S>	unavailable (No such file or directory (os error 2))
+	absent	<S>/nodir	unavailable (No such file or directory (os error 2))
+	absent	<S>/bin/noexec	unavailable (Not a directory (os error 20))
+	noexec	<S>	unavailable (No such file or directory (os error 2))
+	noexec	<S>/nodir	unavailable (No such file or directory (os error 2))
+	noexec	<S>/bin/noexec	unavailable (Not a directory (os error 20))
+	badfmt	<S>	unavailable (No such file or directory (os error 2))
+	adir	<S>	unavailable (No such file or directory (os error 2))
+	ok-prog	<S>	unavailable (No such file or directory (os error 2))
+	ok-prog	<S>/nodir	unavailable (No such file or directory (os error 2))
+	ok-prog	<S>/bin/noexec	unavailable (Not a directory (os error 20))
+	.	<S>	unavailable (Permission denied (os error 13))
+		<S>	unavailable (No such file or directory (os error 2))
+	<S>/bin/absent	<S>	unavailable (No such file or directory (os error 2))
+	<S>/bin/noexec	<S>	unavailable (Permission denied (os error 13))
+	<S>/bin/badfmt	<S>	unavailable (Exec format error (os error 8))
+	<S>/bin/adir	<S>	unavailable (Permission denied (os error 13))
+	<S>/bin/ok-prog	<S>	ok
+	<S>/bin/ok-prog	<S>/nodir	unavailable (No such file or directory (os error 2))
+	<S>/bin/ok-prog	<S>/bin/noexec	unavailable (Not a directory (os error 20))
+	<S>/bin2/noexec	<S>	ok
+	<S>/bin2/badfmt	<S>	unavailable (Permission denied (os error 13))
+	bin/ok-prog	<S>	ok
+	./bin/ok-prog	<S>	ok
+	../spawn/bin/ok-prog	<S>	ok
+<S>/missing	absent	<S>	unavailable (No such file or directory (os error 2))
+<S>/missing	absent	<S>/nodir	unavailable (No such file or directory (os error 2))
+<S>/missing	absent	<S>/bin/noexec	unavailable (Not a directory (os error 20))
+<S>/missing	noexec	<S>	unavailable (No such file or directory (os error 2))
+<S>/missing	noexec	<S>/nodir	unavailable (No such file or directory (os error 2))
+<S>/missing	noexec	<S>/bin/noexec	unavailable (Not a directory (os error 20))
+<S>/missing	badfmt	<S>	unavailable (No such file or directory (os error 2))
+<S>/missing	adir	<S>	unavailable (No such file or directory (os error 2))
+<S>/missing	ok-prog	<S>	unavailable (No such file or directory (os error 2))
+<S>/missing	ok-prog	<S>/nodir	unavailable (No such file or directory (os error 2))
+<S>/missing	ok-prog	<S>/bin/noexec	unavailable (Not a directory (os error 20))
+<S>/missing	.	<S>	unavailable (No such file or directory (os error 2))
+<S>/missing		<S>	unavailable (No such file or directory (os error 2))
+<S>/missing	<S>/bin/absent	<S>	unavailable (No such file or directory (os error 2))
+<S>/missing	<S>/bin/noexec	<S>	unavailable (Permission denied (os error 13))
+<S>/missing	<S>/bin/badfmt	<S>	unavailable (Exec format error (os error 8))
+<S>/missing	<S>/bin/adir	<S>	unavailable (Permission denied (os error 13))
+<S>/missing	<S>/bin/ok-prog	<S>	ok
+<S>/missing	<S>/bin/ok-prog	<S>/nodir	unavailable (No such file or directory (os error 2))
+<S>/missing	<S>/bin/ok-prog	<S>/bin/noexec	unavailable (Not a directory (os error 20))
+<S>/missing	<S>/bin2/noexec	<S>	ok
+<S>/missing	<S>/bin2/badfmt	<S>	unavailable (Permission denied (os error 13))
+<S>/missing	bin/ok-prog	<S>	ok
+<S>/missing	./bin/ok-prog	<S>	ok
+<S>/missing	../spawn/bin/ok-prog	<S>	ok
+<S>/bin2	absent	<S>	unavailable (No such file or directory (os error 2))
+<S>/bin2	absent	<S>/nodir	unavailable (No such file or directory (os error 2))
+<S>/bin2	absent	<S>/bin/noexec	unavailable (Not a directory (os error 20))
+<S>/bin2	noexec	<S>	ok
+<S>/bin2	noexec	<S>/nodir	unavailable (No such file or directory (os error 2))
+<S>/bin2	noexec	<S>/bin/noexec	unavailable (Not a directory (os error 20))
+<S>/bin2	badfmt	<S>	unavailable (Permission denied (os error 13))
+<S>/bin2	adir	<S>	unavailable (No such file or directory (os error 2))
+<S>/bin2	ok-prog	<S>	unavailable (No such file or directory (os error 2))
+<S>/bin2	ok-prog	<S>/nodir	unavailable (No such file or directory (os error 2))
+<S>/bin2	ok-prog	<S>/bin/noexec	unavailable (Not a directory (os error 20))
+<S>/bin2	.	<S>	unavailable (Permission denied (os error 13))
+<S>/bin2		<S>	unavailable (No such file or directory (os error 2))
+<S>/bin2	<S>/bin/absent	<S>	unavailable (No such file or directory (os error 2))
+<S>/bin2	<S>/bin/noexec	<S>	unavailable (Permission denied (os error 13))
+<S>/bin2	<S>/bin/badfmt	<S>	unavailable (Exec format error (os error 8))
+<S>/bin2	<S>/bin/adir	<S>	unavailable (Permission denied (os error 13))
+<S>/bin2	<S>/bin/ok-prog	<S>	ok
+<S>/bin2	<S>/bin/ok-prog	<S>/nodir	unavailable (No such file or directory (os error 2))
+<S>/bin2	<S>/bin/ok-prog	<S>/bin/noexec	unavailable (Not a directory (os error 20))
+<S>/bin2	<S>/bin2/noexec	<S>	ok
+<S>/bin2	<S>/bin2/badfmt	<S>	unavailable (Permission denied (os error 13))
+<S>/bin2	bin/ok-prog	<S>	ok
+<S>/bin2	./bin/ok-prog	<S>	ok
+<S>/bin2	../spawn/bin/ok-prog	<S>	ok
+<S>/bin:	absent	<S>	unavailable (No such file or directory (os error 2))
+<S>/bin:	absent	<S>/nodir	unavailable (No such file or directory (os error 2))
+<S>/bin:	absent	<S>/bin/noexec	unavailable (Not a directory (os error 20))
+<S>/bin:	noexec	<S>	unavailable (Permission denied (os error 13))
+<S>/bin:	noexec	<S>/nodir	unavailable (No such file or directory (os error 2))
+<S>/bin:	noexec	<S>/bin/noexec	unavailable (Not a directory (os error 20))
+<S>/bin:	badfmt	<S>	unavailable (Exec format error (os error 8))
+<S>/bin:	adir	<S>	unavailable (Permission denied (os error 13))
+<S>/bin:	ok-prog	<S>	ok
+<S>/bin:	ok-prog	<S>/nodir	unavailable (No such file or directory (os error 2))
+<S>/bin:	ok-prog	<S>/bin/noexec	unavailable (Not a directory (os error 20))
+<S>/bin:	.	<S>	unavailable (Permission denied (os error 13))
+<S>/bin:		<S>	unavailable (No such file or directory (os error 2))
+<S>/bin:	<S>/bin/absent	<S>	unavailable (No such file or directory (os error 2))
+<S>/bin:	<S>/bin/noexec	<S>	unavailable (Permission denied (os error 13))
+<S>/bin:	<S>/bin/badfmt	<S>	unavailable (Exec format error (os error 8))
+<S>/bin:	<S>/bin/adir	<S>	unavailable (Permission denied (os error 13))
+<S>/bin:	<S>/bin/ok-prog	<S>	ok
+<S>/bin:	<S>/bin/ok-prog	<S>/nodir	unavailable (No such file or directory (os error 2))
+<S>/bin:	<S>/bin/ok-prog	<S>/bin/noexec	unavailable (Not a directory (os error 20))
+<S>/bin:	<S>/bin2/noexec	<S>	ok
+<S>/bin:	<S>/bin2/badfmt	<S>	unavailable (Permission denied (os error 13))
+<S>/bin:	bin/ok-prog	<S>	ok
+<S>/bin:	./bin/ok-prog	<S>	ok
+<S>/bin:	../spawn/bin/ok-prog	<S>	ok
+<S>/missing:<S>/bin2:<S>/bin	absent	<S>	unavailable (No such file or directory (os error 2))
+<S>/missing:<S>/bin2:<S>/bin	absent	<S>/nodir	unavailable (No such file or directory (os error 2))
+<S>/missing:<S>/bin2:<S>/bin	absent	<S>/bin/noexec	unavailable (Not a directory (os error 20))
+<S>/missing:<S>/bin2:<S>/bin	noexec	<S>	ok
+<S>/missing:<S>/bin2:<S>/bin	noexec	<S>/nodir	unavailable (No such file or directory (os error 2))
+<S>/missing:<S>/bin2:<S>/bin	noexec	<S>/bin/noexec	unavailable (Not a directory (os error 20))
+<S>/missing:<S>/bin2:<S>/bin	badfmt	<S>	unavailable (Exec format error (os error 8))
+<S>/missing:<S>/bin2:<S>/bin	adir	<S>	unavailable (Permission denied (os error 13))
+<S>/missing:<S>/bin2:<S>/bin	ok-prog	<S>	ok
+<S>/missing:<S>/bin2:<S>/bin	ok-prog	<S>/nodir	unavailable (No such file or directory (os error 2))
+<S>/missing:<S>/bin2:<S>/bin	ok-prog	<S>/bin/noexec	unavailable (Not a directory (os error 20))
+<S>/missing:<S>/bin2:<S>/bin	.	<S>	unavailable (Permission denied (os error 13))
+<S>/missing:<S>/bin2:<S>/bin		<S>	unavailable (No such file or directory (os error 2))
+<S>/missing:<S>/bin2:<S>/bin	<S>/bin/absent	<S>	unavailable (No such file or directory (os error 2))
+<S>/missing:<S>/bin2:<S>/bin	<S>/bin/noexec	<S>	unavailable (Permission denied (os error 13))
+<S>/missing:<S>/bin2:<S>/bin	<S>/bin/badfmt	<S>	unavailable (Exec format error (os error 8))
+<S>/missing:<S>/bin2:<S>/bin	<S>/bin/adir	<S>	unavailable (Permission denied (os error 13))
+<S>/missing:<S>/bin2:<S>/bin	<S>/bin/ok-prog	<S>	ok
+<S>/missing:<S>/bin2:<S>/bin	<S>/bin/ok-prog	<S>/nodir	unavailable (No such file or directory (os error 2))
+<S>/missing:<S>/bin2:<S>/bin	<S>/bin/ok-prog	<S>/bin/noexec	unavailable (Not a directory (os error 20))
+<S>/missing:<S>/bin2:<S>/bin	<S>/bin2/noexec	<S>	ok
+<S>/missing:<S>/bin2:<S>/bin	<S>/bin2/badfmt	<S>	unavailable (Permission denied (os error 13))
+<S>/missing:<S>/bin2:<S>/bin	bin/ok-prog	<S>	ok
+<S>/missing:<S>/bin2:<S>/bin	./bin/ok-prog	<S>	ok
+<S>/missing:<S>/bin2:<S>/bin	../spawn/bin/ok-prog	<S>	ok

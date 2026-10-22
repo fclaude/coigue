@@ -1,0 +1,555 @@
+{"lang": "rust", "text": "// line comment", "styles": ["ccccccccccccccc"]}
+{"lang": "rust", "text": "/* a /* b */ c */ fn main() {}", "styles": ["ccccccccccccccccc.kk.....pp.pp"]}
+{"lang": "rust", "text": "/*/ still comment */ let", "styles": ["cccccccccccccccccccc.kkk"]}
+{"lang": "rust", "text": "/* */ */ let", "styles": ["ccccc.pp.kkk"]}
+{"lang": "rust", "text": "//! inner doc", "styles": ["ccccccccccccc"]}
+{"lang": "rust", "text": "/*\n*/\n/*\n*/", "styles": ["cc", "cc", "cc", "cc"]}
+{"lang": "rust", "text": "/* \" quote */ let z = \"s\";", "styles": ["ccccccccccccc.kkk...p.sssp"]}
+{"lang": "rust", "text": "/* a */ */ b", "styles": ["ccccccc.pp.."]}
+{"lang": "rust", "text": "\"abc\"", "styles": ["sssss"]}
+{"lang": "rust", "text": "\"line one\nline two\"", "styles": ["sssssssss", "sssssssss"]}
+{"lang": "rust", "text": "\"\\\\\\\"\" y", "styles": ["ssssss.."]}
+{"lang": "rust", "text": "b\"x\\n\"", "styles": ["ssssss"]}
+{"lang": "rust", "text": "B\"upper\"", "styles": [".sssssss"]}
+{"lang": "rust", "text": "cc\"x\"", "styles": ["..sss"]}
+{"lang": "rust", "text": "r##\"a\"#b\"##", "styles": ["sssssssssss"]}
+{"lang": "rust", "text": "r#", "styles": [".p"]}
+{"lang": "rust", "text": "r\"a\\\"", "styles": ["sssss"]}
+{"lang": "rust", "text": "br#\"x\"y\"#", "styles": ["sssssssss"]}
+{"lang": "rust", "text": "rb\"x\"", "styles": ["..sss"]}
+{"lang": "rust", "text": "r \"x\"", "styles": ["..sss"]}
+{"lang": "rust", "text": "r##\"multi\n\"#\n\"## let", "styles": ["sssssssss", "ss", "sss.kkk"]}
+{"lang": "rust", "text": "br##\"a\r\n\"# /*\r\n\"## fn\r\n\"a\\\"b\r\nend\" let", "styles": ["sssssss", "ssssss", "sss.kk.", "ssssss", "ssss.kkk"]}
+{"lang": "rust", "text": "r#\"\"#", "styles": ["sssss"]}
+{"lang": "rust", "text": "r#\"a\"#r#\"b\"#", "styles": ["ssssssssssss"]}
+{"lang": "rust", "text": "_r#\"x\"#", "styles": ["..psssp"]}
+{"lang": "rust", "text": "\"\" \"\"", "styles": ["ss.ss"]}
+{"lang": "rust", "text": "let s = \"// not comment\"; // comment", "styles": ["kkk...p.ssssssssssssssssp.cccccccccc"]}
+{"lang": "rust", "text": "\"tab\there\"", "styles": ["ssssssssss"]}
+{"lang": "rust", "text": "\"\\\n\"", "styles": ["ss", "s"]}
+{"lang": "rust", "text": "\"a\\\n\\\" let x", "styles": ["sss", "ssssssss"]}
+{"lang": "rust", "text": "\"a\\\\\n\" let x", "styles": ["ssss", "s.kkk.."]}
+{"lang": "rust", "text": "\"\\\r\n\\\r\n\" fn", "styles": ["sss", "ss", "s.kk"]}
+{"lang": "rust", "text": "let s = \"a\\\n\"; let t = 1;", "styles": ["kkk...p.sss", "sp.kkk...p.np"]}
+{"lang": "rust", "text": "'\\\n' x", "styles": ["pp", "p.."]}
+{"lang": "rust", "text": "'\u0000'", "styles": ["sss"]}
+{"lang": "rust", "text": "'\\\u0000", "styles": ["pp."]}
+{"lang": "rust", "text": "'\\x\u0000", "styles": ["pp.."]}
+{"lang": "rust", "text": "1e\u0000", "styles": ["nn."]}
+{"lang": "rust", "text": "\"\u0000\"", "styles": ["sss"]}
+{"lang": "rust", "text": "'a'", "styles": ["sss"]}
+{"lang": "rust", "text": "'\\\\'", "styles": ["ssss"]}
+{"lang": "rust", "text": "'\\x4'", "styles": ["pp..p"]}
+{"lang": "rust", "text": "'\\u{}'", "styles": ["ssssss"]}
+{"lang": "rust", "text": "'\u754c'", "styles": ["sss"]}
+{"lang": "rust", "text": "b'\\n'", "styles": ["sssss"]}
+{"lang": "rust", "text": "b'ab'", "styles": [".lllp"]}
+{"lang": "rust", "text": "'static", "styles": ["lllllll"]}
+{"lang": "rust", "text": "'\u754c", "styles": ["ll"]}
+{"lang": "rust", "text": "'\\u{1_F980}'", "styles": ["ssssssssssss"]}
+{"lang": "rust", "text": "'\\u{ff}'", "styles": ["ssssssss"]}
+{"lang": "rust", "text": "'\\0'", "styles": ["ssss"]}
+{"lang": "rust", "text": "'\\t'", "styles": ["ssss"]}
+{"lang": "rust", "text": "fn f<'a>(x: &'a str) -> &'a str { x }", "styles": ["kk..pllpp.p.pll....p.pp.pll.....p...p"]}
+{"lang": "rust", "text": "'a: loop { break 'a; }", "styles": ["llp.kkkk.p.kkkkk.llp.p"]}
+{"lang": "rust", "text": "'a' 'b", "styles": ["sss.ll"]}
+{"lang": "rust", "text": "&'a", "styles": ["pll"]}
+{"lang": "rust", "text": "'\u00e9'", "styles": ["sss"]}
+{"lang": "rust", "text": "'\u00f1", "styles": ["ll"]}
+{"lang": "rust", "text": "'\u00b2", "styles": ["p."]}
+{"lang": "rust", "text": "'\ud83e\udd80", "styles": ["p."]}
+{"lang": "rust", "text": "b'\u00e9'", "styles": ["ssss"]}
+{"lang": "rust", "text": "0x1F", "styles": ["nnnn"]}
+{"lang": "rust", "text": "0o77", "styles": ["nnnn"]}
+{"lang": "rust", "text": "1.", "styles": ["np"]}
+{"lang": "rust", "text": "1e10", "styles": ["nnnn"]}
+{"lang": "rust", "text": "1.2e-3f64", "styles": ["nnnnnnnnn"]}
+{"lang": "rust", "text": "1.0.0", "styles": ["nnnnn"]}
+{"lang": "rust", "text": "x.0.1", "styles": [".pnnn"]}
+{"lang": "rust", "text": "1usize", "styles": ["nnnnnn"]}
+{"lang": "rust", "text": "1__", "styles": ["nnn"]}
+{"lang": "rust", "text": "1\u00b2", "styles": ["n."]}
+{"lang": "rust", "text": "1+2", "styles": ["npn"]}
+{"lang": "rust", "text": "x = 1.0e-5;", "styles": ["..p.nnnnnnp"]}
+{"lang": "rust", "text": "12e", "styles": ["nnn"]}
+{"lang": "rust", "text": "1...2", "styles": ["npppn"]}
+{"lang": "rust", "text": "..5", "styles": ["ppn"]}
+{"lang": "rust", "text": "1.e", "styles": ["np."]}
+{"lang": "rust", "text": "007", "styles": ["nnn"]}
+{"lang": "rust", "text": "1\u00b2", "styles": ["n."]}
+{"lang": "rust", "text": "\uff11", "styles": ["."]}
+{"lang": "rust", "text": "r#fn", "styles": ["...."]}
+{"lang": "rust", "text": "r#1", "styles": [".pn"]}
+{"lang": "rust", "text": "rr#a", "styles": ["..p."]}
+{"lang": "rust", "text": "r#_x", "styles": ["...."]}
+{"lang": "rust", "text": "Self", "styles": ["kkkk"]}
+{"lang": "rust", "text": "try", "styles": ["kkk"]}
+{"lang": "rust", "text": "let caf\u00e9 = 1..2;", "styles": ["kkk......p.nppnp"]}
+{"lang": "rust", "text": "_x", "styles": [".."]}
+{"lang": "rust", "text": "\u754c", "styles": ["."]}
+{"lang": "rust", "text": "e\u0301", "styles": [".."]}
+{"lang": "rust", "text": "let x\u0301 = 2", "styles": ["kkk....p.n"]}
+{"lang": "rust", "text": "a\u200db", "styles": ["..."]}
+{"lang": "rust", "text": "let \ud83e\udd80 = 1;", "styles": ["kkk...p.np"]}
+{"lang": "rust", "text": "\u01c5", "styles": ["."]}
+{"lang": "rust", "text": "async move || await", "styles": ["kkkkk.kkkk.pp.kkkkk"]}
+{"lang": "rust", "text": "dyn Trait", "styles": ["kkk......"]}
+{"lang": "rust", "text": "mut ref", "styles": ["kkk.kkk"]}
+{"lang": "rust", "text": "keyword_prefix", "styles": [".............."]}
+{"lang": "rust", "text": "iffy", "styles": ["...."]}
+{"lang": "rust", "text": "self_", "styles": ["....."]}
+{"lang": "rust", "text": "println!(\"x\")", "styles": ["mmmmmmmmpsssp"]}
+{"lang": "rust", "text": "a!=b", "styles": [".pp."]}
+{"lang": "rust", "text": "foo ! bar", "styles": ["....p...."]}
+{"lang": "rust", "text": "matches!(x, A | B)", "styles": ["mmmmmmmmp.p...p..p"]}
+{"lang": "rust", "text": "a!\n", "styles": ["mm", ""]}
+{"lang": "rust", "text": "a!!", "styles": ["mmp"]}
+{"lang": "rust", "text": "foo!()", "styles": ["mmmmpp"]}
+{"lang": "rust", "text": "\u00e9!()", "styles": ["mmpp"]}
+{"lang": "rust", "text": "try!(x)", "styles": ["mmmmp.p"]}
+{"lang": "rust", "text": "b!=c", "styles": [".pp."]}
+{"lang": "rust", "text": "#[derive(Debug)]", "styles": ["pp......p.....pp"]}
+{"lang": "rust", "text": "x => y", "styles": ["..pp.."]}
+{"lang": "rust", "text": "?", "styles": ["p"]}
+{"lang": "rust", "text": "\\", "styles": ["p"]}
+{"lang": "rust", "text": "{}[]()", "styles": ["pppppp"]}
+{"lang": "rust", "text": "a.b.c", "styles": [".p.p."]}
+{"lang": "rust", "text": "\tlet\tx", "styles": [".kkk.."]}
+{"lang": "rust", "text": "\"s\r\nt\"", "styles": ["sss", "ss"]}
+{"lang": "rust", "text": "let\u0085x", "styles": ["kkk.."]}
+{"lang": "rust", "text": "", "styles": [""]}
+{"lang": "rust", "text": "   ", "styles": ["..."]}
+{"lang": "rust", "text": "#[derive(Debug, Clone)]\r\npub struct P<'a> {\r\n    name: &'a str, // name\r\n    n: u32,\r\n}", "styles": ["pp......p.....p......pp.", "kkk.kkkkkk..pllp.p.", "........p.pll....p.cccccccc", ".....p....p.", "p"]}
+{"lang": "rust", "text": "impl<T: Display> fmt::Display for W<T> {\n    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {\n        write!(f, \"{}\", self.0)\n    }\n}", "styles": ["kkkkp.p........p....pp........kkk..p.p.p", "....kk....ppkkkkp..p.pkkk....pp.........pllpp.pp....pp.......p", "........mmmmmmp.p.ssssp.kkkkpnp", "....p", "p"]}
+{"lang": "rust", "text": "let x = 0xFF_u8 as f64 * 1.5e-3 + 2.;\nlet y = (1..=10).map(|i| i * 2).sum::<i32>();", "styles": ["kkk...p.nnnnnnn.kk.....p.nnnnnn.p.npp", "kkk...p.pnpppnnpp...pp.p...p.npp...ppp...pppp"]}
+{"lang": "rust", "text": "/* top\n   /* inner */\n   still */\nfn after() {}", "styles": ["cccccc", "cccccccccccccc", "ccccccccccc", "kk......pp.pp"]}
+{"lang": "rust", "text": "let s = \"multi\r\n    line // not comment\r\n    string\";\r\nlet t = 1;", "styles": ["kkk...p.sssssss", "ssssssssssssssssssssssss", "sssssssssssp.", "kkk...p.np"]}
+{"lang": "rust", "text": "let a = 'a'; let b = '\\u{41}'; let c = '\\x41'; let d = &'a x;", "styles": ["kkk...p.sssp.kkk...p.ssssssssp.kkk...p.ssssssp.kkk...p.pll..p"]}
+{"lang": "rust", "text": "mod m { pub use super::*; }", "styles": ["kkk...p.kkk.kkk.kkkkkpppp.p"]}
+{"lang": "rust", "text": "let t = (1, 2.0, 'c', \"s\", b's', b\"bs\", r\"raw\", c\"cs\");", "styles": ["kkk...p.pnp.nnnp.sssp.sssp.ssssp.sssssp.ssssssp.ssssspp"]}
+{"lang": "go", "text": "\u0000", "styles": ["."]}
+{"lang": "go", "text": "'\u0000'", "styles": ["sss"]}
+{"lang": "go", "text": "if\u0000", "styles": ["kk."]}
+{"lang": "go", "text": "1.\u0000", "styles": ["nn."]}
+{"lang": "go", "text": "// c", "styles": ["cccc"]}
+{"lang": "go", "text": "/* a\nstill */ func main() {}", "styles": ["cccc", "cccccccc.kkkk.....pp.pp"]}
+{"lang": "go", "text": "/**/ var", "styles": ["cccc.kkk"]}
+{"lang": "go", "text": "//", "styles": ["cc"]}
+{"lang": "go", "text": "// /* \nx", "styles": ["cccccc", "."]}
+{"lang": "go", "text": "`unterminated", "styles": ["sssssssssssss"]}
+{"lang": "go", "text": "`// not comment`", "styles": ["ssssssssssssssss"]}
+{"lang": "go", "text": "` `` `", "styles": ["ssssss"]}
+{"lang": "go", "text": "`\\`", "styles": ["sss"]}
+{"lang": "go", "text": "// ` x\nvar y", "styles": ["cccccc", "kkk.."]}
+{"lang": "go", "text": "// ` x\r\nvar y", "styles": ["ccccccc", "kkk.."]}
+{"lang": "go", "text": "\"a\"", "styles": ["sss"]}
+{"lang": "go", "text": "\"a\\\\\"", "styles": ["sssss"]}
+{"lang": "go", "text": "\"a\\\nb\"", "styles": ["sss", ".s"]}
+{"lang": "go", "text": "\"tab\t\"", "styles": ["ssssss"]}
+{"lang": "go", "text": "'\\\\'", "styles": ["ssss"]}
+{"lang": "go", "text": "'ab'", "styles": ["ssss"]}
+{"lang": "go", "text": "'\\x41'", "styles": ["ssssss"]}
+{"lang": "go", "text": "'\ud83e\udd80'", "styles": ["sss"]}
+{"lang": "go", "text": "1e+3", "styles": ["nnnn"]}
+{"lang": "go", "text": ".", "styles": ["p"]}
+{"lang": "go", "text": "1.2.3", "styles": ["nnnnn"]}
+{"lang": "go", "text": "1_000", "styles": ["nnnnn"]}
+{"lang": "go", "text": "0xp-1", "styles": ["nnnnn"]}
+{"lang": "go", "text": "1e", "styles": ["nn"]}
+{"lang": "go", "text": ".e5", "styles": ["p.."]}
+{"lang": "go", "text": "0X1P+2", "styles": ["nnnnnn"]}
+{"lang": "go", "text": "0xe-1", "styles": ["nnnnn"]}
+{"lang": "go", "text": "09", "styles": ["nn"]}
+{"lang": "go", "text": "1.e+2", "styles": ["nnnnn"]}
+{"lang": "go", "text": "99bottles", "styles": ["nnnnnnnnn"]}
+{"lang": "go", "text": ".\u0663", "styles": ["p."]}
+{"lang": "go", "text": "chan", "styles": ["kkkk"]}
+{"lang": "go", "text": "default", "styles": ["kkkkkkk"]}
+{"lang": "go", "text": "fallthrough", "styles": ["kkkkkkkkkkk"]}
+{"lang": "go", "text": "go", "styles": ["kk"]}
+{"lang": "go", "text": "import", "styles": ["kkkkkk"]}
+{"lang": "go", "text": "package", "styles": ["kkkkkkk"]}
+{"lang": "go", "text": "select", "styles": ["kkkkkk"]}
+{"lang": "go", "text": "type", "styles": ["kkkk"]}
+{"lang": "go", "text": "funcs", "styles": ["....."]}
+{"lang": "go", "text": "var \u754c = 1", "styles": ["kkk...p.n"]}
+{"lang": "go", "text": "interface{}", "styles": ["kkkkkkkkkpp"]}
+{"lang": "go", "text": "select {}", "styles": ["kkkkkk.pp"]}
+{"lang": "go", "text": "VAR", "styles": ["..."]}
+{"lang": "go", "text": "var_", "styles": ["...."]}
+{"lang": "go", "text": "x.go", "styles": [".pkk"]}
+{"lang": "go", "text": "else{", "styles": ["kkkkp"]}
+{"lang": "go", "text": "package main\n/* func\nstill */ func main() {\ns := `// raw\nfunc` // comment\nr := '\\''; n := 0x1.fp+2; f := .5\nvar \u754c = \"a\\\"b\"\npackageName := 1\n", "styles": ["kkkkkkk.....", "ccccccc", "cccccccc.kkkk.....pp.p", "..pp.sssssss", "sssss.cccccccccc", "..pp.ssssp...pp.nnnnnnnnp...pp.nn", "kkk...p.ssssss", "............pp.n", ""]}
+{"lang": "go", "text": "switch x := v.(type) {\ncase int:\n\tfallthrough\ndefault:\n}", "styles": ["kkkkkk...pp..ppkkkkp.p", "kkkk....p", ".kkkkkkkkkkk", "kkkkkkkp", "p"]}
+{"lang": "go", "text": "switch x := v.(type) {\r\ncase int:\r\n\tfallthrough\r\ndefault:\r\n}", "styles": ["kkkkkk...pp..ppkkkkp.p.", "kkkk....p.", ".kkkkkkkkkkk.", "kkkkkkkp.", "p"]}
+{"lang": "go", "text": "const (\n\tA = iota // 0\n\tB\n)", "styles": ["kkkkk.p", "...p......cccc", "..", "p"]}
+{"lang": "go", "text": "ch := make(chan struct{}, 1)\nselect {\ncase <-ch:\ndefault:\n}", "styles": ["...pp.....pkkkk.kkkkkkppp.np", "kkkkkk.p", "kkkk.pp..p", "kkkkkkkp", "p"]}
+{"lang": "go", "text": "x := 1\r", "styles": ["..pp.n."]}
+{"lang": "go", "text": "func\u3000x", "styles": ["kkkk.."]}
+{"lang": "go", "text": " ", "styles": ["."]}
+{"lang": "go", "text": "\t", "styles": ["."]}
+{"lang": "go", "text": "a := b &^ c", "styles": ["..pp...pp.."]}
+{"lang": "go", "text": "{}[]()", "styles": ["pppppp"]}
+{"lang": "go", "text": "$", "styles": ["p"]}
+{"lang": "go", "text": "\\", "styles": ["p"]}
+{"lang": "go", "text": "e\u0301", "styles": [".."]}
+{"lang": "go", "text": "x\ud83e\udd80", "styles": [".."]}
+{"lang": "go", "text": "\u01c5", "styles": ["."]}
+{"lang": "go", "text": "\u00b2", "styles": ["."]}
+{"lang": "go", "text": "'e\u0301'", "styles": ["ssss"]}
+{"lang": "go", "text": "'a' + 'b'", "styles": ["sss.p.sss"]}
+{"lang": "go", "text": "\"'\"", "styles": ["sss"]}
+{"lang": "go", "text": "`'`", "styles": ["sss"]}
+{"lang": "md", "text": "\u0000", "styles": ["."]}
+{"lang": "md", "text": "_a_\u0000", "styles": ["eee."]}
+{"lang": "md", "text": "- \u0000", "styles": ["m.."]}
+{"lang": "md", "text": "[a](\u0000)", "styles": ["iiisss"]}
+{"lang": "md", "text": "# \u0000", "styles": ["hhh"]}
+{"lang": "md", "text": "```\n\u0000\n```", "styles": ["mmm", "s", "mmm"]}
+{"lang": "md", "text": "- [ ]\u0000", "styles": ["m.ooo."]}
+{"lang": "md", "text": "\u0000\n---", "styles": ["h", "hhh"]}
+{"lang": "md", "text": "\u0000\r\n---", "styles": ["hh", "hhh"]}
+{"lang": "md", "text": "- [ ][a]: b", "styles": ["m.oooiiiiss"]}
+{"lang": "md", "text": "- [x]> q", "styles": ["m.ooo..."]}
+{"lang": "md", "text": "```RS\nlet x = 1;\n```", "styles": ["mmmmm", "kkk...p.np", "mmm"]}
+{"lang": "md", "text": "~~~GoLang\r\nvar x = 1\r\n~~~", "styles": ["mmmmmmmmmm", "kkk...p.n.", "mmm"]}
+{"lang": "md", "text": "```rustA\nlet x = 1;\n```", "styles": ["mmmmmmmm", "ssssssssss", "mmm"]}
+{"lang": "md", "text": "# H", "styles": ["hhh"]}
+{"lang": "md", "text": "##### H", "styles": ["hhhhhhh"]}
+{"lang": "md", "text": "#", "styles": ["h"]}
+{"lang": "md", "text": "  # two", "styles": ["..hhhhh"]}
+{"lang": "md", "text": "# H #", "styles": ["hhhhh"]}
+{"lang": "md", "text": "# [l](u) in heading", "styles": ["hhiiissshhhhhhhhhhh"]}
+{"lang": "md", "text": "###### ", "styles": ["hhhhhhh"]}
+{"lang": "md", "text": "Title\n===", "styles": ["hhhhh", "hhh"]}
+{"lang": "md", "text": "Title\r\n=", "styles": ["hhhhhh", "h"]}
+{"lang": "md", "text": "Title\n===   ", "styles": ["hhhhh", "hhhhhh"]}
+{"lang": "md", "text": "- a\n---", "styles": ["m..", "mmm"]}
+{"lang": "md", "text": "[ref]: x\r\n---", "styles": ["iiiiiisss", "mmm"]}
+{"lang": "md", "text": "> q\n---", "styles": ["m..", "mmm"]}
+{"lang": "md", "text": "text\n -", "styles": ["hhhh", "hh"]}
+{"lang": "md", "text": "text\r\n    ===", "styles": [".....", "sssssss"]}
+{"lang": "md", "text": "text\n=-=", "styles": ["....", "..."]}
+{"lang": "md", "text": "text\n---\n---", "styles": ["hhhh", "hhh", "mmm"]}
+{"lang": "md", "text": "para\r\n***", "styles": [".....", "mmm"]}
+{"lang": "md", "text": "para\n- - -", "styles": ["....", "mmmmm"]}
+{"lang": "md", "text": "Title\r\n---\r\n", "styles": ["hhhhhh", "hhhh", ""]}
+{"lang": "md", "text": "<!-- c -->\n---", "styles": ["hhhhhhhhhh", "hhh"]}
+{"lang": "md", "text": "text <!--\r\n-->\r\n---", "styles": [".....cccc.", "hhhh", "hhh"]}
+{"lang": "md", "text": "1. a\n---", "styles": ["mm..", "mmm"]}
+{"lang": "md", "text": "a\n\n---", "styles": [".", "", "mmm"]}
+{"lang": "md", "text": "a\r\n\r\n\r\n===", "styles": ["..", ".", ".", "..."]}
+{"lang": "md", "text": "___", "styles": ["mmm"]}
+{"lang": "md", "text": "--", "styles": [".."]}
+{"lang": "md", "text": "---x", "styles": ["...."]}
+{"lang": "md", "text": "***bold***", "styles": ["bbbbbbbbbb"]}
+{"lang": "md", "text": "- -- -", "styles": ["mmmmmm"]}
+{"lang": "md", "text": "\t---", "styles": ["ssss"]}
+{"lang": "md", "text": "*-*", "styles": ["eee"]}
+{"lang": "md", "text": "~~~\ncode\n~~~", "styles": ["mmm", "ssss", "mmm"]}
+{"lang": "md", "text": "```RUST\nfn x() {}\n```", "styles": ["mmmmmmm", "kk..pp.pp", "mmm"]}
+{"lang": "md", "text": "```RUST\r\nfn x() {}\r\n```", "styles": ["mmmmmmmm", "kk..pp.pp.", "mmm"]}
+{"lang": "md", "text": "```python\nx = 1\n```", "styles": ["mmmmmmmmm", "sssss", "mmm"]}
+{"lang": "md", "text": "```\trs\nlet x = 1;\n```", "styles": ["mmmmmm", "kkk...p.np", "mmm"]}
+{"lang": "md", "text": "```\trs\r\nlet x = 1;\r\n```", "styles": ["mmmmmmm", "kkk...p.np.", "mmm"]}
+{"lang": "md", "text": "```go\ns := `a\nb`\n```", "styles": ["mmmmm", "..pp.ss", "ss", "mmm"]}
+{"lang": "md", "text": "``", "styles": [".."]}
+{"lang": "md", "text": "```", "styles": ["mmm"]}
+{"lang": "md", "text": "```\n\n", "styles": ["mmm", "", ""]}
+{"lang": "md", "text": "```\r\n\r\n", "styles": ["mmmm", "s", ""]}
+{"lang": "md", "text": "```\ncode\n``", "styles": ["mmm", "ssss", "ss"]}
+{"lang": "md", "text": "````\ncode\n```", "styles": ["mmmm", "ssss", "sss"]}
+{"lang": "md", "text": "````\r\ncode\r\n```", "styles": ["mmmmm", "sssss", "sss"]}
+{"lang": "md", "text": "```\ncode\n   ```", "styles": ["mmm", "ssss", "mmmmmm"]}
+{"lang": "md", "text": "   ```\ncode\n```", "styles": ["mmmmmm", "ssss", "mmm"]}
+{"lang": "md", "text": "   ```\r\ncode\r\n```", "styles": ["mmmmmmm", "sssss", "mmm"]}
+{"lang": "md", "text": "```\ncode\n```\n# Heading", "styles": ["mmm", "ssss", "mmm", "hhhhhhhhh"]}
+{"lang": "md", "text": "> ```\n> code\n> ```", "styles": ["m....", "m.....", "m...."]}
+{"lang": "md", "text": "> ```\r\n> code\r\n> ```", "styles": ["m.....", "m......", "m...."]}
+{"lang": "md", "text": "~~~~\n```\n~~~~", "styles": ["mmmm", "sss", "mmmm"]}
+{"lang": "md", "text": "```\r\ncode\r\n```\r\n", "styles": ["mmmm", "sssss", "mmmm", ""]}
+{"lang": "md", "text": "```\ncode\n```\r", "styles": ["mmm", "ssss", "mmmm"]}
+{"lang": "md", "text": "text\n```\ncode", "styles": ["....", "mmm", "ssss"]}
+{"lang": "md", "text": "# H\r\n```\r\nunclosed # still", "styles": ["hhhh", "mmmm", "ssssssssssssssss"]}
+{"lang": "md", "text": "```rust\n\n\nfn x() {}\n\n```", "styles": ["mmmmmmm", "", "", "kk..pp.pp", "", "mmm"]}
+{"lang": "md", "text": "```a```b", "styles": ["sssssss."]}
+{"lang": "md", "text": "```go\n/* x\n```\n*/\n```", "styles": ["mmmmm", "cccc", "mmm", "..", "mmm"]}
+{"lang": "md", "text": "```\r\n<!-- comment\r\n```\r\n-->", "styles": ["mmmm", "sssssssssssss", "mmmm", "..."]}
+{"lang": "md", "text": "```\n<!--\n```\n*a*", "styles": ["mmm", "ssss", "mmm", "eee"]}
+{"lang": "md", "text": ">> x", "styles": ["mm.."]}
+{"lang": "md", "text": "> ```", "styles": ["m...."]}
+{"lang": "md", "text": "> *a*", "styles": ["m.eee"]}
+{"lang": "md", "text": "    > q", "styles": ["sssssss"]}
+{"lang": "md", "text": "> - [ ] t", "styles": ["m.m.ooo.."]}
+{"lang": "md", "text": "> a\n===", "styles": ["m..", "..."]}
+{"lang": "md", "text": "> # h\r\n> text\r\n> ===", "styles": ["m.hhhh", "m......", "m...."]}
+{"lang": "md", "text": "-a", "styles": [".."]}
+{"lang": "md", "text": "123456789. a", "styles": ["mmmmmmmmmm.."]}
+{"lang": "md", "text": "1.", "styles": ["mm"]}
+{"lang": "md", "text": "- [y] t", "styles": ["m......"]}
+{"lang": "md", "text": "* [ ] a", "styles": ["m.ooo.."]}
+{"lang": "md", "text": "    - a", "styles": ["sssssss"]}
+{"lang": "md", "text": "- ---", "styles": ["mmmmm"]}
+{"lang": "md", "text": "- ", "styles": ["m."]}
+{"lang": "md", "text": "1)\ta", "styles": ["mm.."]}
+{"lang": "md", "text": "- [x]", "styles": ["m.ooo"]}
+{"lang": "md", "text": "- [xx] bad", "styles": ["m........."]}
+{"lang": "md", "text": "-  -  - x", "styles": ["m........"]}
+{"lang": "md", "text": "* **a**", "styles": ["m.bbbbb"]}
+{"lang": "md", "text": "- a\n- b\n- c", "styles": ["m..", "m..", "m.."]}
+{"lang": "md", "text": "- a\r\n- b\r\n- c", "styles": ["m...", "m...", "m.."]}
+{"lang": "md", "text": "- [ ] a\n- [x] b", "styles": ["m.ooo..", "m.ooo.."]}
+{"lang": "md", "text": "-\ta", "styles": ["m.."]}
+{"lang": "md", "text": "-\u3000a", "styles": ["m.."]}
+{"lang": "md", "text": "1.a", "styles": ["..."]}
+{"lang": "md", "text": "*a", "styles": [".."]}
+{"lang": "md", "text": "- \u754c\r\n- \u00e9", "styles": ["m...", "m.."]}
+{"lang": "md", "text": "    code", "styles": ["ssssssss"]}
+{"lang": "md", "text": "   \tcode", "styles": ["........"]}
+{"lang": "md", "text": "    # not heading", "styles": ["sssssssssssssssss"]}
+{"lang": "md", "text": "    [x]: not ref", "styles": ["ssssssssssssssss"]}
+{"lang": "md", "text": "\tcode\r", "styles": ["ssssss"]}
+{"lang": "md", "text": "[id]: https://example.com", "styles": ["iiiiissssssssssssssssssss"]}
+{"lang": "md", "text": "[id] : x", "styles": ["........"]}
+{"lang": "md", "text": "- [id]: x", "styles": ["m.iiiiiss"]}
+{"lang": "md", "text": "[id]: x\n[id2]: y", "styles": ["iiiiiss", "iiiiiiss"]}
+{"lang": "md", "text": "[a][b]: c", "styles": ["iiisss..."]}
+{"lang": "md", "text": "[ ]: x", "styles": ["iiiiss"]}
+{"lang": "md", "text": "[\u754c]: \u00e9", "styles": ["iiiiss"]}
+{"lang": "md", "text": "text\n[a]: b", "styles": ["....", "iiiiss"]}
+{"lang": "md", "text": "[a]: b\r\ntext\r\n===", "styles": ["iiiisss", "hhhhh", "hhh"]}
+{"lang": "md", "text": "[^1]: footnote", "styles": ["iiiiisssssssss"]}
+{"lang": "md", "text": "[a]b]: c", "styles": ["........"]}
+{"lang": "md", "text": "`a``b`", "styles": ["ssssss"]}
+{"lang": "md", "text": "`**`", "styles": ["ssss"]}
+{"lang": "md", "text": "\\`a`", "styles": ["...."]}
+{"lang": "md", "text": "` a `", "styles": ["sssss"]}
+{"lang": "md", "text": "x`a`y", "styles": [".sss."]}
+{"lang": "md", "text": "`\\``", "styles": ["...."]}
+{"lang": "md", "text": "*`a`*", "styles": ["eeeee"]}
+{"lang": "md", "text": "[a](`b`)", "styles": ["iiisssss"]}
+{"lang": "md", "text": "`a\r", "styles": ["..."]}
+{"lang": "md", "text": "****a****", "styles": ["........."]}
+{"lang": "md", "text": "snake_case", "styles": [".........."]}
+{"lang": "md", "text": "* a *", "styles": ["m...."]}
+{"lang": "md", "text": "*a\\*b*", "styles": ["eeeeee"]}
+{"lang": "md", "text": "_\u00e9_", "styles": ["eee"]}
+{"lang": "md", "text": "**", "styles": [".."]}
+{"lang": "md", "text": "**a*", "styles": ["...."]}
+{"lang": "md", "text": "unmatched *markup", "styles": ["................."]}
+{"lang": "md", "text": "*a\u00a0*", "styles": ["...."]}
+{"lang": "md", "text": "*a\u0085*", "styles": ["...."]}
+{"lang": "md", "text": "_a_ b", "styles": ["eee.."]}
+{"lang": "md", "text": "*a*b", "styles": ["eee."]}
+{"lang": "md", "text": "___a__", "styles": ["......"]}
+{"lang": "md", "text": "***a**", "styles": ["......"]}
+{"lang": "md", "text": "**a\\**", "styles": ["......"]}
+{"lang": "md", "text": "*a **b***", "styles": ["........."]}
+{"lang": "md", "text": "_a*b_", "styles": ["eeeee"]}
+{"lang": "md", "text": "_", "styles": ["."]}
+{"lang": "md", "text": "a *b* c _d_ e **f** g __h__", "styles": ["..eee...eee...bbbbb...bbbbb"]}
+{"lang": "md", "text": "*\u00e9*", "styles": ["eee"]}
+{"lang": "md", "text": "_x_\ud83e\udd80", "styles": ["eee."]}
+{"lang": "md", "text": "**a**\r\n", "styles": ["bbbbb.", ""]}
+{"lang": "md", "text": "*a*\n*b*", "styles": ["eee", "eee"]}
+{"lang": "md", "text": "[a]()", "styles": ["iiiss"]}
+{"lang": "md", "text": "![a](b)", "styles": ["iiiisss"]}
+{"lang": "md", "text": "[a\\]b](c)", "styles": ["iiiiiisss"]}
+{"lang": "md", "text": "[[a]]", "styles": ["....."]}
+{"lang": "md", "text": "[a]:b", "styles": ["iiiis"]}
+{"lang": "md", "text": "[a](*b*)", "styles": ["iiisssss"]}
+{"lang": "md", "text": "![a", "styles": ["..."]}
+{"lang": "md", "text": "[", "styles": ["."]}
+{"lang": "md", "text": "[](x)", "styles": ["iisss"]}
+{"lang": "md", "text": "[a\\", "styles": ["..."]}
+{"lang": "md", "text": "[a](b\nc)", "styles": [".....", ".."]}
+{"lang": "md", "text": "[a](b\r\nc)", "styles": ["......", ".."]}
+{"lang": "md", "text": "[a](b)\r", "styles": ["iiisss."]}
+{"lang": "md", "text": "![a](b)![c](d)", "styles": ["iiiisssiiiisss"]}
+{"lang": "md", "text": "[a](()", "styles": ["......"]}
+{"lang": "md", "text": "[[[a](b)", "styles": ["..iiisss"]}
+{"lang": "md", "text": "<mailto:a@b>", "styles": ["iiiiiiiiiiii"]}
+{"lang": "md", "text": "<>", "styles": [".."]}
+{"lang": "md", "text": "<<https://a>>", "styles": [".iiiiiiiiiii."]}
+{"lang": "md", "text": "<a@b", "styles": ["...."]}
+{"lang": "md", "text": "x<https://a>", "styles": [".iiiiiiiiiii"]}
+{"lang": "md", "text": "<\u3000a@b>", "styles": ["......"]}
+{"lang": "md", "text": "<b>bold</b>", "styles": ["..........."]}
+{"lang": "md", "text": "<https://a.b> and <c@d.e>", "styles": ["iiiiiiiiiiiii.....iiiiiii"]}
+{"lang": "md", "text": "<*a@b*>", "styles": ["iiiiiii"]}
+{"lang": "md", "text": "<!-- a\nb\nc -->", "styles": ["cccccc", "c", "ccccc"]}
+{"lang": "md", "text": "-->", "styles": ["..."]}
+{"lang": "md", "text": "<!-- a -->\n<!-- b -->", "styles": ["cccccccccc", "cccccccccc"]}
+{"lang": "md", "text": "> <!-- a\n> b -->", "styles": ["m.cccccc", "ccccccc"]}
+{"lang": "md", "text": "> <!-- a\r\n> b -->", "styles": ["m.cccccc.", "ccccccc"]}
+{"lang": "md", "text": "<!-- a --> *b*", "styles": ["cccccccccc.eee"]}
+{"lang": "md", "text": "<!-- `a` -->", "styles": ["cccccccccccc"]}
+{"lang": "md", "text": "<!--x-->y", "styles": ["cccccccc."]}
+{"lang": "md", "text": "<!--\n\n\n-->", "styles": ["cccc", "", "", "ccc"]}
+{"lang": "md", "text": "<!--<!-- a -->", "styles": ["cccccccccccccc"]}
+{"lang": "md", "text": "-->-->", "styles": ["......"]}
+{"lang": "md", "text": "<!--\r\n-->\r\n===", "styles": ["cccc.", "hhhh", "hhh"]}
+{"lang": "md", "text": "text\n<!--\n-->\n===", "styles": ["....", "cccc", "hhh", "hhh"]}
+{"lang": "md", "text": "\\", "styles": ["."]}
+{"lang": "md", "text": "\\[", "styles": [".."]}
+{"lang": "md", "text": "a\\\nb", "styles": ["..", "."]}
+{"lang": "md", "text": "\\\t", "styles": [".."]}
+{"lang": "md", "text": "\\> not quote", "styles": ["............"]}
+{"lang": "md", "text": "_\\__", "styles": ["eeee"]}
+{"lang": "md", "text": "\u754c *caf\u00e9* **bold** _italic_ __strong__ `**code**` ``a ` b`` [link](path_(one)) ![image](pic.png) [ref][id] <https://example.com>", "styles": ["..eeeeee.bbbbbbbb.eeeeeeee.bbbbbbbbbb.ssssssssss.sssssssss.iiiiiissssssssssss.iiiiiiiisssssssss.iiiiissss.iiiiiiiiiiiiiiiiiiiii"]}
+{"lang": "md", "text": "a | b\n--|--\n1 | 2", "styles": [".....", ".....", "....."]}
+{"lang": "md", "text": "a | b\r\n--|--\r\n1 | 2", "styles": ["......", "......", "....."]}
+{"lang": "md", "text": "a  \n---", "styles": ["hhh", "hhh"]}
+{"lang": "md", "text": "***\n- - -\n___", "styles": ["mmm", "mmmmm", "mmm"]}
+{"lang": "md", "text": "***\r\n- - -\r\n___", "styles": ["mmmm", "mmmmmm", "mmm"]}
+{"lang": "md", "text": "text *a* text _b_ text __c__ text ***d*** text", "styles": [".....eee......eee......bbbbb......bbbbbbb....."]}
+{"lang": "md", "text": "  leading", "styles": ["........."]}
+{"lang": "md", "text": "e\u0301 *e\u0301*", "styles": ["...eeee"]}
+{"lang": "md", "text": "_a_\u0301", "styles": ["eee."]}
+{"lang": "md", "text": "\u0663_a_\u0663", "styles": ["....."]}
+{"lang": "md", "text": "\r\n\r\n", "styles": [".", ".", ""]}
+{"lang": "md", "text": "```\r\n```\r\n", "styles": ["mmmm", "mmmm", ""]}
+{"lang": "md", "text": "\n", "styles": ["", ""]}
+{"lang": "md", "text": "  \n  \n", "styles": ["..", "..", ""]}
+{"lang": "md", "text": "\r\n---", "styles": [".", "mmm"]}
+{"lang": "md", "text": "a\n \n---", "styles": [".", ".", "mmm"]}
+{"lang": "rust", "text": "1..2b'      T'\\u{1F980}' \u0085|   < 0b \nvec! 1.a# cin '\\x4'\t* self \n'\\u{1F980}'r =>'  \t\n/ \u00a0 br$ 0b1'a' cr\"mut  \ntry \u0000\t0xE+1   gen \ud835\udcb3? a!=b while\n\u00e9 r#\" .1_000 1e+5 !(   \n\n'\\\\'  T \\\"\u0085rbr#type println!br cr ", "styles": ["nppnnp.......sssssssssss..p...p.nn.", "mmmm.np.p.....pp..p.p.kkkk.", "sssssssssss..ppp...", "p.....p.nnnsss.ssssssss", "sssssssssssssssssssssssssssssss", "sssss.pnnnnn.nnnn.pp...", "", "ssss....psssssssssssssssssssssssss"]}
+{"lang": "rust", "text": "` \\ Self -\u0085 ! use matchx %\n", "styles": ["p.p.kkkk.p..p.kkk........p", ""]}
+{"lang": "rust", "text": "cr#\" _x    br for if \u0000 \"*r#a! true \n,\nuse ", "styles": ["sssssssssssssssssssssssssssssssssss", "s", "ssss"]}
+{"lang": "rust", "text": "gen -r#type", "styles": ["kkk.p......"]}
+{"lang": "rust", "text": "\u00a0 1.a 1.5 return 1..2\u0000\u3000 \n9\u00e9 \u00a0 \\rb,1E-5self 1\u00b2 \nr#typemod1e+5use\n,- _'\\x41' ref < $\na!=bselfc'\u754c' !( \u754c", "styles": ["..np..nnn.kkkkkk.nppn...", "n....p..pnnnnnnnn.n..", "...........pnnnn", "pp..ssssss.kkk.p.p", ".pp......sss.pp.."]}
+{"lang": "rust", "text": "\na_bb implr#0x1F pub '\\n' ", "styles": ["", "..........pnnnn.kkk.ssss."]}
+{"lang": "rust", "text": "selfref_?'\\u{1F980}' \u2167 0x1F \nifr#fn 1. ,3u8}\u3000!\n  vec!1..2 \n\nb\"'\\\\'\n@? r#   cr#\"+ fn a\u200db ) ", "styles": ["........psssssssssss...nnnn.", "...pkk.np.pnnnp.p", "..mmmmnppn.", "", "ssssss", "ssssssssssssp.kk.....p."]}
+{"lang": "rust", "text": "0x1F&_xpub   modbr#\" \n<*1E-5\u0000 '\ud83e\udd80'1e5   !(\u3000\nr ", "styles": ["nnnnp.............pss", "ssssssssssssssssssss", "ss"]}
+{"lang": "rust", "text": "'\u00e9' 1..2 gen.5let_1.a ??   /* \n' '_ref_ while #1e5 \n \u0000c\n\u3000$  \u0000", "styles": ["sss.nppn.kkkpnnnnnnp..pp...ccc", "cccccccccccccccccccc", "ccc", "ccccc"]}
+{"lang": "rust", "text": "br\" b' \u3000\u00a0  'a\u0085 return\u0085 !    }\n1.2e-3a_b\nyield`\n!= \u0085 0xE+1 -9\u00e91e+51_000br#\" _ &b \u00a0", "styles": ["sssssssssssssssssssssssssssss", "sssssssss", "ssssss", "sssssssssssssssssssssssssss...p..."]}
+{"lang": "rust", "text": "\n\u0000^ \t& ref\na!=b> \u0000 ) 9\u00e9 \n%\t \nblet_br\" \n$\n{ #[  r _x/ Selfref_1e5![foo \n\"### 1.0.0 1. r$ ", "styles": ["", ".p..p.kkk", ".pp.p...p.n..", "p..", ".......ss", "s", "sssssssssssssssssssssssssssss", "sppp.nnnnn.np..p."]}
+{"lang": "rust", "text": "1b=  ( < 0xE+1", "styles": ["nnp..p.p.nnnnn"]}
+{"lang": "rust", "text": "_ 'static & 1e+5 '\u754c' ` 1 'a   %user#a!", "styles": ["..lllllll.p.nnnn.sss.p.n.ll...p....pmm"]}
+{"lang": "rust", "text": "\r\n  dyn   \n+\u1fbc0: \\\"> rb foo'\\u{1F980}' \n) \n| 'a ^ '\ud83e\udd80' \u0000 -\n'\\x41'] c\"   \u0085\ud835\udcb3 @ \u00a0[\n0xE+1 Self\u0000 \n   ", "styles": [".", "..kkk...", "p..p.psssssssssssssssssssss", "ss", "ssssssssssssss", "ssssssssss......p..p", "nnnnn.kkkk..", "..."]}
+{"lang": "rust", "text": "\n'\\u{}'   |\n'\\u{1F980}'self T- loopb\"", "styles": ["", "ssssss...p", "ssssssssssskkkk..p......s"]}
+{"lang": "rust", "text": "\u00b2 cr\"c \\\" return return ) ?      / \r", "styles": ["..sssssss.kkkkkk.kkkkkk.p.p......p.."]}
+{"lang": "rust", "text": "  a!=b \u00aa!= */     r#\" 1. T^` \nfalse^\nlet_ ; (  => 1\u00b2 \u00a0      \n# ////*\n\u00aafalse #[ 1.2e-3 [ gen   1. 0xE+1pub #for \n1..2impl '\\u{}' \u3000 pub pub .dynr#\"r\n\u00a0   \ntry { '\\u{1F980}' \"#println! }where ", "styles": ["...pp...pp.pp.....sssssssssss", "ssssss", "sssssssssssssssssssssss", "sssssss", "ssssssssssssssssssssssssssssssssssssssssss", "ssssssssssssssssssssssssssssssssss", "ssss", "ssssssssssssssssssssmmmmmmmm.pkkkkk."]}
+{"lang": "rust", "text": "1.a$ 1.0.0 \nif1e5$  { '_br#\" 1.5vec!\n\u0085 r\" return", "styles": ["np.p.nnnnn.", ".....p..p.llllpsssssssss", "ssss.kkkkkk"]}
+{"lang": "rust", "text": "\t ~ => a\u200db ", "styles": ["..p.pp....."]}
+{"lang": "rust", "text": "caf\u00e9 r#a!\\0x1F'\\\\'\u0085x '\\\\'_x\n= 1.*1.5   ? ref_ \ud83e\udd80 b'", "styles": ["........ppnnnnssss...ssss..", "p.nppnnn...p.........p"]}
+{"lang": "rust", "text": "\u00a0 \u0000\n\u00b2 1..2\u3000  & \n>r 1\u00b2r#\" mod if\u00a0 '\\x41' use \n\u0000 try Self\t'\\''loopbr#\"", "styles": ["...", "..nppn...p.", "p..n.sssssssssssssssssssssss", "sssssssssssssssssssssss"]}
+{"lang": "rust", "text": "?\u0085^\"###\n=| \"# ,1e+5\nr_xpub Self; $ // 12 =\n'_}!( \u0000$ \r\nz\u0345 a_b\n/ \u3000 '\u754c' cr\u3000", "styles": ["p.pssss", "ssssp.pnnnn", ".......kkkkp.p.ccccccc", "llppp..p..", "......", "p...sss...."]}
+{"lang": "rust", "text": "e\u0301 else \n\u0085 ref_\nenum ' .5 ='\\x4' 12 1.2e-3 \u1fbc ; \nfn\"##\u0085   'a' a!=bbr\"   ' \u3000 \nelse \u754c1 < \t \u754c1_000 \t - r#fn  \n\n1.2e-3 0xE+1\ninstruct ", "styles": ["...kkkk.", "......", "kkkk.p.pn.ppp..p.nn.nnnnnn...p.", "kkssssssssssssssssss...p...", "kkkk....p............p.......", "", "nnnnnn.nnnnn", "........."]}
+{"lang": "rust", "text": "\u3000! '\\x41' \n\n_else\u00001.2e-31.5self.5 '\u754c' ref ref_ \nb' caf\u00e9 \u0000   a!=bgen ]\"   *\ncrtry\t =>* }\nwhere Tenum'\\''crT @\u00a0 *`", "styles": [".p.ssssss.", "", "......nnnnnnnnnnnnnnn.sss.kkk......", ".p...........pp.....psssss", "ssssssssssss", "ssssssssssssssssssssssss"]}
+{"lang": "rust", "text": "\u754c/-*\n-! ={\"\r#*/\\u`\\\\ue*", "styles": [".ppp", "pp.ppsssssssssssss"]}
+{"lang": "rust", "text": "b'{!\"_\"#rb\u0000/*/*abc*\\u}}=r'a\n", "styles": [".pppsssp...cccccccccccccccc", ""]}
+{"lang": "rust", "text": "a'a!+\\_\r{e}\u0000\u00e9\"'b'_u\r`\u00e9", "styles": [".llppp..p.p..sssssssss"]}
+{"lang": "rust", "text": "\u00e9a+!-\\\u00e9#u+", "styles": ["..pppp.p.p"]}
+{"lang": "rust", "text": "\\\r./*\r\rc//*/\\'#`'#\\u\u754c\u00e9\r\\e\"\u00e9r\n/\ne\u754c\\'//a}\u00e9\u754c'a=c\\ub1'a-", "styles": ["p.pccccccccccccccccccccccccc", "c", "ccccccccccccccccccccc"]}
+{"lang": "rust", "text": "u'a #b'a \u00e9r\ra'r#`\r\u754c!*//_\ra\\", "styles": [".ll.p.ll.....llpp.mmpcccccc"]}
+{"lang": "rust", "text": "b r#*/{au*-'a.r# +e\na}a} cr\u00e9////'\r\u754c\\}r#\"!*b'\\u", "styles": ["...pppp..ppllp.p.p.", ".p.p....cccccccccccccccccc"]}
+{"lang": "rust", "text": " b' bec*ba r#xr//\u754c\u0000xr`\n\u754cbu {b}}= ar\n\u00e9u'a\u00e9\r//", "styles": ["..p....p.......ccccccc", "....p.ppp...", "..lll.cc"]}
+{"lang": "rust", "text": "r`\u0000'#'b'{1'a=e\rb*a a\\u\n\\e'cb'\u0000 #`1b'_1r#**/'a\nb'\r_ab'\\ux'a\u0000*/", "styles": [".p.sss.ppnllp...p...p.", "p.lllp..ppnnllllppppll", ".p....pp..ll.pp"]}
+{"lang": "rust", "text": "\n\n`r#}!\u754c' - \"eb'/*'a", "styles": ["", "", "p.ppp.p.p.ssssssss"]}
+{"lang": "rust", "text": "c r}_r#\r\u0000 'a\n{#/*//1/*a\\ue\u754c}`_*/ b\\u\u0000ca\n\u00e9//`", "styles": ["...p..p...ll", "ppcccccccccccccccccccccccc", "cccc"]}
+{"lang": "rust", "text": "a`b'+'r/**//!{/*/1\\u}c//x `\n\\u\u00e9r#'ax", "styles": [".pssss.ccccpppccccccccccccc", "cccccccc"]}
+{"lang": "go", "text": "* ref_  + 1_000 &^ \t \n0xe+1 switch-   $ else 5.\u0085 import_ \n\t ! { \"\n,struct \\':  1e+3 : , \nb \n9\u00e9 .  forbreak r \u0000'\\n' ^ \u0000cr ", "styles": ["p.......p.nnnnn.pp...", "nnnnn.kkkkkkp...p.kkkk.nn..........", "..p.p.s", "pkkkkkk.psssssssssssss", "..", "n..p..............ssss.p....."]}
+{"lang": "go", "text": "#: '\\''\\'|| 0xp-1 ` \n\u00a0 && 0\u0000\u0663 forrb @0 9\u00e9chan @\n'\\n' - cr 5. defer\n:= [ \nelse \t <- 0 fallthrough'\u00e9' =\\\n!=]'\u00e9'+T. rbimport\"a\" ``//map", "styles": ["pp.sssspssssssssssss", "..pp.n.........pn.n......p", "ssss.p....nn.kkkkk", "pp.p.", "kkkk...pp.n.kkkkkkkkkkksss.pp", "pppsssp.p.........sss.ssccccc"]}
+{"lang": "go", "text": "  c \"\\\"\" let_ continueb5.  \n@ > switch case let_ 3i    \u0085 && map &^ ", "styles": ["....ssss................p..", "p.p.kkkkkk.kkkk......nn......pp.kkk.pp."]}
+{"lang": "go", "text": "\r", "styles": ["."]}
+{"lang": "go", "text": "\t type \t - struct>\t\n``.e5) ' \u03a3{ \n! xreturn var \u0085goto ( */ '\u754c' const\n` *'\u754c'fallthrough==#\t ", "styles": ["..kkkk...p.kkkkkkp.", "ssp..p.sssss", "p.........kkk..kkkk.p.pp.sss.kkkkk", "ssssssssssssssssssssss"]}
+{"lang": "go", "text": "  struct\n  $ \t // var &^  ` T range \nfor < type'\\''\n] 5. ( ! cr b + \n ?  :\n\u00a0cr \n..,\u00a0 caf\u00e9 \u03a3 packageName '\u0663    # \n/* struct.", "styles": ["..kkkkkk", "..p...ccccccccccccccccccccc", "kkk.p.kkkkssss", "p.nn.p.p......p.", ".p..p", "....", "ppp.....................ssssssss", "cccccccccc"]}
+{"lang": "go", "text": "1_000 *$package\u754c \n!=\n\u0000 /*$`\nchancr:a_b &^ /\u00a0< 1.2.3== map \n/*12interfaceselect { '?\u00a0 < \n\n1.2.3.\n\t0x1.fp+2 ... ` ", "styles": ["nnnnn.pp.........", "pp", "..cccc", "cccccccccccccccccccccccccccccc", "cccccccccccccccccccccccccccc", "", "cccccc", "cccccccccccccccc"]}
+{"lang": "go", "text": "[_x \n>continue for \\\"r package//)\u00a0chanchan\n== continue =  rangea_bfuncs \n.e5 %5. &^\u0000 //\u3000\u3000= 0xe+1 ", "styles": ["p...", "pkkkkkkkk.kkk.pssssssssssssssssssssss", "pp.kkkkkkkk.p................", "p...pnn.pp..cccccccccccc"]}
+{"lang": "go", "text": "\t= 1\u0663 'a'  rb{~\n<- 1\\'9\u00e9 ", "styles": [".p.n..sss....pp", "pp.npssss"]}
+{"lang": "go", "text": "const' \"a\"1_000 case \n9\u00e9 var ( \u00a0 <- \u0085==\ncaf\u00e9let_#fallthrough let_ ", "styles": ["kkkkkssssssssssssssss", "n..kkk.p...pp..pp", "........pkkkkkkkkkkk......"]}
+{"lang": "go", "text": "*/__ ref_\\'$b\n: * * r)package / 0xp-1, \t \n\u3000 packageName ", "styles": ["pp.......psss", "p.p.p..pkkkkkkk.p.nnnnnp...", ".............."]}
+{"lang": "go", "text": "12\\ \u00a0T  0x1.fp+2'\\''else range0x1.fp+2 1+2 \n, \n\nrange \n    1 _x\t ifc >\u00a0 '\u00e9' \nbreak <&^ . ?\t 1.2.3\t3i \\' \r\n\\ \u0000 for\u0000; b0\n\r", "styles": ["nnp.....nnnnnnnnsssskkkk.........p..pn.npn.", "p.", "", "kkkkk.", "....n.........p..sss.", "kkkkk.ppp.p.p..nnnnn.nn.psss", "p...kkk.p...", "."]}
+{"lang": "go", "text": "3i \u00a0 \u00a0\u3000a_b ^  \n%  self * break\n  ", "styles": ["nn.........p..", "p.......p.kkkkk", ".."]}
+{"lang": "go", "text": "br !=\u0000  defer let_ ==funcs\u0000 \n# package    // \n\u0085 - \\\"r typepackage// \n\n\u00a0 1e+3'\\n'   1_000 range ", "styles": ["...pp...kkkkk......pp.......", "p.kkkkkkk....ccc", "..p.psssssssssssssssss", "", "..nnnnssss...nnnnn.kkkkk."]}
+{"lang": "go", "text": ".5 %_x 5. &^default self  ?>  \n$ &^ range go\n'\\n' self . for %_x[ for\n'a' 5.b ]5.{ \u00a0\nb\u3000rb\u0085    ] \u0085b", "styles": ["nn.p...nn.ppkkkkkkk.......pp..", "p.pp.kkkkk.kk", "ssss......p.kkk.p..p.kkk", "sss.nnn.pnnp..", ".........p..."]}
+{"lang": "go", "text": "_x ] 1\u0663 ~0Trr select 1_000 ", "styles": ["...p.n..pnnnn.kkkkkk.nnnnn."]}
+{"lang": "go", "text": "defer \u00a00xe+1 \nc   ( )..", "styles": ["kkkkk..nnnnn.", "....p.ppp"]}
+{"lang": "go", "text": "\u3000\u0000.5\u00a0 \u00f1and\u00fa'\\n'1+2 else Self   \" packageName\r\n_x crstruct 0 '\u754c'/* @* \u3000const\n$\u00a0\u3000 '\u00e9' 1e+3 map  1\u0663\n[_ 1_000 let_\u0085 ||_xvarrb \n1+2 ~ 1E-3'   &^   ?\n\u1fbcvar &^\t \u00a0 '\u754c' > #\n12\t , packageName # x let_ \n\u3000 '\u00e9'  || '\u754c'<\u00a0 case 0x1.fp+2] /* ) ", "styles": ["..nn.......ssssnpn.kkkk........ssssssssssssss", "............n.ssscccccccccccc", "cccccccccccccccccccc", "ccccccccccccccccccccccccc", "cccccccccccccccccccc", "cccccccccccccccccc", "ccccccccccccccccccccccccccc", "cccccccccccccccccccccccccccccccccccc"]}
+{"lang": "go", "text": "{   fooreturn\u0085type \u00a0 ..fallthrough 0xe+1 \t\n~\t : ?\";\u0085 _ } varT go \ncaf\u00e9 br ''\u00e9' \ninterface @ +, 1 \"a\" Func 0xe+1\\\"ifa_b\u03a3 ", "styles": ["p.............kkkk...ppkkkkkkkkkkk.nnnnn..", "p..p.pssssssssssssssss", "........ss.ss", "kkkkkkkkk.p.pp.n.sss......nnnnnpssssssss"]}
+{"lang": "go", "text": "brmap   .5( ref_ \u30001_000 ", "styles": ["........nnp.......nnnnn."]}
+{"lang": "go", "text": "!  @||.51e+3.5 +.5 =  \n| \u00a0 \u0000~ \\\"+0x1.fp+2e\u0301 func r\n", "styles": ["p..pppnnnnnnnn.pnn.p..", "p....p.psssssssssssssssssss", ""]}
+{"lang": "go", "text": "brcase.e5 goto* \u0000 \u0000\\ \\'\n)\n1+2\nselect == \r", "styles": ["......p...kkkkp....p.ps", "p", "npn", "kkkkkk.pp.."]}
+{"lang": "go", "text": "\\<- \\ 'a' ", "styles": ["ppp.p.sss."]}
+{"lang": "go", "text": "z\u0345  .5 */", "styles": ["....nn.pp"]}
+{"lang": "go", "text": "\u754c.1e\n.\u754c\n0x*/p`e+*\rx*p\r\u0000//", "styles": [".nnn", "p.", "nnpp.ssssssssssss"]}
+{"lang": "go", "text": " //1\\/*/-//-\\-0x\u00e9p\r*0x'**", "styles": [".cccccccccccccccccccccccc"]}
+{"lang": "go", "text": "0x **/ */\u754c\\x", "styles": ["nn.ppp.pp.p."]}
+{"lang": "go", "text": ".__-\u754c\u754c*\"0- /**\\\"a.0\"*-\n*/-\u754c\n!!.", "styles": ["p..p..pssssssssssssspp", "ppp.", "ppp"]}
+{"lang": "go", "text": "*/.*_'e\u00e9-\"\\ \\\n*//ep..1-//\"*//*-/*!!\\/*//!1\"0", "styles": ["pppp.ssssssss", "pccccccccccccccccccccccccccccc"]}
+{"lang": "go", "text": "\u754c+p\".\\!_\u00e9'\u00e9\u754c_\u00e9\r", "styles": [".p.ssssssssssss"]}
+{"lang": "go", "text": "_\\\u0000 /*\u754c*p\u754c\u754cx\\\u754c", "styles": [".p..cccccccccc"]}
+{"lang": "go", "text": "a_\u0000\\0!\\-.'-//\"0x'.\u0000x", "styles": ["...pnppppssssssssp.."]}
+{"lang": "go", "text": "*/'//\u00e9.'*/aa.!*\".- ._", "styles": ["ppsssssspp..pppssssss"]}
+{"lang": "go", "text": "e_\u754c*/+p*/`1\u0000\\x\u754c0/**", "styles": ["...ppp.ppssssssssss"]}
+{"lang": "go", "text": "ep\"eep \u00000x00x\u754c/\".\"/'", "styles": ["..sssssssssssssspsss"]}
+{"lang": "go", "text": "-", "styles": ["p"]}
+{"lang": "md", "text": "mailto:a@b   [x] \r*  a_b\n\u00aa <!-- _x_xbr  \u00a0 \\` _a@b\n   [l](u)\n````\u00f1and\u00fafoo  \nT +let_r \n\ud835\udcb3\u0085ref_ [X] ", "styles": ["........................", "..cccccccccccccccccccccc", "ccccccccc", "cccccccccccccc", "ccccccccc", "ccccccccccc"]}
+{"lang": "md", "text": "`code`\n  >\n\\*esc\\*\na_b~~~ 123456789.  \ud835\udcb3caf\u00e9](\nlet_[]", "styles": ["ssssss", "..m", ".......", "..........................", "......"]}
+{"lang": "md", "text": "][ \\_\nmore text\n[y]  b   ba_b * \u754c\u00e9 >\t \t _x )\nc x] T ```pythone\u0301 / \n* https://x.yx rb _x  a@b * (c ", "styles": [".....", ".........", "............................", ".....................", "m.............................."]}
+{"lang": "md", "text": "***", "styles": ["mmm"]}
+{"lang": "md", "text": "***\u3000a_b foo   *** \u00a0<!--T \u00a0\n**s** and _e_\n #nospace\n\tcode\n- item\nmore text", "styles": ["...................ccccccc", "ccccccccccccc", "ccccccccc", "ccccc", "cccccc", "ccccccccc"]}
+{"lang": "md", "text": "<!--\n# Heading\n br\t [ )##!| 1. \nsnake_case_name", "styles": ["cccc", "ccccccccc", "cccccccccccccccc", "ccccccccccccccc"]}
+{"lang": "md", "text": "1. [x] a", "styles": ["mm.ooo.."]}
+{"lang": "md", "text": "\n\n![i](u)\n -\n===\n     # Heading\n1. [x] a\n~~~\r", "styles": ["", "", "hhhhhhh", "hh", "...", "ssssssssssssss", "mm.ooo..", "mmmm"]}
+{"lang": "md", "text": "\n   ````\nlet_ foo cr \n    code\n    code\n\r\n    ## Sub *x*\n\u0000 ][ _[y]  b[] # 1234567890.     r ", "styles": ["", "mmmmmmm", "ssssssssssss", "ssssssss", "ssssssss", "s", "ssssssssssssss", "sssssssssssssssssssssssssssssssssss"]}
+{"lang": "md", "text": "# Heading\n1. [x] a\nref_ ___ b](\nz --> w\r\n   > - nested\n- [ ] t", "styles": ["hhhhhhhhh", "mm.ooo..", "............", "........", "...m.m.......", "m.ooo.."]}
+{"lang": "md", "text": "", "styles": [""]}
+{"lang": "md", "text": "\ntext\\\r\n- item\r\n* * *", "styles": ["", "......", "m......", "mmmmm"]}
+{"lang": "md", "text": "rb```go   ```rust b\ud83e\udd80c ``` rs\\ > ", "styles": ["..sssssssssss..................."]}
+{"lang": "md", "text": " > - nested\nsnake_case_name\n> - nested\n_a_b\n\u3000\n  foo  \u3000 \u0085 *    _x <", "styles": [".m.m.......", "...............", "m.m.......", "....", ".", "...................."]}
+{"lang": "md", "text": "[id]: http://x\n--\n_x <a\u200dba_b ", "styles": ["iiiiisssssssss", "..", "..........."]}
+{"lang": "md", "text": "    - code\n\u754c \u00e9 *\u754c*\n# Heading\n````", "styles": ["ssssssssss", "....eee", "hhhhhhhhh", "mmmm"]}
+{"lang": "md", "text": "\u3000\u3000 \u3000ref_ \r\u3000 cr\\*``` rsr \n\u00b2\tself cr mailto:a@b  ---](``\u0663 <https://x.y> ```go\n \u0000 b ", "styles": ["........................", "...............................iiiiiiiiiiiii......", "....."]}
+{"lang": "md", "text": "    code\n* item", "styles": ["ssssssss", "m....."]}
+{"lang": "md", "text": "]  ![``` rs \u754c\u00e9a_b\n   let_```    1234567890.  ___\u3000 \t a\u200db\u0000 \n   [X] *** .\u00a0 ---1. #\n1. [x] a\n***", "styles": [".................", ".......................................", ".....................", "mm.ooo..", "mmm"]}
+{"lang": "md", "text": "1. [x] a\n#nospace\n\n\n      - code\ne\u0301    ```rust >https://x.ye\u0301 \t ", "styles": ["mm.ooo..", "........", "", "", "ssssssssssss", "..............................."]}
+{"lang": "md", "text": "``` rscr b x brr\n\\ a_b \n12) b ) \u00a0 `  ref_ \nT?]('    >?let_ \u0000\u00f1and\u00fa \u00b2", "styles": ["mmmmmmmmmmmmmmmm", "ssssss", "ssssssssssssssssss", "ssssssssssssssssssssssss"]}
+{"lang": "md", "text": "``` rs```python ]: ```rust   c ", "styles": ["sssssssss......................"]}
+{"lang": "md", "text": "\t word - - -\\_    <https://x.y> [X] \u00e9\n#nospace\n--", "styles": ["sssssssssssssssssssssssssssssssssssss", "hhhhhhhh", "hh"]}
+{"lang": "md", "text": "````\n---\n> quote\n-->", "styles": ["mmmm", "sss", "sssssss", "sss"]}
+{"lang": "md", "text": "```[!    -    >~-\r>~~~\t\n`\\(](x  (\n~~~~~~*", "styles": ["mmmmmmmmmmmmmmmmmmmmmmm", "sssssssss", "sssssss"]}
+{"lang": "md", "text": "```+\t>\r! 11[x]-]\r__\n>[=.\n\u754c\r1:_~:\\\t[x]\t)-->*    (*https://+x[x]\\~+", "styles": ["mmmmmmmmmmmmmmmmmmm", "ssss", "ssssssssssssssssssssssssssssssssssssssss"]}
+{"lang": "md", "text": "x\t>\n  [_+    ~*= \\).\r  \n*<!--#)*_([x]-->>=a    https://|@<#<!--( )>", "styles": ["...", "...................", "eeeeeeee...........................cccccccc"]}
+{"lang": "md", "text": "_=>https://])]\\#[    >]((    a*|`)](`\r", "styles": ["................................sssss."]}
+{"lang": "md", "text": ":\u754cx@`](  ", "styles": ["........."]}
+{"lang": "md", "text": "#\u754c\t\r:x\u754chttps://~  |.](<\t](-\u754c!\t\u0000\u0000[x][", "styles": ["...................................."]}
+{"lang": "md", "text": "-x\\`", "styles": ["...."]}
+{"lang": "md", "text": "\r\\https://*~https://x:~@-*)>\u754c```\\--(~[\n1<!--+:\u0000.>@~~~~  ~@    #", "styles": ["..........eeeeeeeeeeeeeeee............", ".ccccccccccccccccccccccc"]}
+{"lang": "md", "text": "=@](x.<a.1))a|>@~\n<@[.>https://\n(|", "styles": [".................", "iiiii........", ".."]}
+{"lang": "md", "text": ">\r>.\t>+]<!--`<!--\r<\n*.[x]|`-~    *()!```\u754c\\=\t[_)](<!-->~~~\n>](<", "styles": ["m.......ccccccccccc", "cccccccccccccccccccccccccccccccccc...", "m..."]}
+{"lang": "md", "text": "    -=](", "styles": ["ssssssss"]}
+{"lang": "md", "text": "\\\t@~~~!```-->`  (https://a>>*a    \t](\u0000!(", "styles": ["........................................"]}
+{"lang": "md", "text": "*\u0000a*", "styles": ["eeee"]}
+{"lang": "md", "text": "<!--\r\n\r\n\r\n-->", "styles": ["cccc.", ".", ".", "ccc"]}
+{"lang": "md", "text": "\r", "styles": ["."]}
+{"lang": "md", "text": "```golAng\nvar x = 1\n```", "styles": ["mmmmmmmmm", "kkk...p.n", "mmm"]}
+{"lang": "md", "text": "```GOLANG\nvar x = 1\n```", "styles": ["mmmmmmmmm", "kkk...p.n", "mmm"]}
+{"lang": "md", "text": "```Rs\nlet x = 1;\n```", "styles": ["mmmmm", "kkk...p.np", "mmm"]}
+{"lang": "md", "text": "  \t# h", "styles": ["......"]}
+{"lang": "md", "text": "  \t[ ] x", "styles": ["........"]}
+{"lang": "md", "text": "<http://a> <mailto:x> <a@b> <ftp://c>", "styles": ["iiiiiiiiii.iiiiiiiiii.iiiii.........."]}
+{"lang": "md", "text": "- [X] done", "styles": ["m.ooo....."]}
+{"lang": "md", "text": "snake_case_word a_b_c _a_b \u00e9_a_ x_a_", "styles": ["......................eeeeeeeee....."]}
+{"lang": "md", "text": "`a` ``b`` `c", "styles": ["sss.sssss..."]}
+{"lang": "md", "text": "`a`", "styles": ["sss"]}
+{"lang": "md", "text": "`*a*` ``**b**``", "styles": ["sssss.sssssssss"]}
+{"lang": "md", "text": "<https://x.y>*a* <a@b>`c`", "styles": ["iiiiiiiiiiiiieee.iiiiisss"]}
+{"lang": "md", "text": "[a](b)*c* [d][e]_f_ ![g](h)`i`", "styles": ["iiissseee.iiissseee.iiiissssss"]}
+{"lang": "go", "text": "1E-3 1E+10 0x1P+2 0xE+1", "styles": ["nnnn.nnnnn.nnnnnn.nnnnn"]}
+{"lang": "go", "text": "/**/ var", "styles": ["cccc.kkk"]}
+{"lang": "go", "text": "/*//", "styles": ["cccc"]}
+{"lang": "go", "text": "/***/ x", "styles": ["ccccc.."]}
+{"lang": "rust", "text": "/**/ let", "styles": ["cccc.kkk"]}
+{"lang": "rust", "text": "/*/*", "styles": ["cccc"]}
+{"lang": "rust", "text": "/*/*/ x */ */ y", "styles": ["ccccccccccccc.."]}
+{"lang": "rust", "text": "b\"x", "styles": ["sss"]}
+{"lang": "rust", "text": "c\"x", "styles": ["sss"]}
+{"lang": "rust", "text": "'\\u'", "styles": ["ssss"]}
+{"lang": "rust", "text": "'\\\u0000'", "styles": ["ssss"]}
+{"lang": "rust", "text": "'\\", "styles": ["pp"]}
+{"lang": "rust", "text": "'''", "styles": ["ppp"]}
+{"lang": "rust", "text": "'''x'", "styles": ["ppsss"]}
+{"lang": "rust", "text": "b'''", "styles": [".ppp"]}
+{"lang": "rust", "text": "'\\u{}'", "styles": ["ssssss"]}
