@@ -15,7 +15,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"reflect"
 	"strings"
 
 	"golang.org/x/sys/unix"
@@ -41,7 +40,16 @@ func main() {
 	}
 }
 
-func mode() (*xterm.State, error) { return xterm.GetState(int(os.Stdin.Fd())) }
+// same reports whether two termios are the same terminal modes. The kernel sets
+// PENDIN by itself when the input queue is retyped after a mode change (macOS
+// does so after a restore), and it says nothing about the modes, so it is left
+// out of the comparison; the Rust test this stands for only asked whether raw
+// mode was off.
+func same(a, b unix.Termios) bool {
+	a.Lflag &^= unix.PENDIN
+	b.Lflag &^= unix.PENDIN
+	return a == b
+}
 
 // termios is the terminal's raw termios, kept only to say what differs when the
 // modes are not back: xterm.State does not expose its fields.
@@ -65,7 +73,7 @@ func explain(before, after unix.Termios) string {
 	add("iflag", uint64(before.Iflag), uint64(after.Iflag))
 	add("oflag", uint64(before.Oflag), uint64(after.Oflag))
 	add("cflag", uint64(before.Cflag), uint64(after.Cflag))
-	add("lflag", uint64(before.Lflag), uint64(after.Lflag))
+	add("lflag", uint64(before.Lflag&^unix.PENDIN), uint64(after.Lflag&^unix.PENDIN))
 	add("ispeed", uint64(before.Ispeed), uint64(after.Ispeed))
 	add("ospeed", uint64(before.Ospeed), uint64(after.Ospeed))
 	if before.Cc != after.Cc {
@@ -92,10 +100,6 @@ func run() error {
 	if !xterm.IsTerminal(int(os.Stdin.Fd())) || !xterm.IsTerminal(int(os.Stdout.Fd())) {
 		return errors.New("needs a terminal on stdin and stdout")
 	}
-	original, err := mode()
-	if err != nil {
-		return err
-	}
 	originalTermios, err := termios()
 	if err != nil {
 		return err
@@ -107,7 +111,7 @@ func run() error {
 			return err
 		}
 		defer t.Close()
-		if raw, _ := mode(); reflect.DeepEqual(raw, original) {
+		if raw, err := termios(); err == nil && same(raw, originalTermios) {
 			return errors.New("raw mode was not enabled")
 		}
 		return errInjected
@@ -115,7 +119,7 @@ func run() error {
 	if !errors.Is(err, errInjected) {
 		return fmt.Errorf("unexpected result %v", err)
 	}
-	if restored, _ := mode(); !reflect.DeepEqual(restored, original) {
+	if restored, err := termios(); err != nil || !same(restored, originalTermios) {
 		return notRestored("an error", originalTermios)
 	}
 	var recovered any
@@ -131,7 +135,7 @@ func run() error {
 	if recovered != "injected panic" {
 		return fmt.Errorf("panic not propagated: %v", recovered)
 	}
-	if restored, _ := mode(); !reflect.DeepEqual(restored, original) {
+	if restored, err := termios(); err != nil || !same(restored, originalTermios) {
 		return notRestored("a panic", originalTermios)
 	}
 	return nil
