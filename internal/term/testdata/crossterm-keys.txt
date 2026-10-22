@@ -1,0 +1,1107 @@
+00	key c:20 2 press
+01	key c:61 2 press
+02	key c:62 2 press
+03	key c:63 2 press
+04	key c:64 2 press
+05	key c:65 2 press
+06	key c:66 2 press
+07	key c:67 2 press
+08	key c:68 2 press
+09	key Tab 0 press
+0a	key c:6A 2 press
+0b	key c:6B 2 press
+0c	key c:6C 2 press
+0d	key Enter 0 press
+0e	key c:6E 2 press
+0f	key c:6F 2 press
+10	key c:70 2 press
+11	key c:71 2 press
+12	key c:72 2 press
+13	key c:73 2 press
+14	key c:74 2 press
+15	key c:75 2 press
+16	key c:76 2 press
+17	key c:77 2 press
+18	key c:78 2 press
+19	key c:79 2 press
+1a	key c:7A 2 press
+1b	key Esc 0 press
+1c	key c:34 2 press
+1d	key c:35 2 press
+1e	key c:36 2 press
+1f	key c:37 2 press
+20	key c:20 0 press
+21	key c:21 0 press
+22	key c:22 0 press
+23	key c:23 0 press
+24	key c:24 0 press
+25	key c:25 0 press
+26	key c:26 0 press
+27	key c:27 0 press
+28	key c:28 0 press
+29	key c:29 0 press
+2a	key c:2A 0 press
+2b	key c:2B 0 press
+2c	key c:2C 0 press
+2d	key c:2D 0 press
+2e	key c:2E 0 press
+2f	key c:2F 0 press
+30	key c:30 0 press
+31	key c:31 0 press
+32	key c:32 0 press
+33	key c:33 0 press
+34	key c:34 0 press
+35	key c:35 0 press
+36	key c:36 0 press
+37	key c:37 0 press
+38	key c:38 0 press
+39	key c:39 0 press
+3a	key c:3A 0 press
+3b	key c:3B 0 press
+3c	key c:3C 0 press
+3d	key c:3D 0 press
+3e	key c:3E 0 press
+3f	key c:3F 0 press
+40	key c:40 0 press
+41	key c:41 1 press
+42	key c:42 1 press
+43	key c:43 1 press
+44	key c:44 1 press
+45	key c:45 1 press
+46	key c:46 1 press
+47	key c:47 1 press
+48	key c:48 1 press
+49	key c:49 1 press
+4a	key c:4A 1 press
+4b	key c:4B 1 press
+4c	key c:4C 1 press
+4d	key c:4D 1 press
+4e	key c:4E 1 press
+4f	key c:4F 1 press
+50	key c:50 1 press
+51	key c:51 1 press
+52	key c:52 1 press
+53	key c:53 1 press
+54	key c:54 1 press
+55	key c:55 1 press
+56	key c:56 1 press
+57	key c:57 1 press
+58	key c:58 1 press
+59	key c:59 1 press
+5a	key c:5A 1 press
+5b	key c:5B 0 press
+5c	key c:5C 0 press
+5d	key c:5D 0 press
+5e	key c:5E 0 press
+5f	key c:5F 0 press
+60	key c:60 0 press
+61	key c:61 0 press
+62	key c:62 0 press
+63	key c:63 0 press
+64	key c:64 0 press
+65	key c:65 0 press
+66	key c:66 0 press
+67	key c:67 0 press
+68	key c:68 0 press
+69	key c:69 0 press
+6a	key c:6A 0 press
+6b	key c:6B 0 press
+6c	key c:6C 0 press
+6d	key c:6D 0 press
+6e	key c:6E 0 press
+6f	key c:6F 0 press
+70	key c:70 0 press
+71	key c:71 0 press
+72	key c:72 0 press
+73	key c:73 0 press
+74	key c:74 0 press
+75	key c:75 0 press
+76	key c:76 0 press
+77	key c:77 0 press
+78	key c:78 0 press
+79	key c:79 0 press
+7a	key c:7A 0 press
+7b	key c:7B 0 press
+7c	key c:7C 0 press
+7d	key c:7D 0 press
+7e	key c:7E 0 press
+7f	key Backspace 0 press
+1b20	key c:20 4 press
+1b21	key c:21 4 press
+1b22	key c:22 4 press
+1b23	key c:23 4 press
+1b24	key c:24 4 press
+1b25	key c:25 4 press
+1b26	key c:26 4 press
+1b27	key c:27 4 press
+1b28	key c:28 4 press
+1b29	key c:29 4 press
+1b2a	key c:2A 4 press
+1b2b	key c:2B 4 press
+1b2c	key c:2C 4 press
+1b2d	key c:2D 4 press
+1b2e	key c:2E 4 press
+1b2f	key c:2F 4 press
+1b30	key c:30 4 press
+1b31	key c:31 4 press
+1b32	key c:32 4 press
+1b33	key c:33 4 press
+1b34	key c:34 4 press
+1b35	key c:35 4 press
+1b36	key c:36 4 press
+1b37	key c:37 4 press
+1b38	key c:38 4 press
+1b39	key c:39 4 press
+1b3a	key c:3A 4 press
+1b3b	key c:3B 4 press
+1b3c	key c:3C 4 press
+1b3d	key c:3D 4 press
+1b3e	key c:3E 4 press
+1b3f	key c:3F 4 press
+1b40	key c:40 4 press
+1b41	key c:41 5 press
+1b42	key c:42 5 press
+1b43	key c:43 5 press
+1b44	key c:44 5 press
+1b45	key c:45 5 press
+1b46	key c:46 5 press
+1b47	key c:47 5 press
+1b48	key c:48 5 press
+1b49	key c:49 5 press
+1b4a	key c:4A 5 press
+1b4b	key c:4B 5 press
+1b4c	key c:4C 5 press
+1b4d	key c:4D 5 press
+1b4e	key c:4E 5 press
+1b4f	
+1b50	key c:50 5 press
+1b51	key c:51 5 press
+1b52	key c:52 5 press
+1b53	key c:53 5 press
+1b54	key c:54 5 press
+1b55	key c:55 5 press
+1b56	key c:56 5 press
+1b57	key c:57 5 press
+1b58	key c:58 5 press
+1b59	key c:59 5 press
+1b5a	key c:5A 5 press
+1b5b	
+1b5c	key c:5C 4 press
+1b5d	key c:5D 4 press
+1b5e	key c:5E 4 press
+1b5f	key c:5F 4 press
+1b60	key c:60 4 press
+1b61	key c:61 4 press
+1b62	key c:62 4 press
+1b63	key c:63 4 press
+1b64	key c:64 4 press
+1b65	key c:65 4 press
+1b66	key c:66 4 press
+1b67	key c:67 4 press
+1b68	key c:68 4 press
+1b69	key c:69 4 press
+1b6a	key c:6A 4 press
+1b6b	key c:6B 4 press
+1b6c	key c:6C 4 press
+1b6d	key c:6D 4 press
+1b6e	key c:6E 4 press
+1b6f	key c:6F 4 press
+1b70	key c:70 4 press
+1b71	key c:71 4 press
+1b72	key c:72 4 press
+1b73	key c:73 4 press
+1b74	key c:74 4 press
+1b75	key c:75 4 press
+1b76	key c:76 4 press
+1b77	key c:77 4 press
+1b78	key c:78 4 press
+1b79	key c:79 4 press
+1b7a	key c:7A 4 press
+1b7b	key c:7B 4 press
+1b7c	key c:7C 4 press
+1b7d	key c:7D 4 press
+1b7e	key c:7E 4 press
+1b1b	key Esc 0 press
+1b1b5b41	key Esc 0 press;key c:5B 0 press;key c:41 1 press
+1b01	key c:61 6 press
+1b7f	key Backspace 4 press
+1b0d	key Enter 4 press
+1b09	key Tab 4 press
+1bc3a9	key c:E9 4 press
+1b4f40	
+1b4f41	key Up 0 press
+1b4f42	key Down 0 press
+1b4f43	key Right 0 press
+1b4f44	key Left 0 press
+1b4f45	
+1b4f46	key End 0 press
+1b4f47	
+1b4f48	key Home 0 press
+1b4f49	
+1b4f4a	
+1b4f4b	
+1b4f4c	
+1b4f4d	
+1b4f4e	
+1b4f4f	
+1b4f50	key f:1 0 press
+1b4f51	key f:2 0 press
+1b4f52	key f:3 0 press
+1b4f53	key f:4 0 press
+1b4f54	
+1b4f55	
+1b4f56	
+1b4f57	
+1b4f58	
+1b4f59	
+1b4f5a	
+1b4f5b	
+1b4f5c	
+1b4f5d	
+1b4f5e	
+1b4f5f	
+1b4f60	
+1b4f61	
+1b4f62	
+1b4f63	
+1b4f64	
+1b4f65	
+1b4f66	
+1b4f67	
+1b4f68	
+1b4f69	
+1b4f6a	
+1b4f6b	
+1b4f6c	
+1b4f6d	
+1b4f6e	
+1b4f6f	
+1b4f70	
+1b4f71	
+1b4f72	
+1b4f73	
+1b4f74	
+1b4f75	
+1b4f76	
+1b4f77	
+1b4f78	
+1b4f79	
+1b4f7a	
+1b5b21	
+1b5b22	
+1b5b23	
+1b5b24	
+1b5b25	
+1b5b26	
+1b5b27	
+1b5b28	
+1b5b29	
+1b5b2a	
+1b5b2b	
+1b5b2c	
+1b5b2d	
+1b5b2e	
+1b5b2f	
+1b5b30	
+1b5b31	
+1b5b32	
+1b5b33	
+1b5b34	
+1b5b35	
+1b5b36	
+1b5b37	
+1b5b38	
+1b5b39	
+1b5b3a	
+1b5b3b	
+1b5b3c	
+1b5b3d	
+1b5b3e	
+1b5b3f	
+1b5b40	
+1b5b41	key Up 0 press
+1b5b42	key Down 0 press
+1b5b43	key Right 0 press
+1b5b44	key Left 0 press
+1b5b45	
+1b5b46	key End 0 press
+1b5b47	
+1b5b48	key Home 0 press
+1b5b49	other
+1b5b4a	
+1b5b4b	
+1b5b4c	
+1b5b4d	
+1b5b4e	
+1b5b4f	other
+1b5b50	key f:1 0 press
+1b5b51	key f:2 0 press
+1b5b52	
+1b5b53	key f:4 0 press
+1b5b54	
+1b5b55	
+1b5b56	
+1b5b57	
+1b5b58	
+1b5b59	
+1b5b5a	key BackTab 1 press
+1b5b5b	
+1b5b5c	
+1b5b5d	
+1b5b5e	
+1b5b5f	
+1b5b60	
+1b5b61	
+1b5b62	
+1b5b63	
+1b5b64	
+1b5b65	
+1b5b66	
+1b5b67	
+1b5b68	
+1b5b69	
+1b5b6a	
+1b5b6b	
+1b5b6c	
+1b5b6d	
+1b5b6e	
+1b5b6f	
+1b5b70	
+1b5b71	
+1b5b72	
+1b5b73	
+1b5b74	
+1b5b75	
+1b5b76	
+1b5b77	
+1b5b78	
+1b5b79	
+1b5b7a	
+1b5b7b	
+1b5b7c	
+1b5b7d	
+1b5b7e	
+1b5b5b41	key f:1 0 press
+1b5b5b42	key f:2 0 press
+1b5b5b43	key f:3 0 press
+1b5b5b44	key f:4 0 press
+1b5b5b45	key f:5 0 press
+1b5b5b46	
+1b5b307e	
+1b5b303b357e	
+1b5b317e	key Home 0 press
+1b5b313b357e	key Home 2 press
+1b5b327e	key Insert 0 press
+1b5b323b357e	key Insert 2 press
+1b5b337e	key Delete 0 press
+1b5b333b357e	key Delete 2 press
+1b5b347e	key End 0 press
+1b5b343b357e	key End 2 press
+1b5b357e	key PageUp 0 press
+1b5b353b357e	key PageUp 2 press
+1b5b367e	key PageDown 0 press
+1b5b363b357e	key PageDown 2 press
+1b5b377e	key Home 0 press
+1b5b373b357e	key Home 2 press
+1b5b387e	key End 0 press
+1b5b383b357e	key End 2 press
+1b5b397e	
+1b5b393b357e	
+1b5b31307e	
+1b5b31303b357e	
+1b5b31317e	key f:1 0 press
+1b5b31313b357e	key f:1 2 press
+1b5b31327e	key f:2 0 press
+1b5b31323b357e	key f:2 2 press
+1b5b31337e	key f:3 0 press
+1b5b31333b357e	key f:3 2 press
+1b5b31347e	key f:4 0 press
+1b5b31343b357e	key f:4 2 press
+1b5b31357e	key f:5 0 press
+1b5b31353b357e	key f:5 2 press
+1b5b31367e	
+1b5b31363b357e	
+1b5b31377e	key f:6 0 press
+1b5b31373b357e	key f:6 2 press
+1b5b31387e	key f:7 0 press
+1b5b31383b357e	key f:7 2 press
+1b5b31397e	key f:8 0 press
+1b5b31393b357e	key f:8 2 press
+1b5b32307e	key f:9 0 press
+1b5b32303b357e	key f:9 2 press
+1b5b32317e	key f:10 0 press
+1b5b32313b357e	key f:10 2 press
+1b5b32327e	
+1b5b32323b357e	
+1b5b32337e	key f:11 0 press
+1b5b32333b357e	key f:11 2 press
+1b5b32347e	key f:12 0 press
+1b5b32343b357e	key f:12 2 press
+1b5b32357e	key f:13 0 press
+1b5b32353b357e	key f:13 2 press
+1b5b32367e	key f:14 0 press
+1b5b32363b357e	key f:14 2 press
+1b5b32377e	
+1b5b32373b357e	
+1b5b32387e	key f:13 0 press
+1b5b32383b357e	key f:13 2 press
+1b5b32397e	key f:14 0 press
+1b5b32393b357e	key f:14 2 press
+1b5b33307e	
+1b5b33303b357e	
+1b5b33317e	key f:14 0 press
+1b5b33313b357e	key f:14 2 press
+1b5b33327e	key f:15 0 press
+1b5b33323b357e	key f:15 2 press
+1b5b33337e	key f:16 0 press
+1b5b33333b357e	key f:16 2 press
+1b5b33347e	key f:17 0 press
+1b5b33343b357e	key f:17 2 press
+1b5b33357e	
+1b5b33353b357e	
+1b5b33367e	
+1b5b33363b357e	
+1b5b33377e	
+1b5b33373b357e	
+1b5b33387e	
+1b5b33383b357e	
+1b5b33397e	
+1b5b33393b357e	
+1b5b39397e	
+1b5b317e	key Home 0 press
+1b5b3235357e	
+1b5b317e	key Home 0 press
+1b5b3235367e	
+1b5b317e	key Home 0 press
+1b5b313030307e	
+1b5b317e	key Home 0 press
+1b5b313b317e	key Home 0 press
+1b5b313b327e	key Home 1 press
+1b5b313b337e	key Home 4 press
+1b5b313b347e	key Home 5 press
+1b5b313b357e	key Home 2 press
+1b5b313b367e	key Home 3 press
+1b5b313b377e	key Home 6 press
+1b5b313b387e	key Home 7 press
+1b5b313b397e	key Home 8 press
+1b5b313b353a337e	key Home 2 release
+1b5b313b353a327e	key Home 2 repeat
+1b5b313b323a317e	key Home 1 press
+1b5b323b317e	key Insert 0 press
+1b5b323b327e	key Insert 1 press
+1b5b323b337e	key Insert 4 press
+1b5b323b347e	key Insert 5 press
+1b5b323b357e	key Insert 2 press
+1b5b323b367e	key Insert 3 press
+1b5b323b377e	key Insert 6 press
+1b5b323b387e	key Insert 7 press
+1b5b323b397e	key Insert 8 press
+1b5b323b353a337e	key Insert 2 release
+1b5b323b353a327e	key Insert 2 repeat
+1b5b323b323a317e	key Insert 1 press
+1b5b333b317e	key Delete 0 press
+1b5b333b327e	key Delete 1 press
+1b5b333b337e	key Delete 4 press
+1b5b333b347e	key Delete 5 press
+1b5b333b357e	key Delete 2 press
+1b5b333b367e	key Delete 3 press
+1b5b333b377e	key Delete 6 press
+1b5b333b387e	key Delete 7 press
+1b5b333b397e	key Delete 8 press
+1b5b333b353a337e	key Delete 2 release
+1b5b333b353a327e	key Delete 2 repeat
+1b5b333b323a317e	key Delete 1 press
+1b5b353b317e	key PageUp 0 press
+1b5b353b327e	key PageUp 1 press
+1b5b353b337e	key PageUp 4 press
+1b5b353b347e	key PageUp 5 press
+1b5b353b357e	key PageUp 2 press
+1b5b353b367e	key PageUp 3 press
+1b5b353b377e	key PageUp 6 press
+1b5b353b387e	key PageUp 7 press
+1b5b353b397e	key PageUp 8 press
+1b5b353b353a337e	key PageUp 2 release
+1b5b353b353a327e	key PageUp 2 repeat
+1b5b353b323a317e	key PageUp 1 press
+1b5b363b317e	key PageDown 0 press
+1b5b363b327e	key PageDown 1 press
+1b5b363b337e	key PageDown 4 press
+1b5b363b347e	key PageDown 5 press
+1b5b363b357e	key PageDown 2 press
+1b5b363b367e	key PageDown 3 press
+1b5b363b377e	key PageDown 6 press
+1b5b363b387e	key PageDown 7 press
+1b5b363b397e	key PageDown 8 press
+1b5b363b353a337e	key PageDown 2 release
+1b5b363b353a327e	key PageDown 2 repeat
+1b5b363b323a317e	key PageDown 1 press
+1b5b31313b317e	key f:1 0 press
+1b5b31313b327e	key f:1 1 press
+1b5b31313b337e	key f:1 4 press
+1b5b31313b347e	key f:1 5 press
+1b5b31313b357e	key f:1 2 press
+1b5b31313b367e	key f:1 3 press
+1b5b31313b377e	key f:1 6 press
+1b5b31313b387e	key f:1 7 press
+1b5b31313b397e	key f:1 8 press
+1b5b31313b353a337e	key f:1 2 release
+1b5b31313b353a327e	key f:1 2 repeat
+1b5b31313b323a317e	key f:1 1 press
+1b5b31353b317e	key f:5 0 press
+1b5b31353b327e	key f:5 1 press
+1b5b31353b337e	key f:5 4 press
+1b5b31353b347e	key f:5 5 press
+1b5b31353b357e	key f:5 2 press
+1b5b31353b367e	key f:5 3 press
+1b5b31353b377e	key f:5 6 press
+1b5b31353b387e	key f:5 7 press
+1b5b31353b397e	key f:5 8 press
+1b5b31353b353a337e	key f:5 2 release
+1b5b31353b353a327e	key f:5 2 repeat
+1b5b31353b323a317e	key f:5 1 press
+1b5b31373b317e	key f:6 0 press
+1b5b31373b327e	key f:6 1 press
+1b5b31373b337e	key f:6 4 press
+1b5b31373b347e	key f:6 5 press
+1b5b31373b357e	key f:6 2 press
+1b5b31373b367e	key f:6 3 press
+1b5b31373b377e	key f:6 6 press
+1b5b31373b387e	key f:6 7 press
+1b5b31373b397e	key f:6 8 press
+1b5b31373b353a337e	key f:6 2 release
+1b5b31373b353a327e	key f:6 2 repeat
+1b5b31373b323a317e	key f:6 1 press
+1b5b32303b317e	key f:9 0 press
+1b5b32303b327e	key f:9 1 press
+1b5b32303b337e	key f:9 4 press
+1b5b32303b347e	key f:9 5 press
+1b5b32303b357e	key f:9 2 press
+1b5b32303b367e	key f:9 3 press
+1b5b32303b377e	key f:9 6 press
+1b5b32303b387e	key f:9 7 press
+1b5b32303b397e	key f:9 8 press
+1b5b32303b353a337e	key f:9 2 release
+1b5b32303b353a327e	key f:9 2 repeat
+1b5b32303b323a317e	key f:9 1 press
+1b5b32313b317e	key f:10 0 press
+1b5b32313b327e	key f:10 1 press
+1b5b32313b337e	key f:10 4 press
+1b5b32313b347e	key f:10 5 press
+1b5b32313b357e	key f:10 2 press
+1b5b32313b367e	key f:10 3 press
+1b5b32313b377e	key f:10 6 press
+1b5b32313b387e	key f:10 7 press
+1b5b32313b397e	key f:10 8 press
+1b5b32313b353a337e	key f:10 2 release
+1b5b32313b353a327e	key f:10 2 repeat
+1b5b32313b323a317e	key f:10 1 press
+1b5b32333b317e	key f:11 0 press
+1b5b32333b327e	key f:11 1 press
+1b5b32333b337e	key f:11 4 press
+1b5b32333b347e	key f:11 5 press
+1b5b32333b357e	key f:11 2 press
+1b5b32333b367e	key f:11 3 press
+1b5b32333b377e	key f:11 6 press
+1b5b32333b387e	key f:11 7 press
+1b5b32333b397e	key f:11 8 press
+1b5b32333b353a337e	key f:11 2 release
+1b5b32333b353a327e	key f:11 2 repeat
+1b5b32333b323a317e	key f:11 1 press
+1b5b32343b317e	key f:12 0 press
+1b5b32343b327e	key f:12 1 press
+1b5b32343b337e	key f:12 4 press
+1b5b32343b347e	key f:12 5 press
+1b5b32343b357e	key f:12 2 press
+1b5b32343b367e	key f:12 3 press
+1b5b32343b377e	key f:12 6 press
+1b5b32343b387e	key f:12 7 press
+1b5b32343b397e	key f:12 8 press
+1b5b32343b353a337e	key f:12 2 release
+1b5b32343b353a327e	key f:12 2 repeat
+1b5b32343b323a317e	key f:12 1 press
+1b5b32353b317e	key f:13 0 press
+1b5b32353b327e	key f:13 1 press
+1b5b32353b337e	key f:13 4 press
+1b5b32353b347e	key f:13 5 press
+1b5b32353b357e	key f:13 2 press
+1b5b32353b367e	key f:13 3 press
+1b5b32353b377e	key f:13 6 press
+1b5b32353b387e	key f:13 7 press
+1b5b32353b397e	key f:13 8 press
+1b5b32353b353a337e	key f:13 2 release
+1b5b32353b353a327e	key f:13 2 repeat
+1b5b32353b323a317e	key f:13 1 press
+1b5b32363b317e	key f:14 0 press
+1b5b32363b327e	key f:14 1 press
+1b5b32363b337e	key f:14 4 press
+1b5b32363b347e	key f:14 5 press
+1b5b32363b357e	key f:14 2 press
+1b5b32363b367e	key f:14 3 press
+1b5b32363b377e	key f:14 6 press
+1b5b32363b387e	key f:14 7 press
+1b5b32363b397e	key f:14 8 press
+1b5b32363b353a337e	key f:14 2 release
+1b5b32363b353a327e	key f:14 2 repeat
+1b5b32363b323a317e	key f:14 1 press
+1b5b32383b317e	key f:13 0 press
+1b5b32383b327e	key f:13 1 press
+1b5b32383b337e	key f:13 4 press
+1b5b32383b347e	key f:13 5 press
+1b5b32383b357e	key f:13 2 press
+1b5b32383b367e	key f:13 3 press
+1b5b32383b377e	key f:13 6 press
+1b5b32383b387e	key f:13 7 press
+1b5b32383b397e	key f:13 8 press
+1b5b32383b353a337e	key f:13 2 release
+1b5b32383b353a327e	key f:13 2 repeat
+1b5b32383b323a317e	key f:13 1 press
+1b5b32393b317e	key f:14 0 press
+1b5b32393b327e	key f:14 1 press
+1b5b32393b337e	key f:14 4 press
+1b5b32393b347e	key f:14 5 press
+1b5b32393b357e	key f:14 2 press
+1b5b32393b367e	key f:14 3 press
+1b5b32393b377e	key f:14 6 press
+1b5b32393b387e	key f:14 7 press
+1b5b32393b397e	key f:14 8 press
+1b5b32393b353a337e	key f:14 2 release
+1b5b32393b353a327e	key f:14 2 repeat
+1b5b32393b323a317e	key f:14 1 press
+1b5b33313b317e	key f:14 0 press
+1b5b33313b327e	key f:14 1 press
+1b5b33313b337e	key f:14 4 press
+1b5b33313b347e	key f:14 5 press
+1b5b33313b357e	key f:14 2 press
+1b5b33313b367e	key f:14 3 press
+1b5b33313b377e	key f:14 6 press
+1b5b33313b387e	key f:14 7 press
+1b5b33313b397e	key f:14 8 press
+1b5b33313b353a337e	key f:14 2 release
+1b5b33313b353a327e	key f:14 2 repeat
+1b5b33313b323a317e	key f:14 1 press
+1b5b33343b317e	key f:17 0 press
+1b5b33343b327e	key f:17 1 press
+1b5b33343b337e	key f:17 4 press
+1b5b33343b347e	key f:17 5 press
+1b5b33343b357e	key f:17 2 press
+1b5b33343b367e	key f:17 3 press
+1b5b33343b377e	key f:17 6 press
+1b5b33343b387e	key f:17 7 press
+1b5b33343b397e	key f:17 8 press
+1b5b33343b353a337e	key f:17 2 release
+1b5b33343b353a327e	key f:17 2 repeat
+1b5b33343b323a317e	key f:17 1 press
+1b5b313b3141	key Up 0 press
+1b5b313b3241	key Up 1 press
+1b5b313b3341	key Up 4 press
+1b5b313b3441	key Up 5 press
+1b5b313b3541	key Up 2 press
+1b5b313b3641	key Up 3 press
+1b5b313b3741	key Up 6 press
+1b5b313b3841	key Up 7 press
+1b5b313b3941	key Up 8 press
+1b5b313b313041	key Up 9 press
+1b5b313b313641	key Up 15 press
+1b5b313b313741	key Up 16 press
+1b5b313b333341	key Up 32 press
+1b5b313b32353541	key Up 62 press
+1b5b313b333a3341	key Up 4 release
+1b5b313b333a3241	key Up 4 repeat
+1b5b3541	key Up 2 press
+1b5b3241	key Up 1 press
+1b5b313b3142	key Down 0 press
+1b5b313b3242	key Down 1 press
+1b5b313b3342	key Down 4 press
+1b5b313b3442	key Down 5 press
+1b5b313b3542	key Down 2 press
+1b5b313b3642	key Down 3 press
+1b5b313b3742	key Down 6 press
+1b5b313b3842	key Down 7 press
+1b5b313b3942	key Down 8 press
+1b5b313b313042	key Down 9 press
+1b5b313b313642	key Down 15 press
+1b5b313b313742	key Down 16 press
+1b5b313b333342	key Down 32 press
+1b5b313b32353542	key Down 62 press
+1b5b313b333a3342	key Down 4 release
+1b5b313b333a3242	key Down 4 repeat
+1b5b3542	key Down 2 press
+1b5b3242	key Down 1 press
+1b5b313b3143	key Right 0 press
+1b5b313b3243	key Right 1 press
+1b5b313b3343	key Right 4 press
+1b5b313b3443	key Right 5 press
+1b5b313b3543	key Right 2 press
+1b5b313b3643	key Right 3 press
+1b5b313b3743	key Right 6 press
+1b5b313b3843	key Right 7 press
+1b5b313b3943	key Right 8 press
+1b5b313b313043	key Right 9 press
+1b5b313b313643	key Right 15 press
+1b5b313b313743	key Right 16 press
+1b5b313b333343	key Right 32 press
+1b5b313b32353543	key Right 62 press
+1b5b313b333a3343	key Right 4 release
+1b5b313b333a3243	key Right 4 repeat
+1b5b3543	key Right 2 press
+1b5b3243	key Right 1 press
+1b5b313b3144	key Left 0 press
+1b5b313b3244	key Left 1 press
+1b5b313b3344	key Left 4 press
+1b5b313b3444	key Left 5 press
+1b5b313b3544	key Left 2 press
+1b5b313b3644	key Left 3 press
+1b5b313b3744	key Left 6 press
+1b5b313b3844	key Left 7 press
+1b5b313b3944	key Left 8 press
+1b5b313b313044	key Left 9 press
+1b5b313b313644	key Left 15 press
+1b5b313b313744	key Left 16 press
+1b5b313b333344	key Left 32 press
+1b5b313b32353544	key Left 62 press
+1b5b313b333a3344	key Left 4 release
+1b5b313b333a3244	key Left 4 repeat
+1b5b3544	key Left 2 press
+1b5b3244	key Left 1 press
+1b5b313b3146	key End 0 press
+1b5b313b3246	key End 1 press
+1b5b313b3346	key End 4 press
+1b5b313b3446	key End 5 press
+1b5b313b3546	key End 2 press
+1b5b313b3646	key End 3 press
+1b5b313b3746	key End 6 press
+1b5b313b3846	key End 7 press
+1b5b313b3946	key End 8 press
+1b5b313b313046	key End 9 press
+1b5b313b313646	key End 15 press
+1b5b313b313746	key End 16 press
+1b5b313b333346	key End 32 press
+1b5b313b32353546	key End 62 press
+1b5b313b333a3346	key End 4 release
+1b5b313b333a3246	key End 4 repeat
+1b5b3546	key End 2 press
+1b5b3246	key End 1 press
+1b5b313b3148	key Home 0 press
+1b5b313b3248	key Home 1 press
+1b5b313b3348	key Home 4 press
+1b5b313b3448	key Home 5 press
+1b5b313b3548	key Home 2 press
+1b5b313b3648	key Home 3 press
+1b5b313b3748	key Home 6 press
+1b5b313b3848	key Home 7 press
+1b5b313b3948	key Home 8 press
+1b5b313b313048	key Home 9 press
+1b5b313b313648	key Home 15 press
+1b5b313b313748	key Home 16 press
+1b5b313b333348	key Home 32 press
+1b5b313b32353548	key Home 62 press
+1b5b313b333a3348	key Home 4 release
+1b5b313b333a3248	key Home 4 repeat
+1b5b3548	key Home 2 press
+1b5b3248	key Home 1 press
+1b5b313b3150	key f:1 0 press
+1b5b313b3250	key f:1 1 press
+1b5b313b3350	key f:1 4 press
+1b5b313b3450	key f:1 5 press
+1b5b313b3550	key f:1 2 press
+1b5b313b3650	key f:1 3 press
+1b5b313b3750	key f:1 6 press
+1b5b313b3850	key f:1 7 press
+1b5b313b3950	key f:1 8 press
+1b5b313b313050	key f:1 9 press
+1b5b313b313650	key f:1 15 press
+1b5b313b313750	key f:1 16 press
+1b5b313b333350	key f:1 32 press
+1b5b313b32353550	key f:1 62 press
+1b5b313b333a3350	key f:1 4 release
+1b5b313b333a3250	key f:1 4 repeat
+1b5b3550	key f:1 2 press
+1b5b3250	key f:1 1 press
+1b5b313b3151	key f:2 0 press
+1b5b313b3251	key f:2 1 press
+1b5b313b3351	key f:2 4 press
+1b5b313b3451	key f:2 5 press
+1b5b313b3551	key f:2 2 press
+1b5b313b3651	key f:2 3 press
+1b5b313b3751	key f:2 6 press
+1b5b313b3851	key f:2 7 press
+1b5b313b3951	key f:2 8 press
+1b5b313b313051	key f:2 9 press
+1b5b313b313651	key f:2 15 press
+1b5b313b313751	key f:2 16 press
+1b5b313b333351	key f:2 32 press
+1b5b313b32353551	key f:2 62 press
+1b5b313b333a3351	key f:2 4 release
+1b5b313b333a3251	key f:2 4 repeat
+1b5b3551	key f:2 2 press
+1b5b3251	key f:2 1 press
+1b5b313b3152	
+1b5b313b3252	
+1b5b313b3352	
+1b5b313b3452	
+1b5b313b3552	
+1b5b313b3652	
+1b5b313b3752	
+1b5b313b3852	
+1b5b313b3952	
+1b5b313b313052	
+1b5b313b313652	
+1b5b313b313752	
+1b5b313b333352	
+1b5b313b32353552	
+1b5b313b333a3352	
+1b5b313b333a3252	
+1b5b3552	
+1b5b3252	
+1b5b313b3153	key f:4 0 press
+1b5b313b3253	key f:4 1 press
+1b5b313b3353	key f:4 4 press
+1b5b313b3453	key f:4 5 press
+1b5b313b3553	key f:4 2 press
+1b5b313b3653	key f:4 3 press
+1b5b313b3753	key f:4 6 press
+1b5b313b3853	key f:4 7 press
+1b5b313b3953	key f:4 8 press
+1b5b313b313053	key f:4 9 press
+1b5b313b313653	key f:4 15 press
+1b5b313b313753	key f:4 16 press
+1b5b313b333353	key f:4 32 press
+1b5b313b32353553	key f:4 62 press
+1b5b313b333a3353	key f:4 4 release
+1b5b313b333a3253	key f:4 4 repeat
+1b5b3553	key f:4 2 press
+1b5b3253	key f:4 1 press
+1b5b393775	key c:61 0 press
+1b5b39373b3275	key c:61 1 press
+1b5b39373b3575	key c:61 2 press
+1b5b39373b313a3375	key c:61 0 release
+1b5b363575	key c:41 0 press
+1b5b36353b3275	key c:41 1 press
+1b5b36353b3575	key c:41 2 press
+1b5b36353b313a3375	key c:41 0 release
+1b5b313375	key Enter 0 press
+1b5b31333b3275	key Enter 1 press
+1b5b31333b3575	key Enter 2 press
+1b5b31333b313a3375	key Enter 0 release
+1b5b323775	key Esc 0 press
+1b5b32373b3275	key Esc 1 press
+1b5b32373b3575	key Esc 2 press
+1b5b32373b313a3375	key Esc 0 release
+1b5b3975	key Tab 0 press
+1b5b393b3275	key BackTab 1 press
+1b5b393b3575	key Tab 2 press
+1b5b393b313a3375	key Tab 0 release
+1b5b31323775	key Backspace 0 press
+1b5b3132373b3275	key Backspace 1 press
+1b5b3132373b3575	key Backspace 2 press
+1b5b3132373b313a3375	key Backspace 0 release
+1b5b333275	key c:20 0 press
+1b5b33323b3275	key c:20 1 press
+1b5b33323b3575	key c:20 2 press
+1b5b33323b313a3375	key c:20 0 release
+1b5b313075	key c:A 0 press
+1b5b31303b3275	key c:A 1 press
+1b5b31303b3575	key c:A 2 press
+1b5b31303b313a3375	key c:A 0 release
+1b5b3075	key c:0 0 press
+1b5b303b3275	key c:0 1 press
+1b5b303b3575	key c:0 2 press
+1b5b303b313a3375	key c:0 0 release
+1b5b353733353875	key CapsLock 0 press
+1b5b35373335383b3275	key CapsLock 1 press
+1b5b35373335383b3575	key CapsLock 2 press
+1b5b35373335383b313a3375	key CapsLock 0 release
+1b5b353733363375	key Menu 0 press
+1b5b35373336333b3275	key Menu 1 press
+1b5b35373336333b3575	key Menu 2 press
+1b5b35373336333b313a3375	key Menu 0 release
+1b5b353733373675	key f:13 0 press
+1b5b35373337363b3275	key f:13 1 press
+1b5b35373337363b3575	key f:13 2 press
+1b5b35373337363b313a3375	key f:13 0 release
+1b5b353733393875	key f:35 0 press
+1b5b35373339383b3275	key f:35 1 press
+1b5b35373339383b3575	key f:35 2 press
+1b5b35373339383b313a3375	key f:35 0 release
+1b5b353733393975	key c:30 0 press
+1b5b35373339393b3275	key c:30 1 press
+1b5b35373339393b3575	key c:30 2 press
+1b5b35373339393b313a3375	key c:30 0 release
+1b5b353734303875	key c:39 0 press
+1b5b35373430383b3275	key c:39 1 press
+1b5b35373430383b3575	key c:39 2 press
+1b5b35373430383b313a3375	key c:39 0 release
+1b5b353734303975	key c:2E 0 press
+1b5b35373430393b3275	key c:2E 1 press
+1b5b35373430393b3575	key c:2E 2 press
+1b5b35373430393b313a3375	key c:2E 0 release
+1b5b353734313375	key c:2B 0 press
+1b5b35373431333b3275	key c:2B 1 press
+1b5b35373431333b3575	key c:2B 2 press
+1b5b35373431333b313a3375	key c:2B 0 release
+1b5b353734313475	key Enter 0 press
+1b5b35373431343b3275	key Enter 1 press
+1b5b35373431343b3575	key Enter 2 press
+1b5b35373431343b313a3375	key Enter 0 release
+1b5b353734313775	key Left 0 press
+1b5b35373431373b3275	key Left 1 press
+1b5b35373431373b3575	key Left 2 press
+1b5b35373431373b313a3375	key Left 0 release
+1b5b353734323075	key Down 0 press
+1b5b35373432303b3275	key Down 1 press
+1b5b35373432303b3575	key Down 2 press
+1b5b35373432303b313a3375	key Down 0 release
+1b5b353734323175	key PageUp 0 press
+1b5b35373432313b3275	key PageUp 1 press
+1b5b35373432313b3575	key PageUp 2 press
+1b5b35373432313b313a3375	key PageUp 0 release
+1b5b353734323675	key Delete 0 press
+1b5b35373432363b3275	key Delete 1 press
+1b5b35373432363b3575	key Delete 2 press
+1b5b35373432363b313a3375	key Delete 0 release
+1b5b353734323775	key KeypadBegin 0 press
+1b5b35373432373b3275	key KeypadBegin 1 press
+1b5b35373432373b3575	key KeypadBegin 2 press
+1b5b35373432373b313a3375	key KeypadBegin 0 release
+1b5b353734323875	key Media(Play) 0 press
+1b5b35373432383b3275	key Media(Play) 1 press
+1b5b35373432383b3575	key Media(Play) 2 press
+1b5b35373432383b313a3375	key Media(Play) 0 release
+1b5b353734343075	key Media(MuteVolume) 0 press
+1b5b35373434303b3275	key Media(MuteVolume) 1 press
+1b5b35373434303b3575	key Media(MuteVolume) 2 press
+1b5b35373434303b313a3375	key Media(MuteVolume) 0 release
+1b5b353734343175	key Modifier(LeftShift) 1 press
+1b5b35373434313b3275	key Modifier(LeftShift) 1 press
+1b5b35373434313b3575	key Modifier(LeftShift) 3 press
+1b5b35373434313b313a3375	key Modifier(LeftShift) 1 release
+1b5b353734343375	key Modifier(LeftAlt) 4 press
+1b5b35373434333b3275	key Modifier(LeftAlt) 5 press
+1b5b35373434333b3575	key Modifier(LeftAlt) 6 press
+1b5b35373434333b313a3375	key Modifier(LeftAlt) 4 release
+1b5b353734343775	key Modifier(RightShift) 1 press
+1b5b35373434373b3275	key Modifier(RightShift) 1 press
+1b5b35373434373b3575	key Modifier(RightShift) 3 press
+1b5b35373434373b313a3375	key Modifier(RightShift) 1 release
+1b5b353734343975	key Modifier(RightAlt) 4 press
+1b5b35373434393b3275	key Modifier(RightAlt) 5 press
+1b5b35373434393b3575	key Modifier(RightAlt) 6 press
+1b5b35373434393b313a3375	key Modifier(RightAlt) 4 release
+1b5b353734353475	key Modifier(IsoLevel5Shift) 0 press
+1b5b35373435343b3275	key Modifier(IsoLevel5Shift) 1 press
+1b5b35373435343b3575	key Modifier(IsoLevel5Shift) 2 press
+1b5b35373435343b313a3375	key Modifier(IsoLevel5Shift) 0 release
+1b5b353734353575	key c:E06F 0 press
+1b5b35373435353b3275	key c:E06F 1 press
+1b5b35373435353b3575	key c:E06F 2 press
+1b5b35373435353b313a3375	key c:E06F 0 release
+1b5b32333375	key c:E9 0 press
+1b5b3233333b3275	key c:E9 1 press
+1b5b3233333b3575	key c:E9 2 press
+1b5b3233333b313a3375	key c:E9 0 release
+1b5b333030323875	key c:754C 0 press
+1b5b33303032383b3275	key c:754C 1 press
+1b5b33303032383b3575	key c:754C 2 press
+1b5b33303032383b313a3375	key c:754C 0 release
+1b5b31323934303875	key c:1F980 0 press
+1b5b3132393430383b3275	key c:1F980 1 press
+1b5b3132393430383b3575	key c:1F980 2 press
+1b5b3132393430383b313a3375	key c:1F980 0 release
+1b5b3131313431313175	key c:10FFFF 0 press
+1b5b313131343131313b3275	key c:10FFFF 1 press
+1b5b313131343131313b3575	key c:10FFFF 2 press
+1b5b313131343131313b313a3375	key c:10FFFF 0 release
+1b5b3131313431313275	
+1b5b313131343131323b3275	
+1b5b313131343131323b3575	
+1b5b313131343131323b313a3375	
+1b5b353532393675	
+1b5b35353239363b3275	
+1b5b35353239363b3575	
+1b5b35353239363b313a3375	
+1b5b39373a36353b3275	key c:41 0 press
+1b5b39373a36353b3375	key c:61 4 press
+1b5b39373a36353a36363b3275	key c:41 0 press
+1b5b393b3275	key BackTab 1 press
+1b5b393b3375	key Tab 4 press
+1b5b39373b31333075	key c:61 1 press
+1b5b39373b363675	key c:61 1 press
+1b5b39373b323a3175	key c:61 1 press
+1b5b313b3275	key c:1 1 press
+1b5b3230307e68656c6c6f1b5b3230317e	paste 68656C6C6F
+1b5b3230307e610a621b5b3230317e	paste 610A62
+1b5b3230307e756e7465726d696e61746564	
+1b5b3230307e1b5b3230317e	paste 
+1b5b3230307eff1b5b3230317e	paste EFBFBD
+1b5b4d202121	other
+1b5b4d232121	other
+1b5b4d202020	
+1b5b3c303b32303b31304d	other
+1b5b3c303b32303b31306d	other
+1b5b3c33353b313b314d	other
+1b5b3c36343b353b354d	other
+1b5b3c303b303b314d	
+1b5b3c3330303b313b314d	
+1b5b49	other
+1b5b4f	other
+1b5b32303b313052	
+1b5b303b313052	
+1b5b3f313b3263	
+1b5b3f3175	
+1b5b3f	
+1b5b33323b33303b34303b4d	other
+1b5b33323b303b34303b4d	
+1b5b34303b313b314d	other
+1b5b303b313b314d	
+c3a9	key c:E9 0 press
+c3+a9	key c:E9 0 press
+e7958c	key c:754C 0 press
+e7+958c	key c:754C 0 press
+f09fa680	key c:1F980 0 press
+f0+9fa680	key c:1F980 0 press
+c39f	key c:DF 0 press
+c3+9f	key c:DF 0 press
+c4b0	key c:130 1 press
+c4+b0	key c:130 1 press
+cea3	key c:3A3 1 press
+ce+a3	key c:3A3 1 press
+c785	key c:1C5 0 press
+c7+85	key c:1C5 0 press
+efbca1	key c:FF21 1 press
+ef+bca1	key c:FF21 1 press
+c3	
+80	
+ff	
+c328	
+e28261	
+f0288cbc	
+e228a1	
+f8	
+c080	
+eda080	
+1b5b5d61	key c:61 0 press
+1b4f7861	key c:61 0 press
+1b5b3939397e61	key c:61 0 press
+1b5b313b335861	key c:61 0 press
+1b5b3b61	key c:61 0 press
+1b5b3b3541	key c:35 0 press;key c:41 1 press
+1b5b0161	key c:61 0 press
+1b5b2061	key c:61 0 press
+6162	key c:61 0 press;key c:62 0 press
+611b5b4162	key c:61 0 press;key Up 0 press;key c:62 0 press
+1b4f501b4f51	key f:1 0 press;key f:2 0 press
+411b42	key c:41 1 press;key c:42 5 press
+1b5b313b35411b5b313b33430d097f	key Up 2 press;key Right 4 press;key Enter 0 press;key Tab 0 press;key Backspace 0 press
+1b+62	key Esc 0 press;key c:62 0 press
+1b5b+41	key Up 0 press
+1b5b313b+3344	key Left 4 press
+1b5b3230307e68656c+6c6f1b5b3230317e	paste 68656C6C6F
+1b+5b41	key Esc 0 press;key c:5B 0 press;key c:41 1 press
+1b4f+50	key f:1 0 press
+1b5b3135+7e	key f:5 0 press
+1b5b31+3b3541	key Up 2 press
+1b5b3c303b3230+3b31304d	other
+1b+1b	key Esc 0 press;key Esc 0 press
+1b+1b5b41	key Esc 0 press;key Up 0 press
+f09f+a680	key c:1F980 0 press
+781b+79	key c:78 0 press;key Esc 0 press;key c:79 0 press
