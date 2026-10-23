@@ -422,6 +422,25 @@ cursor, a search (`find`) and the selection's range, and it can replace or delet
 at a position and move the cursor. All of a command's edits are one undo step, and every operation is
 listed in [docs/extending.md](docs/extending.md).
 
+It can bind keys in Normal and Visual mode too. A bound key runs its procedure the way a command does:
+on a private copy of the buffer, as one undo step, with the same five-second limit. This one copies the
+current line below itself:
+
+```scheme
+(define (duplicate-line)
+  (let* ((line (cursor-line))
+         (column (cursor-column))
+         (text (buffer-text line)))
+    (insert-at line (+ (string-length text) 1) (string-append "\n" text))
+    (set-cursor (+ line 1) column)))
+
+(bind-key "normal" "<C-d>" duplicate-line "Copy the current line below it")
+```
+
+A key is one character (`"x"`), Ctrl and a letter (`"<C-d>"`) or Alt and a character (`"<A-j>"`). There are
+no key sequences, and a key the editor already uses needs `#t` as the last argument to `bind-key`;
+`:`, Esc, Ctrl-C, Ctrl-O and Ctrl-P can't be bound at all. F1 lists your commands and keys.
+
 ## Development checks
 
 [GitHub Actions CI](.github/workflows/ci.yml) runs the checks below on pushes,
@@ -457,7 +476,7 @@ TERM=xterm-256color python3 tests/pty_extension.py bin/coigue
 
 The Unix PTY smoke test uses only disposable files and checks save/reopen, repeated edits, resize, quit safeguards and terminal restoration after errors and unwinding. Its last step runs `bin/deps/coigue-terminal-guard`, which enters and leaves the terminal by an error and by a panic and checks that the modes are back. The additional `/dev/full` output-failure test runs on Linux and is skipped when that device is unavailable (including macOS). The language-server suite starts itself as a fake server, so no real server is needed. `pty_signals.py` checks the signal exits, which differ from the Rust editor on purpose. `pty_golden.py` replays 42 sessions recorded from the Rust editor and requires the same terminal bytes (or at least the same screens); it is Linux only because the status line shows `/tmp` paths.
 
-`pty_extension.py` drives the Scheme command in a real terminal (undo, edit operations, failures, cancellation, file
+`pty_extension.py` drives the Scheme command in a real terminal (undo, bound keys, edit operations, failures, cancellation, file
 switching, loading rules) with a temporary `XDG_CONFIG_HOME`. The other suites read the caller's real
 `~/.config`, so a machine that runs them must not have a `coigue/init.scm` there.
 

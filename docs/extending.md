@@ -3,15 +3,14 @@
 Coigüe embeds [Brote](https://github.com/fclaude/brote), a small Scheme for Go programs. A
 Scheme program in your own configuration file can define editor commands: `:name` runs a Scheme
 procedure that reads the text you selected and asks the editor to change it. The same file can
-define themes and pick the one the editor starts in (see *Themes* below). This page is the
-contract for that capability. Each statement is tested; the last section says where.
+define themes and pick the one the editor starts in (see *Themes* below). It can also bind a key to a
+procedure (see *Key bindings*). This page is the contract for that capability. Each statement is tested;
+the last section says where.
 
-This is the first slice. It has one way to run Scheme (a command), one place Scheme is loaded from
-(your `init.scm`), and a handful of host operations. It is not a plugin system: there is no package
-manager, installer, debugger, key-binding language, or way to run a command on its own.
-
-Brote's language is documented in its own repository (`docs/scheme.md`, `docs/embedding.md`); this
-page documents only what Coigüe adds to it.
+Scheme runs in two ways: as a `:name` command you type, and from a key you bound. It is loaded from one
+place (your `init.scm`) and has a small set of host operations. It is not a plugin system: there is no
+package manager, installer or debugger, no key sequences, and nothing runs unless you typed a command or
+pressed a key you bound.
 
 ## A first command
 
@@ -28,8 +27,8 @@ page documents only what Coigüe adds to it.
 A copy of this file is `docs/examples/init.scm`; a test loads it, so the example cannot drift from the
 implementation. A command is completed with Tab like a built-in one (`:wr` Tab gives `:wrap`; the
 defined commands follow the built-in ones, in the order `init.scm` defined them), and F1 shows
-one more guide topic, "Your commands", listing each with its description. Without `init.scm` the
-guide is exactly what it was.
+one more guide topic, "Your commands and keys", listing each with its description. Without `init.scm`
+the guide is exactly what it was.
 
 Select text with `v` or `V`, press `!`, type `wrap ( )` and Enter. The selection is now surrounded by
 parentheses. (`!` opens the usual command line, shown as `:`, and keeps the selection for the one
@@ -99,6 +98,7 @@ interpreter is refused (see *Trust*).
 | `(define-command name proc [doc])` | Defines `:name` as a command that applies `proc` to its arguments. `name` is 1 to 32 characters: a lowercase letter, then lowercase letters, digits and `-`. It must not be a built-in command or already defined, and at most 100 commands can be defined. `doc` is a one-line description. | only while `init.scm` loads |
 | `(define-theme name spec)` | Defines the theme `name`, which `:theme` and `set-theme` can then use. `name` follows the rule for command names, cannot be the name or alias of a built-in theme or of a theme already defined, and at most 16 themes can be defined. `spec` is a list of `("key" . value)` pairs (see *Themes*). | only while `init.scm` loads |
 | `(set-theme name)` | Starts the editor in the theme `name`, a built-in one or one defined earlier. An unknown name is an error that lists the choices. | only while `init.scm` loads |
+| `(bind-key mode key proc [doc [override]])` | Binds `key` in `mode` (`"normal"` or `"visual"`) to the procedure `proc`, which runs as a command does, with no arguments. See *Key bindings* for the key syntax and for which keys can be bound. At most 100 keys can be bound. | only while `init.scm` loads |
 | `(selection?)` | `#t` if the command was started from a Visual selection and no edit has happened yet. | in a command |
 | `(selection-text)` | The selected text (see above). Error if there is no selection, it is longer than 65,536 characters, or an edit already happened in this command. | in a command |
 | `(buffer-text start [end])` | The text of lines `start` to `end` (1-based, inclusive; `end` defaults to `start`) of the current buffer as it is at this point of the command (edits already made are visible), joined with `\n` and without a trailing newline. Error if a line is outside the buffer or the text is longer than 65,536 characters. | in a command |
@@ -106,7 +106,7 @@ interpreter is refused (see *Trust*).
 | `(cursor-line)` | The 1-based line of the cursor (the end of the selection when there is one). | in a command |
 | `(cursor-column)` | The 1-based column of the cursor, counted in characters. | in a command |
 | `(buffer-path)` | The path of the file being edited, or `""` when the buffer has no file. | in a command |
-| `(mode)` | The mode the command was started from: `"normal"`, `"visual"` (`v`) or `"visual-line"` (`V`). | in a command |
+| `(mode)` | The mode the command was started from: `"normal"`, `"visual"` (`v`) or `"visual-line"` (`V`). A binding reports the mode it fired in. | in a command |
 | `(selection-range)` | The selection as the list `(start-line start-column end-line end-column)`, 1-based and inclusive at both ends, in document order whichever way the selection was made. A `V` selection runs from column 1 of its first line to the last character of its last. `#f` when there is no selection or an edit has ended it. | in a command |
 | `(word-at-cursor)` | The word under the cursor: the letters, digits and underscores around it on its line. `""` when the cursor is on anything else. | in a command |
 | `(find text [line [column]])` | The first place `text` occurs at or after `line` and `column` (both default to the start of the buffer), as the list `(line column)`, or `#f`. The search is literal, case-sensitive and does not wrap. `text` is not empty, has no newline and is at most 65,536 characters; a `column` can be one past the end of its line. | in a command |
@@ -118,10 +118,11 @@ interpreter is refused (see *Trust*).
 | `(set-cursor line column)` | Moves the cursor. | in a command |
 | `(message text)` | Sets the status line shown when the command finishes successfully; the last call wins. Control characters become spaces and the text is cut at 500 characters. | in a command |
 
-"In a command" means: while the editor is running a `:name` command. Called any other way (while
-`init.scm` loads, or by anything that is not an invocation the editor started) these operations raise
-`name: not inside an extension command`; `define-command`, `define-theme` and `set-theme` outside
-loading raise `define-command: only allowed while init.scm loads` (with their own name).
+"In a command" means: while the editor is running a `:name` command or a bound key. Called any other way
+(while `init.scm` loads, or by anything that is not an invocation the editor started) these operations
+raise `name: not inside an extension command`; `define-command`, `define-theme`, `set-theme` and
+`bind-key` outside loading raise `define-command: only allowed while init.scm loads` (with their own
+name).
 
 Line numbers and columns in the interface are 1-based, and every size is in characters. A column counts
 characters, so a tab or a wide character is one column, whatever it takes on the screen. The questions
@@ -155,6 +156,115 @@ is at that moment: after `(delete-lines 1 1)` the old second line is line 1. The
 first change to the text, as it always did. `set-cursor` is not a change to the text, so the selection
 survives it and now runs from where it started to the new cursor: `selection-text` and
 `selection-range` read that. The whole command, however many of these it makes, is one undo step.
+
+## Key bindings
+
+`bind-key` makes a key run a procedure, as if you had typed a command:
+
+```scheme
+(bind-key "normal" "<C-d>" duplicate-line "Copy the current line below it")
+```
+
+`docs/examples/keys.scm` has this and two more, and a test loads it. The arguments are the mode, the
+key, the procedure, an optional one-line description for the guide, and an optional `#t` to override a
+key the editor already uses (see below).
+
+### Modes
+
+There are two: `"normal"`, and `"visual"` for both `v` and `V`. Insert mode, the search prompt and the
+command line take every key as text, so a bound key could only get in the way of typing. The welcome
+screen, the file explorer, the file picker, the help guide, the menus, the result lists and the
+confirmation prompts handle their own keys, and bindings do not apply there.
+
+### Which keys
+
+A key is a string in one of three forms:
+
+| Form | Key | Examples |
+| --- | --- | --- |
+| one visible character | that character, capitals included | `"x"`, `"X"`, `"ä"`, `"?"` |
+| `<C-` letter `>` | Ctrl and a lowercase letter | `"<C-d>"` |
+| `<A-` character `>` | Alt and one visible character | `"<A-j>"`, `"<A-X>"` |
+
+Anything else is an error at load time that says what a key looks like. Two things have no form on
+purpose.
+
+Key sequences (a chord such as `gx` or `,w`) are left out. After `d`, `g`, `r`, `>`, `<` or a count,
+the next key already means something, and `rX` replaces a character with an X. A chord would need
+those to give way, and then a key typed to cancel an operator could start running a script. Single
+keys can't clash that way, and the editor is no worse off for it: a procedure can do what a chord
+would, and a Ctrl or Alt key is free in most places. A binding also never runs while an operator or a
+character to replace is pending. The key then does what it always did there, which is to cancel the
+operator or be the replacement, and a count typed before a bound key is dropped.
+
+The special keys (arrows, Tab, Enter, Backspace, the function keys) have no form either. Terminals
+send Ctrl-I as Tab, Ctrl-M as Enter, Ctrl-J as a newline and often Ctrl-H as Backspace, so a binding
+on those would shadow a key you meant something else by. Ctrl-C is how you stop a runaway command,
+Ctrl-Z suspends the editor and Ctrl-S and Ctrl-Q belong to the terminal, so `<C-c>`, `<C-z>`, `<C-s>`,
+`<C-q>`, `<C-i>`, `<C-m>`, `<C-j>` and `<C-h>` are errors with the reason. The editor keeps F1 to F9 and
+Alt-Left and Alt-Right.
+
+### Keys the editor already uses
+
+A key with a built-in meaning in the mode is an error unless the fifth argument is `#t`, and the
+message says what the key does:
+
+```
+init.scm: failed: bind-key: "x" already has a meaning in normal mode (it is a Normal command); pass #t as the override argument to replace it
+```
+
+| Mode | Keys with a meaning |
+| --- | --- |
+| normal | `0` to `9`, `h j k l w b e $ g G n N`, `d c y g r > <`, `v V x p P u A i a o / -`, Ctrl-R, and Ctrl-A, Ctrl-E, Ctrl-F, Ctrl-B |
+| visual | `0` to `9`, `h j k l w b e $ g G n N`, `v V o y Y d`, and Ctrl-A, Ctrl-E, Ctrl-F, Ctrl-B |
+
+Ctrl-A, Ctrl-E, Ctrl-F and Ctrl-B are Home, End, Page Down and Page Up in every mode. Every other
+key, including every Alt key and every other Ctrl key, has no meaning and needs no override. A test
+presses every one of them in both modes and checks that the lists above are the whole story, so a
+change to the editor that gives one of them a meaning fails there until this table says so.
+
+Four keys can't be bound whatever you pass: `:`, Ctrl-O, Ctrl-P and, in Visual mode, `!`. `:` opens the
+command line, which is where `:q` and `:w` live (quitting and saving are commands, so keeping `:` keeps
+both). Ctrl-O and Ctrl-P open the
+file explorer and the file picker. Esc and Ctrl-C have no form, as above. `!` is how a Visual selection
+gets to a command.
+
+### What a binding does
+
+It calls the procedure with no arguments, under every rule of a command: a private copy of the buffer,
+one undo step, a 5 second deadline, Ctrl-C, the memory limit, and the same failures (see the table
+above, where `binding <C-d>` takes the place of `:wrap` in the status line). The status line says
+`Ran binding <C-d>` or the last text the procedure passed to `message`. A procedure that wants
+arguments fails with Brote's message about the count.
+
+From Visual mode the selection goes to the procedure, as it does with `!`, and ends when the key is
+pressed, whether or not the procedure succeeds. `(mode)` says `"visual"` or `"visual-line"`.
+
+### Conflicts
+
+Binding the same key twice in one mode is an error at load time that names both bindings, by their
+number in the file and their description:
+
+```
+init.scm: failed: bind-key: normal <C-d> is already bound by binding 1 ("Copy the current line"); binding 3 (no description) cannot also use it
+```
+
+The same key in the two modes is two independent bindings. `init.scm` stops at the error, as it does
+for any other, and the bindings before it stay.
+
+### In the guide
+
+F1 shows the bindings next to the commands, in the topic "Your commands and keys":
+
+```
+Keys bound in your init.scm (see docs/extending.md).
+
+normal <C-d>         Copy the current line below it
+visual U             Make the selection upper case
+```
+
+Without any binding the editor behaves exactly as before: no key goes anywhere new, and the 42 recorded
+sessions in `tests/pty_golden.py` replay byte for byte.
 
 ## Themes
 
@@ -245,7 +355,7 @@ moves the cursor is applied too, but records no undo step.
   goroutine at a time. Brote's `*Interp` has no locking.
 * Scheme is evaluated on the editor goroutine: the goroutine that calls `Editor.Key`, which in
   the `coigue` command is the main goroutine running the event loop. Only `Editor.Key` (running a
-  command) and `Editor.LoadInit` evaluate Scheme. The call is synchronous: the editor does nothing
+  command, a binding) and `Editor.LoadInit` evaluate Scheme. The call is synchronous: the editor does nothing
   else until it returns.
 * Host operations run on that same goroutine, inside Brote's call, and they touch only the
   invocation's private copy (above), never the live buffer, registers, messages or command table.
@@ -307,9 +417,9 @@ moves the cursor is applied too, but records no undo step.
 
 ## Not in this slice
 
-Running Scheme from a key or an event, reading or writing other files, LSP data, running a command
-from Scheme, reloading `init.scm`, a `:eval` command, defining modes or key bindings, scripts
-distributed as packages. Each needs its own decision about trust and threading first.
+Running Scheme from an event, reading or writing other files, LSP data, running a command from Scheme,
+reloading `init.scm`, a `:eval` command, defining modes, key sequences, scripts distributed as packages.
+Each needs its own decision about trust and threading first.
 
 ## Differences from the Rust editor
 
@@ -322,7 +432,9 @@ a menu action. The Rust editor ignored `!` in Visual mode.
 sessions in `tests/pty_golden.py` type `:theme terminal` in Visual-line mode and pin that, and so
 does the ported editor test for Visual mode. Making `:` do what `!` does would be the natural
 change and a one-line one (`visualKey` in `internal/editor/input.go`) if those expectations are
-updated. Nothing else in the editor changed.
+updated. Without an `init.scm` nothing else in the editor changed, and the 42 recorded sessions replay
+byte for byte. With one, a bound key in Normal or Visual mode runs its procedure where the Rust editor
+ignored it or acted on it (see *Key bindings* for the keys that need an explicit override).
 
 ## Building
 
@@ -353,4 +465,12 @@ Names are Go tests unless a file is given. `ext` is `internal/ext/ext_test.go`, 
 | A command survives switching files and edits the active buffer | `TestCommandsSurviveFileSwitchAndUseTheActiveBuffer`, `TestSwitchingFilesWhileACommandLineHoldsASelection` (editor) |
 | Completion and the guide treat commands like built-in ones | `TestCompletionAndHelpTreatExtensionCommandsLikeBuiltIns`, `TestHelpListsExtensionCommandsOnlyWhenThereAreSome` (editor) |
 | The new read operations, and each edit operation: results, cursor, bounds, limits, UTF-8 | `TestHostOperations` (ext), `TestOnlySetCursorLeavesTheTextAlone`, `TestSeveralEditOperationsInOneCommand` (ext), `TestEditOperationsFromACommandAreOneUndoStep`, `TestSetCursorAloneMovesTheCursorWithoutAnUndoStep`, `TestReadOperationsSeeTheFileAndTheCursor` (editor); `TestSessionPathAndMode` (ext); `TestWordAtIsTheWordRunUnderTheCursor` (buffer) |
+| Key syntax and the keys that cannot be written | `TestParseSpec`, `TestParseSpecRefusals` (`internal/key`) |
+| `bind-key` rules: modes, conflicts naming both bindings, limit, load-time only | `TestBindKeyRecordsBindingsInOrder`, `TestBindKeyRules`, `TestBindKeyLimit`, `TestBindKeyIsDeniedOutsideLoading` (ext) |
+| A binding runs as a command does; failures change nothing; the selection goes to a Visual binding and ends | `TestBindingsRunInNormalMode`, `TestVisualBindingGetsTheSelectionAndEndsIt`, `TestFailedBindingChangesNothing`, `TestRunawayBindingIsStoppedAndTheEditorStaysUsable` (editor); `TestBindingsRunAsACommandDoes` (ext) |
+| Bindings stay out of typing, pending operators, the welcome screen and overlays | `TestBindingsStayOutOfTheWayOfTypingAndPendingKeys`, `TestBindingsDoNotRunOnTheWelcomeScreenOrInOverlays`, `TestNormalBindingDoesNotSeeAVisualSelectionAndTheOtherWayRound` (editor) |
+| Built-in keys need `override`; `:`, Ctrl-O, Ctrl-P and Visual `!` never bind | `TestBuiltInKeysNeedOverrideAndNeverBoundKeysCannotBeOverridden`, `TestOverrideShadowsTheBuiltInMeaning`, `TestNeverBoundKeysKeepTheirMeaning` (editor) |
+| The lists of built-in keys are the whole story, both ways | `TestUnlistedKeysDoNothing`, `TestListedKeysDoSomething` (editor) |
+| The guide lists bindings next to commands | `TestHelpListsBindingsNextToCommands` (editor) |
+| The example scripts load and do what the page says | `TestExampleInit` (editor) |
 | Everything above in a real terminal, with a temporary `HOME` and `XDG_CONFIG_HOME` | `tests/pty_extension.py` |

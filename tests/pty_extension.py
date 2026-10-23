@@ -5,7 +5,9 @@ init.scm, and checks docs/extending.md end to end: a command on a multibyte sele
 one undo and one redo, failures that change nothing, runaway loops that are interrupted
 or stopped, a command that survives switching files, (load ...) refused, a project-local
 init.scm that is never run, a missing or broken init.scm that does not block start-up, and
-themes defined and chosen from init.scm, and the edit operations as one undo step.
+themes defined and chosen from init.scm, keys bound from init.scm (Ctrl, Alt and Visual keys,
+the keys that cannot be bound, a bound key that fails), the F1 guide listing them, and the edit
+operations as one undo step.
 """
 import fcntl
 import os
@@ -433,6 +435,103 @@ def themes_from_init(root):
     print('themes: define-theme and set-theme from init.scm, :theme and Tab completion, a bad spec, no init file')
 
 
+KEYS = """
+(define (mark) (insert-text "*") (message "marked"))
+(define (shout) (replace-selection (string-upcase (selection-text))))
+(define (boom) (insert-text "partial") (error "key failed"))
+(define (spin) (let loop () (loop)))
+(bind-key "normal" "X" mark "mark the cursor")
+(bind-key "normal" "<C-d>" (lambda () (insert-text "ctrl ")) "ctrl d")
+(bind-key "normal" "<A-j>" (lambda () (insert-text "alt ")) "alt j")
+(bind-key "visual" "U" shout "uppercase the selection")
+(bind-key "normal" "B" boom "fails")
+(bind-key "normal" "S" spin "runs away")
+(bind-key "normal" "x" (lambda () (message "x was bound")) "x" #t)
+"""
+
+CTRL_D = b'\x04'
+F1 = b'\x1bOP'
+
+
+def key_bindings(root):
+    box = Sandbox(root, 'keys', KEYS, files={'doc.txt': 'héllo wörld\nsecond\n'})
+    path = box.project / 'doc.txt'
+    s = box.start('doc.txt')
+    s.send(b'X', expect=b'marked')
+    s.save(path, '*héllo wörld\nsecond\n')
+    s.send(CTRL_D)
+    s.send(b'\x1bj')  # Esc followed at once by j is Alt-J
+    s.save(path, 'alt ctrl *héllo wörld\nsecond\n')
+    # Each key press was one undo step. (A second Undone looks like the first on the screen, which
+    # only sends what changed, so only the first is waited for.)
+    s.send(b'u', expect=b'Undone')
+    s.send(b'u')
+    s.save(path, '*héllo wörld\nsecond\n')
+    s.send(CTRL_R, expect=b'Redone')
+    s.save(path, 'ctrl *héllo wörld\nsecond\n')
+    s.send(b'u', expect=b'Undone')
+    s.send(b'u')
+    s.save(path, 'héllo wörld\nsecond\n')
+    # A Visual binding gets the selection, and it ends.
+    s.send(b'gg')
+    s.send(b'vllll')
+    s.send(b'U')
+    s.save(path, 'HÉLLO wörld\nsecond\n')
+    s.send(b'u', expect=b'Undone')
+    s.save(path, 'héllo wörld\nsecond\n')
+    # A pending operator keeps its meaning: dX cancels the d and runs nothing.
+    s.send(b'dX')
+    s.save(path, 'héllo wörld\nsecond\n')
+    # x was overridden on purpose, and the other keys are untouched.
+    s.send(b'x', expect=b'x was bound')
+    s.save(path, 'héllo wörld\nsecond\n')
+    s.send(b'dd')
+    s.save(path, 'second\n')
+    s.send(b'u', expect=b'Undone')
+    # A binding that fails changes nothing and says so; so does one that runs away.
+    s.send(b'B', expect=b'binding B failed: key failed')
+    s.save(path, 'héllo wörld\nsecond\n')
+    s.send(b'S', expect=b'binding S stopped after 5s; no changes made', timeout=10)
+    s.save(path, 'héllo wörld\nsecond\n')
+    s.send(b'gg0i')
+    s.send_text('X')  # Insert mode types the key
+    s.send(ESC)
+    s.save(path, 'Xhéllo wörld\nsecond\n')
+    # The guide lists the bindings.
+    s.send(F1)
+    out = s.send(b'\t' * 6, expect=b'Your commands and keys')
+    for line in (b'normal X', b'normal <C-d>', b'normal <A-j>', b'visual U', b'uppercase the selection'):
+        assert line in out, (line, out[-1500:])
+    s.send(ESC)
+    s.quit()
+
+    # The keys that cannot be bound, and a built-in key without an override, stop init.scm there.
+    for name, program, message in (
+        ('colon', '(bind-key "normal" ":" car "" #t)', b'init.scm: failed: bind-key: ":" cannot be bound in normal mode'),
+        ('ctrl-c', '(bind-key "normal" "<C-c>" car)', b'Ctrl-C interrupts a running command'),
+        ('escape', '(bind-key "normal" "<Esc>" car)', b'Escape cannot be bound'),
+        ('quit', '(bind-key "normal" "<C-q>" car)', b'stop and start the terminal'),
+        ('builtin', '(bind-key "normal" "w" car)', b'"w" already has a meaning in normal mode (it is a motion); pass #t as the override argument'),
+        ('twice', '(bind-key "normal" "Q" car "first") (bind-key "normal" "Q" cdr "second")',
+         b'normal Q is already bound by binding 1 ("first"); binding 2 ("second") cannot also use it'),
+    ):
+        bad = Sandbox(root, 'keys-' + name, program, files={'doc.txt': 'abc\n'})
+        s = bad.start('doc.txt')
+        s.drain(0.3)
+        assert message in s.output, (name, bytes(s.output)[-1500:])
+        if name == 'colon':
+            s.send(b':')  # the command line still opens: no key can take it away
+            s.send_text('q!\r')
+            assert s.proc.wait(timeout=5) == 0
+            s.close()
+            continue
+        s.send(b'ix')
+        s.send(ESC)
+        s.save(bad.project / 'doc.txt', 'xabc\n')
+        s.quit()
+    print('keys: Ctrl, Alt, Visual and overridden keys, undo, failures, guide, and the keys that refuse to bind')
+
+
 EDITS = """
 (define-command "tidy"
   (lambda ()
@@ -489,7 +588,8 @@ with tempfile.TemporaryDirectory() as directory:
     chosen = sys.argv[2:]  # scenario names, to run only those while developing
     for scenario in (wrap_undo_redo, failures_change_nothing, runaway, file_switching, load_is_refused,
                      only_the_user_configuration_is_loaded, where_the_user_file_lives,
-                     missing_or_broken_init, themes_from_init, edit_operations, command_line_contract):
+                     missing_or_broken_init, themes_from_init, key_bindings, edit_operations,
+                     command_line_contract):
         if not chosen or scenario.__name__ in chosen:
             scenario(directory)
 print('PTY extension suite passed')

@@ -117,4 +117,12 @@ The same file can define a theme and make the editor start in it:
 
 <!-- include: docs/examples/theme.scm scheme -->
 
-After that, `:theme dusk` switches to it from any theme. What else you can do with Scheme, and the exact rules, are in [Scheme and themes](extending.md).
+After that, `:theme dusk` switches to it from any theme.
+
+A key can run a script too. This file binds Ctrl-D to copying the current line below itself, Alt-J and Alt-K to moving a line down or up, and `U` in Visual mode to making the selection upper case:
+
+<!-- include: docs/examples/keys.scm scheme -->
+
+A key is one character, Ctrl and a lowercase letter such as `<C-d>`, or Alt and a character such as `<A-j>`. A key that already does something, like `x` or `w`, needs `#t` after the description, so you don't shadow it by accident. `F1` lists the keys you bound, in the topic after the others.
+
+What else you can do with Scheme, and the exact rules, are in [Scheme and themes](extending.md).

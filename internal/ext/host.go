@@ -191,6 +191,21 @@ func (r *Runtime) hostOperations() []*scheme.Prim {
 				s.message = Tidy(text)
 				return scheme.Void, nil
 			}),
+		{
+			Name: "bind-key",
+			Meta: scheme.Meta{
+				Doc: "Bind a key in MODE to the procedure PROC, which runs as a command does, with no arguments. KEY is one character such as \"x\", Ctrl and a lowercase letter such as \"<C-x>\", or Alt and a character such as \"<A-x>\". A key the editor already uses needs OVERRIDE to be #t. Only while init.scm loads.",
+				Params: []scheme.Param{
+					{Name: "mode", Type: "string", Doc: "\"normal\" or \"visual\" (which covers V as well)"},
+					{Name: "key", Type: "string", Doc: "the key, in the syntax above"},
+					{Name: "proc", Type: "any", Doc: "procedure taking no arguments"},
+					{Name: "doc", Type: "string", Doc: "one-line description for the guide", Optional: true},
+					{Name: "override", Type: "boolean", Doc: "#t to shadow a built-in meaning of the key", Optional: true},
+				},
+				Origin: "builtin",
+			},
+			Handler: r.bindKey,
+		},
 	}
 	prims = append(prims, readOperations()...)
 	return append(prims, editOperations()...)

@@ -64,6 +64,9 @@ func (e *Editor) keyInner(k key.Key, pageRows int) bool {
 		}
 		return false
 	}
+	if e.runBinding(k) {
+		return false
+	}
 	if e.Mode == ModeNormal && k.Mods == key.Ctrl && k.Code == 'r' {
 		count, _ := e.takeCount()
 		e.resetPending()

@@ -31,3 +31,7 @@ Counts repeat movements and edits, such as `5j`, `3w`, `2dd` and `4>>`. Counts b
 <!-- readme-table: Command | Theme -->
 
 The names `catppuccin-mocha`, `gruvbox-dark` and `catppuccin-latte` also work. Themes you define in `init.scm` appear in the `:theme` list too, as [Scheme and themes](extending.md) explains.
+
+## Keys from your init.scm
+
+A script in `init.scm` can bind keys in Normal and Visual mode. None exist until you write the file, and `F1` lists what you bound. [Scheme and themes](extending.md) has the key syntax, the keys that need an explicit override and the ones that can't be bound.

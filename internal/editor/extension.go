@@ -7,6 +7,7 @@ import (
 	"github.com/fclaude/coigue/internal/ext"
 	"github.com/fclaude/coigue/internal/fsx"
 	"github.com/fclaude/coigue/internal/help"
+	"github.com/fclaude/coigue/internal/key"
 	"github.com/fclaude/coigue/internal/theme"
 )
 
@@ -45,6 +46,7 @@ func (e *Editor) LoadInit(path string) {
 			Define:   e.defineExtensionCommand,
 			Themes:   &e.Themes,
 			SetTheme: func(t theme.Theme) { e.Theme = t },
+			Bind:     bindable,
 			Deadline: e.extDeadline,
 			Watch: func(interrupt func()) func() {
 				if e.interrupter == nil {
@@ -92,12 +94,22 @@ func extensionCommand(e *Editor, name string, args []string) bool {
 		e.Message = "No file open"
 		return false
 	}
+	e.runExtension(":"+name, selection, func(s *ext.Session) error {
+		return e.extensions.Run(e.ctx, name, args, s)
+	})
+	return false
+}
+
+// runExtension runs one Scheme procedure on a private copy of the buffer and
+// applies the copy in one edit transaction if the procedure succeeded. label
+// names it in the status line.
+func (e *Editor) runExtension(label string, selection *ext.Selection, run func(*ext.Session) error) {
 	scratch := e.Buffer.Clone()
 	session := ext.NewSession(scratch, selection)
 	session.Path = e.File.Path
-	if err := e.extensions.Run(e.ctx, name, args, session); err != nil {
-		e.Message = failureMessage(name, err)
-		return false
+	if err := run(session); err != nil {
+		e.Message = failureMessage(label, err)
+		return
 	}
 	if session.Edited() {
 		e.Buffer.Edit(func() { e.Buffer.Adopt(scratch) })
@@ -106,18 +118,51 @@ func extensionCommand(e *Editor, name string, args []string) bool {
 	if message := session.Message(); message != "" {
 		e.Message = message
 	} else {
-		e.Message = "Ran :" + name
+		e.Message = "Ran " + label
 	}
-	return false
 }
 
-func failureMessage(name string, err error) string {
+func failureMessage(label string, err error) string {
 	text := err.Error()
 	var runErr *ext.RunError
 	if errors.As(err, &runErr) && runErr.Stopped() {
 		text += "; no changes made"
 	}
-	return ext.Tidy(":" + name + " " + text)
+	return ext.Tidy(label + " " + text)
+}
+
+// runBinding runs what init.scm bound k to in the current mode, if anything.
+// A Visual selection goes to the procedure and ends, as with the ! command.
+// Nothing runs while an operator or a character to replace is pending: the
+// key then does what it always did there, which is to cancel it.
+func (e *Editor) runBinding(k key.Key) bool {
+	if e.extensions == nil || e.pending != 0 {
+		return false
+	}
+	var mode string
+	switch e.Mode {
+	case ModeNormal:
+		mode = ext.ModeNormal
+	case ModeVisual, ModeVisualLine:
+		mode = ext.ModeVisual
+	default:
+		return false
+	}
+	binding, ok := e.extensions.Binding(mode, k)
+	if !ok {
+		return false
+	}
+	var selection *ext.Selection
+	if e.selectionAnchor != nil && mode == ext.ModeVisual {
+		selection = &ext.Selection{Anchor: *e.selectionAnchor, Linewise: e.Mode == ModeVisualLine}
+	}
+	e.selectionAnchor = nil
+	e.Mode = ModeNormal
+	e.resetPending()
+	e.runExtension("binding "+binding.Spec, selection, func(s *ext.Session) error {
+		return e.extensions.RunBinding(e.ctx, mode, k, s)
+	})
+	return true
 }
 
 // newHelp opens help at a topic. When init.scm defined commands the guide has
@@ -125,21 +170,40 @@ func failureMessage(name string, err error) string {
 func (e *Editor) newHelp(topic help.Topic) *help.Help {
 	h := help.New(topic)
 	commands := e.ExtensionCommands()
-	if len(commands) == 0 {
+	var bindings []ext.Binding
+	if e.extensions != nil {
+		bindings = e.extensions.Bindings()
+	}
+	if len(commands) == 0 && len(bindings) == 0 {
 		return h
 	}
-	h.Extension = []string{
-		"Commands defined in your init.scm (see docs/extending.md).",
-		"",
+	if len(commands) > 0 {
+		h.Extension = []string{
+			"Commands defined in your init.scm (see docs/extending.md).",
+			"",
+		}
+		for _, c := range commands {
+			name := ":" + c.Name
+			line := name + strings.Repeat(" ", max(21-len(name), 1)) + c.Doc
+			h.Extension = append(h.Extension, strings.TrimRight(line, " "))
+		}
+		h.Extension = append(h.Extension,
+			"",
+			"In Visual mode, ! opens the command line and keeps the selection for",
+			"the command you type. Ctrl-C stops a command that runs too long.")
 	}
-	for _, c := range commands {
-		name := ":" + c.Name
-		line := name + strings.Repeat(" ", max(21-len(name), 1)) + c.Doc
-		h.Extension = append(h.Extension, strings.TrimRight(line, " "))
+	if len(bindings) > 0 {
+		if len(commands) > 0 {
+			h.Extension = append(h.Extension, "")
+		}
+		h.Extension = append(h.Extension,
+			"Keys bound in your init.scm (see docs/extending.md).",
+			"")
+		for _, b := range bindings {
+			name := b.Mode + " " + b.Spec
+			line := name + strings.Repeat(" ", max(21-len(name), 1)) + b.Doc
+			h.Extension = append(h.Extension, strings.TrimRight(line, " "))
+		}
 	}
-	h.Extension = append(h.Extension,
-		"",
-		"In Visual mode, ! opens the command line and keeps the selection for",
-		"the command you type. Ctrl-C stops a command that runs too long.")
 	return h
 }

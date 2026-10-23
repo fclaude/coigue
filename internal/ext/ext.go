@@ -26,6 +26,7 @@ import (
 	"github.com/fclaude/brote/scheme"
 
 	"github.com/fclaude/coigue/internal/guard"
+	"github.com/fclaude/coigue/internal/key"
 	"github.com/fclaude/coigue/internal/theme"
 )
 
@@ -67,6 +68,12 @@ type Options struct {
 	// SetTheme is called, while the init file loads, with the theme
 	// set-theme chose; nil means the choice is checked and dropped.
 	SetTheme func(theme.Theme)
+	// Bind is called, while the init file loads, for each key the program
+	// binds, after its syntax and its conflicts with the program's other
+	// bindings were checked. It is where the editor refuses keys it keeps for
+	// itself. Returning an error rejects the binding and raises it in the
+	// program; nil accepts every key.
+	Bind func(mode string, k key.Key, override bool) error
 	// Watch lets the user interrupt a run; nil means no one can.
 	Watch Watcher
 	// Deadline bounds each run; 0 means DefaultDeadline.
@@ -92,6 +99,7 @@ type Runtime struct {
 	memoryLimit uint64
 	commands    map[string]*Command
 	order       []string
+	bindings    []*Binding
 	themes      *theme.Set
 	busy        atomic.Bool
 }

@@ -71,6 +71,52 @@ func TestExampleInit(t *testing.T) {
 		t.Fatalf("text %q", e.Buffer.Text())
 	}
 
+	t.Run("keys.scm", func(t *testing.T) {
+		program, err := os.ReadFile(filepath.Join("..", "..", "docs", "examples", "keys.scm"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		e, _ := initEditor(t, "one\ntwo wide\nthree", string(program))
+		send(e, "jll")
+		ctrl(e, 'd')
+		if e.Buffer.Text() != "one\ntwo wide\ntwo wide\nthree" || cursor(e) != [2]int{2, 2} {
+			t.Fatalf("Ctrl-D: %q cursor %v", e.Buffer.Text(), cursor(e))
+		}
+		alt(e, 'j')
+		if e.Buffer.Text() != "one\ntwo wide\nthree\ntwo wide" || cursor(e) != [2]int{3, 2} {
+			t.Fatalf("Alt-J: %q cursor %v", e.Buffer.Text(), cursor(e))
+		}
+		alt(e, 'j') // already the last line: nothing to swap with, and not an error
+		if e.Buffer.Text() != "one\ntwo wide\nthree\ntwo wide" || !strings.HasPrefix(e.Message, "Ran ") {
+			t.Fatalf("Alt-J at the end: %q message %q", e.Buffer.Text(), e.Message)
+		}
+		alt(e, 'k')
+		alt(e, 'k')
+		if e.Buffer.Text() != "one\ntwo wide\ntwo wide\nthree" || cursor(e) != [2]int{1, 2} {
+			t.Fatalf("Alt-K: %q cursor %v", e.Buffer.Text(), cursor(e))
+		}
+		send(e, "gg")
+		alt(e, 'k') // already the first line
+		if e.Buffer.Text() != "one\ntwo wide\ntwo wide\nthree" || !strings.HasPrefix(e.Message, "Ran ") {
+			t.Fatalf("Alt-K at the start: %q message %q", e.Buffer.Text(), e.Message)
+		}
+		send(e, "jvelU")
+		if e.Buffer.Text() != "one\nTWO wide\ntwo wide\nthree" || e.Mode != ModeNormal {
+			t.Fatalf("U: %q", e.Buffer.Text())
+		}
+		undo(e)
+		if e.Buffer.Text() != "one\ntwo wide\ntwo wide\nthree" {
+			t.Fatalf("undo: %q", e.Buffer.Text())
+		}
+		// A long line moved past a short one keeps its cursor column.
+		e, _ = initEditor(t, "a long long line\nx", string(program))
+		send(e, "10l")
+		alt(e, 'j')
+		if e.Buffer.Text() != "x\na long long line" || cursor(e) != [2]int{1, 10} {
+			t.Fatalf("long line: %q cursor %v", e.Buffer.Text(), cursor(e))
+		}
+	})
+
 }
 
 func TestWrapCommand(t *testing.T) {
@@ -560,7 +606,7 @@ func TestHelpListsExtensionCommandsOnlyWhenThereAreSome(t *testing.T) {
 		press(e, key.Tab)
 	}
 	lines := e.Help.Lines()
-	if e.Help.Title() != "Your commands" || len(lines) < 4 ||
+	if e.Help.Title() != "Your commands and keys" || len(lines) < 4 ||
 		lines[2] != ":wrap                Wrap the selection in OPEN and CLOSE" ||
 		lines[3] != ":a-very-long-command-name Long one" {
 		t.Fatalf("%q: %q", e.Help.Title(), lines)

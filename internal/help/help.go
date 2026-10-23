@@ -39,7 +39,7 @@ func (t Topic) Title() string {
 	case Prompts:
 		return "Commands and confirmations"
 	case Extensions:
-		return "Your commands"
+		return "Your commands and keys"
 	}
 	return "Code navigation"
 }
