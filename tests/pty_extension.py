@@ -5,7 +5,7 @@ init.scm, and checks docs/extending.md end to end: a command on a multibyte sele
 one undo and one redo, failures that change nothing, runaway loops that are interrupted
 or stopped, a command that survives switching files, (load ...) refused, a project-local
 init.scm that is never run, a missing or broken init.scm that does not block start-up, and
-themes defined and chosen from init.scm.
+themes defined and chosen from init.scm, and the edit operations as one undo step.
 """
 import fcntl
 import os
@@ -433,6 +433,41 @@ def themes_from_init(root):
     print('themes: define-theme and set-theme from init.scm, :theme and Tab completion, a bad spec, no init file')
 
 
+EDITS = """
+(define-command "tidy"
+  (lambda ()
+    (replace-lines 2 2 "TWO\\nTWO-b")
+    (delete-lines 1 1)
+    (insert-at (line-count) 1 "> ")
+    (set-cursor 1 2)
+    (message (format "~a:~a ~a" (cursor-line) (cursor-column) (word-at-cursor)))))
+(define-command "find-it"
+  (lambda (text) (message (format "~s ~s" (find text) (buffer-path)))))
+(define-command "only-move" (lambda () (set-cursor 3 1)))
+"""
+
+
+def edit_operations(root):
+    box = Sandbox(root, 'edits', EDITS, files={'doc.txt': 'one\ntwo\nthree\n'})
+    path = box.project / 'doc.txt'
+    s = box.start('doc.txt')
+    s.send_text(':tidy\r', expect=b'1:2 TWO')
+    s.save(path, 'TWO\nTWO-b\nthree\n> ')
+    s.send(b'u', expect=b'Undone')
+    s.save(path, 'one\ntwo\nthree\n')
+    s.send(CTRL_R, expect=b'Redone')
+    s.save(path, 'TWO\nTWO-b\nthree\n> ')
+    s.send(b'u', expect=b'Undone')
+    s.send(b'u', expect=b'Nothing to undo')
+    s.send_text(':find-it three\r', expect=('(3 1) "%s"' % (box.project / 'doc.txt').resolve()).encode())
+    # Moving the cursor alone is not an edit: no undo step, no change on disk.
+    s.send_text(':only-move\r', expect=b'Ran :only-move')
+    s.send(b'u', expect=b'Nothing to undo')
+    s.save(path, 'one\ntwo\nthree\n')
+    s.quit()
+    print('edits: replace-lines, delete-lines, insert-at and set-cursor are one undo step; set-cursor alone is none')
+
+
 def command_line_contract(root):
     # --version and --help are answered before any configuration is read.
     box = Sandbox(root, 'contract', '(let loop () (loop))')
@@ -451,8 +486,10 @@ def command_line_contract(root):
 
 
 with tempfile.TemporaryDirectory() as directory:
+    chosen = sys.argv[2:]  # scenario names, to run only those while developing
     for scenario in (wrap_undo_redo, failures_change_nothing, runaway, file_switching, load_is_refused,
                      only_the_user_configuration_is_loaded, where_the_user_file_lives,
-                     missing_or_broken_init, themes_from_init, command_line_contract):
-        scenario(directory)
+                     missing_or_broken_init, themes_from_init, edit_operations, command_line_contract):
+        if not chosen or scenario.__name__ in chosen:
+            scenario(directory)
 print('PTY extension suite passed')

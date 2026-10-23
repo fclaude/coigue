@@ -104,8 +104,18 @@ interpreter is refused (see *Trust*).
 | `(buffer-text start [end])` | The text of lines `start` to `end` (1-based, inclusive; `end` defaults to `start`) of the current buffer as it is at this point of the command (edits already made are visible), joined with `\n` and without a trailing newline. Error if a line is outside the buffer or the text is longer than 65,536 characters. | in a command |
 | `(line-count)` | The number of lines in the buffer. | in a command |
 | `(cursor-line)` | The 1-based line of the cursor (the end of the selection when there is one). | in a command |
+| `(cursor-column)` | The 1-based column of the cursor, counted in characters. | in a command |
+| `(buffer-path)` | The path of the file being edited, or `""` when the buffer has no file. | in a command |
+| `(mode)` | The mode the command was started from: `"normal"`, `"visual"` (`v`) or `"visual-line"` (`V`). | in a command |
+| `(selection-range)` | The selection as the list `(start-line start-column end-line end-column)`, 1-based and inclusive at both ends, in document order whichever way the selection was made. A `V` selection runs from column 1 of its first line to the last character of its last. `#f` when there is no selection or an edit has ended it. | in a command |
+| `(word-at-cursor)` | The word under the cursor: the letters, digits and underscores around it on its line. `""` when the cursor is on anything else. | in a command |
+| `(find text [line [column]])` | The first place `text` occurs at or after `line` and `column` (both default to the start of the buffer), as the list `(line column)`, or `#f`. The search is literal, case-sensitive and does not wrap. `text` is not empty, has no newline and is at most 65,536 characters; a `column` can be one past the end of its line. | in a command |
 | `(replace-selection text)` | Replaces the selection with `text` (see above). Error if there is no selection or an edit already happened. Cursor on the first character of `text`. | in a command |
 | `(insert-text text)` | Inserts `text` before the cursor character, whether or not there is a selection. The cursor ends on the first character of `text`. A later `selection-text` or `replace-selection` fails. | in a command |
+| `(replace-lines start end text)` | Replaces lines `start` to `end` (1-based, inclusive) with `text`, which can hold any number of lines. See *Editing beyond the selection*. | in a command |
+| `(delete-lines start end)` | Deletes lines `start` to `end`. | in a command |
+| `(insert-at line column text)` | Inserts `text` before the character at `line` and `column`. | in a command |
+| `(set-cursor line column)` | Moves the cursor. | in a command |
 | `(message text)` | Sets the status line shown when the command finishes successfully; the last call wins. Control characters become spaces and the text is cut at 500 characters. | in a command |
 
 "In a command" means: while the editor is running a `:name` command. Called any other way (while
@@ -113,8 +123,38 @@ interpreter is refused (see *Trust*).
 `name: not inside an extension command`; `define-command`, `define-theme` and `set-theme` outside
 loading raise `define-command: only allowed while init.scm loads` (with their own name).
 
-Line numbers in the interface are 1-based, columns do not appear (the interface works on text, not
-screen positions), and every size is in characters.
+Line numbers and columns in the interface are 1-based, and every size is in characters. A column counts
+characters, so a tab or a wide character is one column, whatever it takes on the screen. The questions
+that return a position return it as a list, which `car` and `cadr` take apart.
+
+## Editing beyond the selection
+
+The four edit operations work on any lines, selection or not. They change the command's private copy
+of the buffer like `insert-text` does, they count against the same limits (65,536 characters per
+text, 1,048,576 per command), and they refuse text that is not valid UTF-8. A line or column outside
+the buffer is an error that says what the range is, for example
+`failed: insert-at: column 9 is outside 1..4 on line 2`, and changes nothing.
+
+* `(replace-lines start end text)` swaps lines `start` to `end` for `text`, which is the new content of
+  those lines: several lines separated by `\n`, with no newline after the last one. `""` leaves one
+  empty line, since the lines were replaced rather than deleted. It reads back what `buffer-text`
+  returns, so `(replace-lines 3 5 (buffer-text 3 5))` changes nothing. The cursor ends on the first
+  character of `text`.
+* `(delete-lines start end)` removes the lines and the newlines between them and the lines around.
+  Deleting every line leaves one empty line. The cursor ends on the first column of the line that took
+  the place of the first deleted one, or of the last line when there is none.
+* `(insert-at line column text)` inserts before the character at that position. The column one past the
+  end of a line appends to it, and `text` can contain newlines. The cursor ends on the first character of
+  `text`, as with `insert-text`.
+* `(set-cursor line column)` moves the cursor, and only that. The column one past the end of a line puts
+  the cursor on its last character, since that is as far as the cursor goes in Normal mode. A command that
+  only moves the cursor leaves the text, the undo history and the redo history as they were.
+
+Within one command these combine in the order they run, and line numbers always mean the buffer as it
+is at that moment: after `(delete-lines 1 1)` the old second line is line 1. The selection ends at the
+first change to the text, as it always did. `set-cursor` is not a change to the text, so the selection
+survives it and now runs from where it started to the new cursor: `selection-text` and
+`selection-range` read that. The whole command, however many of these it makes, is one undo step.
 
 ## Themes
 
@@ -194,8 +234,10 @@ restore the history. Building the result first needs one copy of the buffer per 
 undo history already does for every edit.
 
 Reads see earlier edits of the same command (`buffer-text` after `insert-text` shows the inserted
-text). The selection does not survive an edit: the first `insert-text` or `replace-selection` ends
-it, because the positions it named no longer mean the same text.
+text). The selection does not survive an edit: the first `insert-text`, `replace-selection`,
+`replace-lines`, `delete-lines` or `insert-at` ends it, because the positions it named no longer mean
+the same text. `set-cursor` leaves it alone (see *Editing beyond the selection*). A command that only
+moves the cursor is applied too, but records no undo step.
 
 ## Threading and reentrancy
 
@@ -310,4 +352,5 @@ Names are Go tests unless a file is given. `ext` is `internal/ext/ext_test.go`, 
 | `!` in Visual mode keeps the selection for one command; `:` is still ignored | `TestBangInVisualModeKeepsTheSelectionForOneCommand` (editor) |
 | A command survives switching files and edits the active buffer | `TestCommandsSurviveFileSwitchAndUseTheActiveBuffer`, `TestSwitchingFilesWhileACommandLineHoldsASelection` (editor) |
 | Completion and the guide treat commands like built-in ones | `TestCompletionAndHelpTreatExtensionCommandsLikeBuiltIns`, `TestHelpListsExtensionCommandsOnlyWhenThereAreSome` (editor) |
+| The new read operations, and each edit operation: results, cursor, bounds, limits, UTF-8 | `TestHostOperations` (ext), `TestOnlySetCursorLeavesTheTextAlone`, `TestSeveralEditOperationsInOneCommand` (ext), `TestEditOperationsFromACommandAreOneUndoStep`, `TestSetCursorAloneMovesTheCursorWithoutAnUndoStep`, `TestReadOperationsSeeTheFileAndTheCursor` (editor); `TestSessionPathAndMode` (ext); `TestWordAtIsTheWordRunUnderTheCursor` (buffer) |
 | Everything above in a real terminal, with a temporary `HOME` and `XDG_CONFIG_HOME` | `tests/pty_extension.py` |

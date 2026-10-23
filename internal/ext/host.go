@@ -45,7 +45,7 @@ func inCommand(name, doc string, params []scheme.Param, f operation) *scheme.Pri
 // hostOperations are every primitive extensions get beyond Brote's language.
 // Handler errors carry no prefix: Brote adds "name: ".
 func (r *Runtime) hostOperations() []*scheme.Prim {
-	return []*scheme.Prim{
+	prims := []*scheme.Prim{
 		{
 			Name: "define-command",
 			Meta: scheme.Meta{
@@ -192,6 +192,8 @@ func (r *Runtime) hostOperations() []*scheme.Prim {
 				return scheme.Void, nil
 			}),
 	}
+	prims = append(prims, readOperations()...)
+	return append(prims, editOperations()...)
 }
 
 // Tidy makes text safe for one row of the status line: control characters

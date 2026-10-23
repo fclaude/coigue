@@ -94,6 +94,7 @@ func extensionCommand(e *Editor, name string, args []string) bool {
 	}
 	scratch := e.Buffer.Clone()
 	session := ext.NewSession(scratch, selection)
+	session.Path = e.File.Path
 	if err := e.extensions.Run(e.ctx, name, args, session); err != nil {
 		e.Message = failureMessage(name, err)
 		return false

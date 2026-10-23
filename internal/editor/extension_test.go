@@ -70,6 +70,7 @@ func TestExampleInit(t *testing.T) {
 	if e.Buffer.Text() != "(héllo) 界 wörld" {
 		t.Fatalf("text %q", e.Buffer.Text())
 	}
+
 }
 
 func TestWrapCommand(t *testing.T) {
@@ -572,5 +573,60 @@ func TestHelpListsExtensionCommandsOnlyWhenThereAreSome(t *testing.T) {
 	press(e, key.Tab) // wraps to the first topic
 	if e.Help.Topic != help.Start {
 		t.Fatalf("Tab wrapped to %v", e.Help.Topic)
+	}
+}
+
+func undo(e *Editor) { send(e, "u") }
+
+func TestEditOperationsFromACommandAreOneUndoStep(t *testing.T) {
+	e := extensionEditor(t, "one\ntwo\nthree", `
+(define-command "tidy"
+  (lambda ()
+    (replace-lines 2 2 "TWO\nTWO2")
+    (delete-lines 1 1)
+    (insert-at (line-count) 1 "> ")
+    (set-cursor 1 2)))
+`)
+	command(e, "tidy")
+	if e.Buffer.Text() != "TWO\nTWO2\n> three" || cursor(e) != [2]int{0, 1} || e.Message != "Ran :tidy" {
+		t.Fatalf("text %q cursor %v message %q", e.Buffer.Text(), cursor(e), e.Message)
+	}
+	undo(e)
+	if e.Buffer.Text() != "one\ntwo\nthree" {
+		t.Fatalf("one undo should restore everything: %q", e.Buffer.Text())
+	}
+	redo(e)
+	if e.Buffer.Text() != "TWO\nTWO2\n> three" {
+		t.Fatalf("redo: %q", e.Buffer.Text())
+	}
+}
+
+func TestSetCursorAloneMovesTheCursorWithoutAnUndoStep(t *testing.T) {
+	e := extensionEditor(t, "one\ntwo", `(define-command "last" (lambda () (set-cursor (line-count) 3)))`)
+	command(e, "last")
+	if cursor(e) != [2]int{1, 2} || e.Buffer.Text() != "one\ntwo" {
+		t.Fatalf("cursor %v", cursor(e))
+	}
+	undo(e)
+	if e.Message != "Nothing to undo" {
+		t.Fatalf("moving the cursor made an undo step: %q", e.Message)
+	}
+}
+
+func TestReadOperationsSeeTheFileAndTheCursor(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "doc.txt")
+	e := newEditor(t, &file.File{Path: path}, "alpha beta\ngamma")
+	loadInit(t, e, `(define-command "info" (lambda ()
+  (message (format "~a|~a|~a|~s" (buffer-path) (cursor-column) (word-at-cursor) (find "gamma")))))`)
+	send(e, "6l")
+	command(e, "info")
+	if want := path + "|7|beta|(2 1)"; e.Message != want {
+		t.Fatalf("message %q, want %q", e.Message, want)
+	}
+	unnamed := newEditor(t, &file.File{}, "x")
+	loadInit(t, unnamed, `(define-command "info" (lambda () (message (format "~s" (buffer-path)))))`)
+	command(unnamed, "info")
+	if unnamed.Message != `""` {
+		t.Fatalf("message %q", unnamed.Message)
 	}
 }

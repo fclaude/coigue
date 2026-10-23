@@ -519,6 +519,24 @@ func wordClass(c rune) int {
 	return 2
 }
 
+// WordAt returns the word under the cursor: the run of letters, digits and
+// underscores on the cursor's line that holds the cursor character. It is
+// empty when the cursor is on anything else, and it moves nothing.
+func (b *Buffer) WordAt() []rune {
+	line := b.lines[b.Row]
+	if b.Col >= len(line) || wordClass(line[b.Col]) != 1 {
+		return nil
+	}
+	start, end := b.Col, b.Col+1
+	for start > 0 && wordClass(line[start-1]) == 1 {
+		start--
+	}
+	for end < len(line) && wordClass(line[end]) == 1 {
+		end++
+	}
+	return append([]rune(nil), line[start:end]...)
+}
+
 func nextWord(chars []rune, at int) int {
 	if at < len(chars) {
 		class := wordClass(chars[at])

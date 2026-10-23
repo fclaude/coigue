@@ -39,12 +39,21 @@ type Session struct {
 	// reads it back after a successful run.
 	Buffer *buffer.Buffer
 
+	// Path is the file the buffer belongs to, or "" when it has none.
+	Path string
+	// Mode is the mode the invocation started from: "normal", "visual" or
+	// "visual-line".
+	Mode string
+
 	selection *Selection
 	message   string
-	edited    bool
-	inserted  int
-	kind      kind
-	live      atomic.Bool
+	// edited is set by the first change to the text; it ends the selection.
+	edited bool
+	// moved is set when only the cursor changed, which the editor applies too.
+	moved    bool
+	inserted int
+	kind     kind
+	live     atomic.Bool
 	// owner is the goroutine that started the invocation, the only one whose
 	// host operations are honoured.
 	owner uint64
@@ -67,7 +76,14 @@ func goroutineID() uint64 {
 // NewSession makes a session over scratch, which the caller gives up, with
 // the selection the command was started from, or nil.
 func NewSession(scratch *buffer.Buffer, selection *Selection) *Session {
-	return &Session{Buffer: scratch, selection: selection}
+	s := &Session{Buffer: scratch, selection: selection, Mode: "normal"}
+	if selection != nil {
+		s.Mode = "visual"
+		if selection.Linewise {
+			s.Mode = "visual-line"
+		}
+	}
+	return s
 }
 
 func initSession() *Session { return &Session{kind: kindInit} }
@@ -75,8 +91,9 @@ func initSession() *Session { return &Session{kind: kindInit} }
 // Message is the status text the command asked for, or "".
 func (s *Session) Message() string { return s.message }
 
-// Edited reports whether the command changed the text.
-func (s *Session) Edited() bool { return s.edited }
+// Edited reports whether the command changed the text or the cursor, so the
+// editor has something to apply.
+func (s *Session) Edited() bool { return s.edited || s.moved }
 
 var (
 	errNoSelection   = errors.New("no selection; select text with v or V, then press !")

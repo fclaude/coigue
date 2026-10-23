@@ -280,3 +280,39 @@ func TestCloneIsIndependentAndAdoptIsOneUndoStep(t *testing.T) {
 		t.Fatal("adopting identical text discarded the redo history")
 	}
 }
+
+func TestWordAtIsTheWordRunUnderTheCursor(t *testing.T) {
+	b := New("x foo_bar9 y\n界 é2\n\n.")
+	for _, c := range []struct {
+		row, col int
+		want     string
+	}{
+		{0, 0, "x"},
+		{0, 1, ""},
+		{0, 2, "foo_bar9"},
+		{0, 6, "foo_bar9"},
+		{0, 9, "foo_bar9"},
+		{0, 10, ""},
+		{0, 11, "y"},
+		{0, 12, ""}, // one past the end of the line
+		{1, 0, "界"},
+		{1, 3, "é2"},
+		{2, 0, ""}, // an empty line
+		{3, 0, ""}, // punctuation
+	} {
+		b.Row, b.Col = c.row, c.col
+		if got := string(b.WordAt()); got != c.want {
+			t.Errorf("(%d,%d): %q, want %q", c.row, c.col, got, c.want)
+		}
+	}
+	if b.Row != 3 || b.Col != 0 {
+		t.Errorf("the cursor moved to (%d,%d)", b.Row, b.Col)
+	}
+	// A copy: changing it does not touch the buffer.
+	b.Row, b.Col = 0, 2
+	w := b.WordAt()
+	w[0] = 'X'
+	if string(b.Lines()[0]) != "x foo_bar9 y" {
+		t.Errorf("WordAt aliases the line: %q", string(b.Lines()[0]))
+	}
+}
