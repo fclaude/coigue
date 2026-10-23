@@ -100,6 +100,7 @@ type Runtime struct {
 	commands    map[string]*Command
 	order       []string
 	bindings    []*Binding
+	start       *scheme.Value
 	themes      *theme.Set
 	busy        atomic.Bool
 }

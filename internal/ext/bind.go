@@ -66,6 +66,18 @@ func (r *Runtime) RunBinding(ctx context.Context, mode string, k key.Key, s *Ses
 	return &RunError{Stop: Failed, Err: fmt.Errorf("no binding for %s in %s mode", k.Code, mode)}
 }
 
+// HasStart reports whether the program registered a start-up procedure.
+func (r *Runtime) HasStart() bool { return r.start != nil }
+
+// RunStart calls the procedure on-start registered, under the same rules as
+// Run. The editor calls it once.
+func (r *Runtime) RunStart(ctx context.Context, s *Session) error {
+	if r.start == nil {
+		return &RunError{Stop: Failed, Err: fmt.Errorf("no on-start procedure")}
+	}
+	return r.runProc(ctx, *r.start, s)
+}
+
 func (r *Runtime) runProc(ctx context.Context, proc scheme.Value, s *Session) error {
 	s.kind = kindCommand
 	return r.invoke(ctx, s, func(ctx context.Context) error {
@@ -135,4 +147,19 @@ func describe(doc string) string {
 		return "no description"
 	}
 	return fmt.Sprintf("%q", Tidy(doc))
+}
+
+func (r *Runtime) onStart(c *scheme.Call) (scheme.Value, error) {
+	if _, err := sessionFor(c, kindInit); err != nil {
+		return scheme.Value{}, err
+	}
+	proc, err := c.Proc(0)
+	if err != nil {
+		return scheme.Value{}, err
+	}
+	if r.start != nil {
+		return scheme.Value{}, fmt.Errorf("on-start was already called; there is one start-up procedure")
+	}
+	r.start = &proc
+	return scheme.Void, nil
 }

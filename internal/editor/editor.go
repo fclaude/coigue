@@ -133,6 +133,11 @@ type Editor struct {
 	// loaded. interrupter lets the user stop a running extension.
 	extensions  *ext.Runtime
 	interrupter ext.Watcher
+	// initPath is where the init file is read from, for :reload; it is empty
+	// when the machine has no place for one. startDone is set once the
+	// on-start procedure has run.
+	initPath  string
+	startDone bool
 	// extDeadline overrides the extension deadline; tests shorten it.
 	extDeadline time.Duration
 	// commandVisual is the Visual mode a command line was opened from (0 if

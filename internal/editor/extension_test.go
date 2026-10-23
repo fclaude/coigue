@@ -117,6 +117,25 @@ func TestExampleInit(t *testing.T) {
 		}
 	})
 
+	t.Run("start.scm", func(t *testing.T) {
+		program, err := os.ReadFile(filepath.Join("..", "..", "docs", "examples", "start.scm"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for name, want := range map[string]struct {
+			row     int
+			message string
+		}{"notes.txt": {0, ""}, "server.log": {2, "Log file: at the last line"}} {
+			e := newEditor(t, &file.File{Path: filepath.Join(t.TempDir(), name)}, "a\nb\nc")
+			path := filepath.Join(t.TempDir(), "init.scm")
+			write(t, path, string(program))
+			e.LoadInit(path)
+			e.RunStart()
+			if e.Buffer.Row != want.row || e.Message != want.message {
+				t.Errorf("%s: row %d message %q", name, e.Buffer.Row, e.Message)
+			}
+		}
+	})
 }
 
 func TestWrapCommand(t *testing.T) {

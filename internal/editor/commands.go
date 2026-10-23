@@ -19,6 +19,13 @@ type commandSpec struct {
 	name string
 	args bool
 	run  func(e *Editor, name string, args []string) (quit bool)
+	// extension marks a command init.scm defined, which :reload replaces.
+	extension bool
+	// unlisted keeps the command out of Tab completion. :reload is until an
+	// init file has been found, so an editor without one completes exactly
+	// the commands it always did; the command itself works from the start,
+	// for the person who is writing their first init.scm.
+	unlisted bool
 }
 
 // commandTable is the one place commands are looked up by name. The order
@@ -31,6 +38,26 @@ type commandTable struct {
 func (t *commandTable) add(spec commandSpec) {
 	t.specs = append(t.specs, spec)
 	t.byName = nil
+}
+
+// remove drops the command called name, if there is one.
+func (t *commandTable) remove(name string) {
+	for i := range t.specs {
+		if t.specs[i].name == name {
+			t.specs = append(t.specs[:i], t.specs[i+1:]...)
+			t.byName = nil
+			return
+		}
+	}
+}
+
+// list makes the command called name show up in Tab completion.
+func (t *commandTable) list(name string) {
+	for i := range t.specs {
+		if t.specs[i].name == name {
+			t.specs[i].unlisted = false
+		}
+	}
 }
 
 func (t *commandTable) lookup(name string) (*commandSpec, bool) {
@@ -83,6 +110,7 @@ func defaultCommands() *commandTable {
 		{name: "q", run: quitCommand},
 		{name: "q!", run: quitCommand},
 		{name: "recent", run: activateCommand(actions.Recent)},
+		{name: "reload", run: reloadCommand, unlisted: true},
 		{name: "references", run: activateCommand(actions.References)},
 		{name: "symbols", run: activateCommand(actions.Symbols)},
 		{name: "textwidth", args: true, run: widthCommand},
@@ -249,7 +277,9 @@ func (t *commandTable) newCompletion(input string, backwards bool, themes []stri
 	} else {
 		prefix = trimmed
 		for _, spec := range t.specs {
-			choices = append(choices, spec.name)
+			if !spec.unlisted {
+				choices = append(choices, spec.name)
+			}
 		}
 	}
 	before := input[:len(input)-len(prefix)]

@@ -317,7 +317,7 @@ func TestOperationsRefuseOutsideInvocation(t *testing.T) {
 	}
 	stale := context.WithValue(context.Background(), sessionKey{}, s)
 	for _, p := range r.hostOperations() {
-		if p.Name == "define-command" || p.Name == "define-theme" || p.Name == "set-theme" || p.Name == "bind-key" {
+		if p.Name == "define-command" || p.Name == "define-theme" || p.Name == "set-theme" || p.Name == "bind-key" || p.Name == "on-start" {
 			continue
 		}
 		_, err := p.Handler(&scheme.Call{Ctx: stale, In: r.interp, Name: p.Name, Args: []scheme.Value{scheme.Str("y")}})

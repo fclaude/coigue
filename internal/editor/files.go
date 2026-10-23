@@ -413,6 +413,7 @@ func (e *Editor) openPath(path string) {
 		e.pendingJump = nil
 	}
 	target.Path = opened.Path
+	wasWelcome := e.IsWelcome()
 	e.Welcome = ""
 	e.File = opened
 	e.selectionAnchor = nil
@@ -434,4 +435,7 @@ func (e *Editor) openPath(path string) {
 	e.closeLocations()
 	e.dropPicker()
 	e.closeExplorer()
+	if wasWelcome {
+		e.RunStart()
+	}
 }

@@ -3,14 +3,18 @@
 Coigüe embeds [Brote](https://github.com/fclaude/brote), a small Scheme for Go programs. A
 Scheme program in your own configuration file can define editor commands: `:name` runs a Scheme
 procedure that reads the text you selected and asks the editor to change it. The same file can
-define themes and pick the one the editor starts in (see *Themes* below). It can also bind a key to a
-procedure (see *Key bindings*). This page is the contract for that capability. Each statement is tested;
-the last section says where.
+define themes and pick the one the editor starts in (see *Themes* below). It can also bind a key
+to a procedure (see *Key bindings*), run one procedure when the editor starts, and be read again
+without restarting (see *Start-up and reloading*). This page is the contract for that capability.
+Each statement is tested; the last section says where.
 
-Scheme runs in two ways: as a `:name` command you type, and from a key you bound. It is loaded from one
-place (your `init.scm`) and has a small set of host operations. It is not a plugin system: there is no
-package manager, installer or debugger, no key sequences, and nothing runs unless you typed a command or
-pressed a key you bound.
+Scheme runs in three ways: as a `:name` command you type, from a key you bound, and once at start-up.
+It is loaded from one place (your `init.scm`) and has a small set of host operations. It is not a
+plugin system: there is no package manager, installer or debugger, no key sequences, and nothing
+runs unless you typed a command, pressed a key you bound, or started the editor.
+
+Brote's language is documented in its own repository (`docs/scheme.md`, `docs/embedding.md`); this
+page documents only what Coigüe adds to it.
 
 ## A first command
 
@@ -99,6 +103,7 @@ interpreter is refused (see *Trust*).
 | `(define-theme name spec)` | Defines the theme `name`, which `:theme` and `set-theme` can then use. `name` follows the rule for command names, cannot be the name or alias of a built-in theme or of a theme already defined, and at most 16 themes can be defined. `spec` is a list of `("key" . value)` pairs (see *Themes*). | only while `init.scm` loads |
 | `(set-theme name)` | Starts the editor in the theme `name`, a built-in one or one defined earlier. An unknown name is an error that lists the choices. | only while `init.scm` loads |
 | `(bind-key mode key proc [doc [override]])` | Binds `key` in `mode` (`"normal"` or `"visual"`) to the procedure `proc`, which runs as a command does, with no arguments. See *Key bindings* for the key syntax and for which keys can be bound. At most 100 keys can be bound. | only while `init.scm` loads |
+| `(on-start proc)` | Registers `proc` to run once, as a command does, when the editor has started and a file is open. It can be called once. See *Start-up and reloading*. | only while `init.scm` loads |
 | `(selection?)` | `#t` if the command was started from a Visual selection and no edit has happened yet. | in a command |
 | `(selection-text)` | The selected text (see above). Error if there is no selection, it is longer than 65,536 characters, or an edit already happened in this command. | in a command |
 | `(buffer-text start [end])` | The text of lines `start` to `end` (1-based, inclusive; `end` defaults to `start`) of the current buffer as it is at this point of the command (edits already made are visible), joined with `\n` and without a trailing newline. Error if a line is outside the buffer or the text is longer than 65,536 characters. | in a command |
@@ -106,7 +111,7 @@ interpreter is refused (see *Trust*).
 | `(cursor-line)` | The 1-based line of the cursor (the end of the selection when there is one). | in a command |
 | `(cursor-column)` | The 1-based column of the cursor, counted in characters. | in a command |
 | `(buffer-path)` | The path of the file being edited, or `""` when the buffer has no file. | in a command |
-| `(mode)` | The mode the command was started from: `"normal"`, `"visual"` (`v`) or `"visual-line"` (`V`). A binding reports the mode it fired in. | in a command |
+| `(mode)` | The mode the command was started from: `"normal"`, `"visual"` (`v`) or `"visual-line"` (`V`). A binding reports the mode it fired in, and the start-up procedure reports `"normal"`. | in a command |
 | `(selection-range)` | The selection as the list `(start-line start-column end-line end-column)`, 1-based and inclusive at both ends, in document order whichever way the selection was made. A `V` selection runs from column 1 of its first line to the last character of its last. `#f` when there is no selection or an edit has ended it. | in a command |
 | `(word-at-cursor)` | The word under the cursor: the letters, digits and underscores around it on its line. `""` when the cursor is on anything else. | in a command |
 | `(find text [line [column]])` | The first place `text` occurs at or after `line` and `column` (both default to the start of the buffer), as the list `(line column)`, or `#f`. The search is literal, case-sensitive and does not wrap. `text` is not empty, has no newline and is at most 65,536 characters; a `column` can be one past the end of its line. | in a command |
@@ -118,11 +123,11 @@ interpreter is refused (see *Trust*).
 | `(set-cursor line column)` | Moves the cursor. | in a command |
 | `(message text)` | Sets the status line shown when the command finishes successfully; the last call wins. Control characters become spaces and the text is cut at 500 characters. | in a command |
 
-"In a command" means: while the editor is running a `:name` command or a bound key. Called any other way
-(while `init.scm` loads, or by anything that is not an invocation the editor started) these operations
-raise `name: not inside an extension command`; `define-command`, `define-theme`, `set-theme` and
-`bind-key` outside loading raise `define-command: only allowed while init.scm loads` (with their own
-name).
+"In a command" means: while the editor is running a `:name` command, a bound key or the start-up
+procedure. Called any other way (while `init.scm` loads, or by anything that is not an invocation the
+editor started) these operations raise `name: not inside an extension command`; `define-command`,
+`define-theme`, `set-theme`, `bind-key` and `on-start` outside loading raise
+`define-command: only allowed while init.scm loads` (with their own name).
 
 Line numbers and columns in the interface are 1-based, and every size is in characters. A column counts
 characters, so a tab or a wide character is one column, whatever it takes on the screen. The questions
@@ -225,7 +230,7 @@ change to the editor that gives one of them a meaning fails there until this tab
 
 Four keys can't be bound whatever you pass: `:`, Ctrl-O, Ctrl-P and, in Visual mode, `!`. `:` opens the
 command line, which is where `:q` and `:w` live (quitting and saving are commands, so keeping `:` keeps
-both). Ctrl-O and Ctrl-P open the
+both), and where `:reload` gets you out of a binding you'd rather not have. Ctrl-O and Ctrl-P open the
 file explorer and the file picker. Esc and Ctrl-C have no form, as above. `!` is how a Visual selection
 gets to a command.
 
@@ -265,6 +270,63 @@ visual U             Make the selection upper case
 
 Without any binding the editor behaves exactly as before: no key goes anywhere new, and the 42 recorded
 sessions in `tests/pty_golden.py` replay byte for byte.
+
+## Start-up and reloading
+
+### The start-up procedure
+
+`(on-start proc)` registers a procedure to run once, with no arguments, after the editor has started and
+the first file is open. It is a command in everything but how it starts: a private copy of the buffer,
+one undo step, the deadline, Ctrl-C, and every read and edit operation. `(mode)` is `"normal"`.
+`docs/examples/start.scm` opens log files at their last line.
+
+If the editor started on the welcome screen, with no file, the procedure waits and runs when the first
+file is opened. It runs once per session, so opening a second file does not run it again. It can be
+registered once; a second call is an error at load time.
+
+An error in the procedure is reported in the status line (`on-start failed: ...`) and nothing else
+happens: the editor is up and the file is open as it would have been. The procedure leaves the status
+line alone when it has nothing to say, so a message about `init.scm` that was already there stays.
+
+### `:reload`
+
+`:reload` reads `init.scm` again. The file is evaluated in a fresh interpreter, and only if that
+succeeds does the editor switch to it, replacing as one unit:
+
+* the commands, which are removed and defined again (a command missing from the new file is gone);
+* the themes, which are the ones the new file defines;
+* the key bindings;
+* the start-up procedure, which is read but not run (see below).
+
+If the file fails to load, for any reason a first load could fail (a syntax error, a Scheme error, a
+refused key, a built-in command's name, a second `on-start`, the deadline, Ctrl-C, a file that is
+missing or too big), nothing has changed. Every command, theme and binding is exactly as it was, the
+theme in use is the same one, and the status line says why:
+
+```
+init.scm: failed: bad file 7; nothing changed
+```
+
+The same trust applies as at start-up: the file is the one from your configuration directory and no
+other. The same deadline applies too, and so does Ctrl-C.
+
+What is and is not run again:
+
+* The whole file runs again from the top in a new interpreter. Variables you defined in the old one are
+  gone, and the new file computes its own.
+* `set-theme` runs again, so it wins over a `:theme` you typed since start-up. If the new file does not call
+  it, you stay in the theme you are in when it still exists, and go to Mocha when it doesn't (the status
+  line says so).
+* The start-up procedure does not run again. The editor is up, and running it twice would repeat whatever
+  it did. If the editor is still on the welcome screen, the procedure from the reloaded file is the one
+  that runs when you open a file.
+* The buffer, its undo history, the registers, the cursor and the selection are not touched.
+
+The status line says `Reloaded init.scm: 3 commands, 2 key bindings` when it worked.
+
+`:reload` works from the first start even if `init.scm` didn't exist then, so you can create the file and
+reload. Tab completes it only once an init file has been found, which keeps the completion list for an
+editor without one exactly as it was.
 
 ## Themes
 
@@ -352,10 +414,11 @@ moves the cursor is applied too, but records no undo step.
 ## Threading and reentrancy
 
 * One interpreter per editor, created the first time `init.scm` is loaded and used by one
-  goroutine at a time. Brote's `*Interp` has no locking.
+  goroutine at a time. Brote's `*Interp` has no locking. `:reload` makes a second interpreter and uses it
+  from the same goroutine, and the editor keeps the new one only if the file loaded.
 * Scheme is evaluated on the editor goroutine: the goroutine that calls `Editor.Key`, which in
   the `coigue` command is the main goroutine running the event loop. Only `Editor.Key` (running a
-  command, a binding) and `Editor.LoadInit` evaluate Scheme. The call is synchronous: the editor does nothing
+  command, a binding or `:reload`), `Editor.LoadInit` and `Editor.RunStart` evaluate Scheme. The call is synchronous: the editor does nothing
   else until it returns.
 * Host operations run on that same goroutine, inside Brote's call, and they touch only the
   invocation's private copy (above), never the live buffer, registers, messages or command table.
@@ -396,14 +459,15 @@ moves the cursor is applied too, but records no undo step.
 ## Loading and trust
 
 * Scheme is loaded from **one place**: `$XDG_CONFIG_HOME/coigue/init.scm`, or `~/.config/coigue/init.scm`
-  when `XDG_CONFIG_HOME` is unset, empty or not an absolute path. It is read once, when the editor
-  starts. Changes need a restart.
+  when `XDG_CONFIG_HOME` is unset, empty or not an absolute path. It is read when the editor
+  starts and again when you type `:reload`, and at no other time.
 * It is **never** loaded from the directory of the file you open, the working directory, or any
   project directory, and nothing is run because a repository contains a file. A `init.scm` next to
   the file you edit is just a text file.
 * A **missing file is normal** and says nothing. A file that cannot be read, or an error while it
   loads (a syntax error, a Scheme error, the deadline, Ctrl-C), is reported in the status line as
   `init.scm: ...` and **does not stop start-up**. Commands defined before the error stay defined.
+  (`:reload` is stricter: a file that fails changes nothing.)
   The file must be a regular file of at most 1 MiB.
 * The program you write is as trusted as your shell's start-up files, but it is limited to the
   host interface above. In particular, Brote's `load` builtin, which reads any file the process can
@@ -415,11 +479,12 @@ moves the cursor is applied too, but records no undo step.
 * The command line is unchanged: `coigue [FILE]`, `--help`, `--version`. No flag was added, so
   there is nothing that would let a command line (and so a project script) pick a different file.
 
-## Not in this slice
+## Not here
 
-Running Scheme from an event, reading or writing other files, LSP data, running a command from Scheme,
-reloading `init.scm`, a `:eval` command, defining modes, key sequences, scripts distributed as packages.
-Each needs its own decision about trust and threading first.
+Key sequences, bindings in Insert mode or in the command line, running Scheme from an event other than
+the start of the editor, reading or writing other files, LSP data, running a command from Scheme, a
+`:eval` command, defining modes, scripts distributed as packages. Each needs its own decision about trust
+and threading first.
 
 ## Differences from the Rust editor
 
@@ -432,7 +497,8 @@ a menu action. The Rust editor ignored `!` in Visual mode.
 sessions in `tests/pty_golden.py` type `:theme terminal` in Visual-line mode and pin that, and so
 does the ported editor test for Visual mode. Making `:` do what `!` does would be the natural
 change and a one-line one (`visualKey` in `internal/editor/input.go`) if those expectations are
-updated. Without an `init.scm` nothing else in the editor changed, and the 42 recorded sessions replay
+updated. Without an `init.scm` nothing else in the editor changed: the one new command, `:reload`, is
+not offered by Tab completion until an init file has been found, and the 42 recorded sessions replay
 byte for byte. With one, a bound key in Normal or Visual mode runs its procedure where the Rust editor
 ignored it or acted on it (see *Key bindings* for the keys that need an explicit override).
 
@@ -471,6 +537,9 @@ Names are Go tests unless a file is given. `ext` is `internal/ext/ext_test.go`, 
 | Bindings stay out of typing, pending operators, the welcome screen and overlays | `TestBindingsStayOutOfTheWayOfTypingAndPendingKeys`, `TestBindingsDoNotRunOnTheWelcomeScreenOrInOverlays`, `TestNormalBindingDoesNotSeeAVisualSelectionAndTheOtherWayRound` (editor) |
 | Built-in keys need `override`; `:`, Ctrl-O, Ctrl-P and Visual `!` never bind | `TestBuiltInKeysNeedOverrideAndNeverBoundKeysCannotBeOverridden`, `TestOverrideShadowsTheBuiltInMeaning`, `TestNeverBoundKeysKeepTheirMeaning` (editor) |
 | The lists of built-in keys are the whole story, both ways | `TestUnlistedKeysDoNothing`, `TestListedKeysDoSomething` (editor) |
+| The start-up procedure: once, after the first file, errors, deadline | `TestStartProcedureRunsOnceWhenTheFirstFileIsOpen`, `TestStartProcedureWaitsForAFileOnTheWelcomeScreen`, `TestStartProcedureFailureIsReportedAndBlocksNothing`, `TestStartProcedureHonoursTheDeadline` (editor); `TestOnStart` (ext) |
+| `:reload` replaces commands, themes and bindings as a unit, and a failure changes nothing | `TestReloadReplacesCommandsThemesAndBindingsAsAUnit`, `TestReloadKeepsTheThemeYouSwitchedToWhenItStillExists`, `TestFailedReloadLeavesEverythingAsItWas`, `TestReloadFailureMessagesSayWhy`, `TestReloadDeadlineAndNoLocation`, `TestReloadCreatesTheFirstInit` (editor) |
+| Without an init file nothing is visible: `:reload` is not completed, no binding path | `TestReloadCompletesOnlyOnceThereIsAnInit`, `TestBindingsDoNotMoveTheGoldenPaths` (editor); `tests/pty_golden.py` |
 | The guide lists bindings next to commands | `TestHelpListsBindingsNextToCommands` (editor) |
-| The example scripts load and do what the page says | `TestExampleInit` (editor) |
+| The three example scripts load and do what the page says | `TestExampleInit` (editor) |
 | Everything above in a real terminal, with a temporary `HOME` and `XDG_CONFIG_HOME` | `tests/pty_extension.py` |

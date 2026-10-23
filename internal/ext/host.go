@@ -206,6 +206,15 @@ func (r *Runtime) hostOperations() []*scheme.Prim {
 			},
 			Handler: r.bindKey,
 		},
+		{
+			Name: "on-start",
+			Meta: scheme.Meta{
+				Doc:    "Run the procedure PROC once, with no arguments and as a command does, after the editor has started and a file is open. Only while init.scm loads, and once.",
+				Params: []scheme.Param{{Name: "proc", Type: "any", Doc: "procedure taking no arguments"}},
+				Origin: "builtin",
+			},
+			Handler: r.onStart,
+		},
 	}
 	prims = append(prims, readOperations()...)
 	return append(prims, editOperations()...)

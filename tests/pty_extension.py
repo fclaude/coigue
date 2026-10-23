@@ -6,8 +6,8 @@ one undo and one redo, failures that change nothing, runaway loops that are inte
 or stopped, a command that survives switching files, (load ...) refused, a project-local
 init.scm that is never run, a missing or broken init.scm that does not block start-up, and
 themes defined and chosen from init.scm, keys bound from init.scm (Ctrl, Alt and Visual keys,
-the keys that cannot be bound, a bound key that fails), the F1 guide listing them, and the edit
-operations as one undo step.
+the keys that cannot be bound, a bound key that fails), the F1 guide listing them, the edit
+operations as one undo step, a start-up procedure, and :reload after rewriting init.scm.
 """
 import fcntl
 import os
@@ -567,6 +567,127 @@ def edit_operations(root):
     print('edits: replace-lines, delete-lines, insert-at and set-cursor are one undo step; set-cursor alone is none')
 
 
+def start_procedure(root):
+    program = """
+(on-start (lambda ()
+  (insert-text (string-append "[" (mode) "] "))
+  (message "hook-ran")))
+"""
+    box = Sandbox(root, 'start', program, files={'doc.txt': 'abc\n', 'other.txt': 'def\n'})
+    path = box.project / 'doc.txt'
+    s = box.start('doc.txt')
+    s.drain(0.3)
+    assert b'hook-ran' in s.output, bytes(s.output)[-1500:]
+    s.save(path, '[normal] abc\n')
+    s.send(b'u', expect=b'Undone')  # one undo step
+    s.save(path, 'abc\n')
+    s.quit()
+    # On the welcome screen it waits for the first file, runs then, and not for the second.
+    s = box.start()
+    s.drain(0.3)
+    assert b'hook-ran' not in s.output
+    s.send(CTRL_P)
+    s.send_text('other.txt', settle=0.6)
+    s.send(b'\r', expect=b'hook-ran')
+    s.save(box.project / 'other.txt', '[normal] def\n')
+    s.send(CTRL_P)
+    s.send_text('doc.txt', settle=0.6)
+    s.send(b'\r', settle=0.4)
+    s.send(b':q!\r')
+    assert s.proc.wait(timeout=5) == 0
+    assert box.text('doc.txt') == 'abc\n'
+    s.close()
+    # A failing start-up procedure is reported and the editor is up.
+    bad = Sandbox(root, 'start-bad', '(on-start (lambda () (insert-text "x") (error "no luck")))', files={'doc.txt': 'abc\n'})
+    s = bad.start('doc.txt')
+    s.drain(0.3)
+    assert b'on-start failed: no luck' in s.output, bytes(s.output)[-1500:]
+    s.send(b'ix')
+    s.send(ESC)
+    s.save(bad.project / 'doc.txt', 'xabc\n')
+    s.quit()
+    # A runaway one is stopped by the deadline, and Ctrl-C ends it at once.
+    spin = Sandbox(root, 'start-spin', '(on-start (lambda () (insert-text "x") (let loop () (loop))))', files={'doc.txt': 'abc\n'})
+    s = spin.start('doc.txt')
+    s.send(CTRL_C, expect=b'on-start interrupted; no changes made', timeout=5)
+    s.save(spin.project / 'doc.txt', 'abc\n')
+    s.quit()
+    print('start: on-start runs once after the first file, as one undo step; errors and runaways do not block')
+
+
+def reload(root):
+    first = """
+(define-command "one" (lambda () (message "one says hi")))
+(define-command "gone" (lambda () (message "gone")))
+(bind-key "normal" "X" (lambda () (message "old X")))
+(on-start (lambda () (message "start ran")))
+"""
+    box = Sandbox(root, 'reload', first, files={'doc.txt': 'abc\n'})
+    init = box.config / 'coigue' / 'init.scm'
+    s = box.start('doc.txt')
+    s.drain(0.3)
+    assert b'start ran' in s.output
+    s.send_text(':one\r', expect=b'one says hi')
+    s.send(b'X', expect=b'old X')
+    # Rewrite the file while the editor runs: a changed command, a new one, a rebound key, a theme.
+    init.write_text("""
+(define-command "one" (lambda () (message "one says hello now")))
+(define-command "two" (lambda () (message "two is new")))
+(bind-key "normal" "X" (lambda () (message "new X")))
+(bind-key "normal" "Y" (lambda () (message "new Y")))
+(define-theme "dusk" '(("keyword" . "#ff79c6")))
+(on-start (lambda () (message "start ran again")))
+""", encoding='utf-8')
+    out = s.send_text(':reload\r', expect=b'Reloaded init.scm: 2 commands, 2 key bindings')
+    assert b'start ran again' not in out, 'the start-up procedure ran again on :reload'
+    s.send_text(':one\r', expect=b'one says hello now')
+    s.send_text(':two\r', expect=b'two is new')
+    s.send_text(':gone\r', expect=b'Unknown command: gone')
+    s.send(b'X', expect=b'new X')
+    s.send(b'Y', expect=b'new Y')
+    s.send_text(':theme dusk\r', expect=b'Theme: dusk')
+    # A broken file changes nothing, and the status line says why.
+    init.write_text('(define-command "three" (lambda () 1)) (error "typo in my init" 7)', encoding='utf-8')
+    s.send_text(':reload\r', expect=b'init.scm: failed: typo in my init 7; nothing changed')
+    s.send_text(':two\r', expect=b'two is new')
+    s.send_text(':three\r', expect=b'Unknown command: three')
+    s.send(b'X', expect=b'new X')
+    s.send_text(':theme dusk\r', expect=b'Theme: dusk')
+    # So does a key that cannot be bound, a runaway file and a missing one.
+    init.write_text('(bind-key "normal" "<C-c>" car)', encoding='utf-8')
+    s.send_text(':reload\r', expect=b'bind-key: "<C-c>" cannot be bound')
+    init.write_text('(let loop () (loop))', encoding='utf-8')
+    s.send_text(':reload\r', expect=b'init.scm: stopped after 5s; nothing changed', timeout=10)
+    init.unlink()
+    s.send_text(':reload\r', expect=b'nothing changed')
+    s.send_text(':two\r', expect=b'two is new')
+    # Typing: reload leaves the text and the undo history alone.
+    s.send(b'ix')
+    s.send(ESC)
+    init.write_text('(define-command "again" (lambda () (message "back again")))', encoding='utf-8')
+    s.send_text(':reload\r', expect=b'Reloaded init.scm: 1 command, 0 key bindings')
+    s.send_text(':again\r', expect=b'back again')
+    s.send(b'u', expect=b'Undone')
+    s.save(box.project / 'doc.txt', 'abc\n')
+    s.quit()
+
+    # No init.scm at start-up: :reload still works once the file exists, and is not completed before.
+    late = Sandbox(root, 'reload-late', None, files={'doc.txt': 'abc\n'})
+    s = late.start('doc.txt')
+    s.send(b':rel\t')
+    out = bytes(s.output)
+    assert b':reload' not in out, 'Tab completed :reload without an init file'
+    s.send(ESC)
+    where = late.config / 'coigue'
+    where.mkdir(parents=True)
+    (where / 'init.scm').write_text('(define-command "hello" (lambda () (message "hello, init")))', encoding='utf-8')
+    s.send_text(':reload\r', expect=b'Reloaded init.scm: 1 command, 0 key bindings')
+    s.send_text(':hello\r', expect=b'hello, init')
+    s.quit()
+    print('reload: new and removed commands, bindings and themes, failures change nothing, a first init.scm')
+
+
+
 def command_line_contract(root):
     # --version and --help are answered before any configuration is read.
     box = Sandbox(root, 'contract', '(let loop () (loop))')
@@ -589,7 +710,7 @@ with tempfile.TemporaryDirectory() as directory:
     for scenario in (wrap_undo_redo, failures_change_nothing, runaway, file_switching, load_is_refused,
                      only_the_user_configuration_is_loaded, where_the_user_file_lives,
                      missing_or_broken_init, themes_from_init, key_bindings, edit_operations,
-                     command_line_contract):
+                     start_procedure, reload, command_line_contract):
         if not chosen or scenario.__name__ in chosen:
             scenario(directory)
 print('PTY extension suite passed')

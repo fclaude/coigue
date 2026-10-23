@@ -85,6 +85,7 @@ func run(args []string) error {
 	// from the directory of the file being edited.
 	if path, ok := ext.InitPath(os.Getenv, os.UserHomeDir); ok {
 		ed.LoadInit(path)
+		ed.RunStart()
 	}
 	return loop(ed, t, in)
 }
