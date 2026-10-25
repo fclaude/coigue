@@ -264,7 +264,7 @@ def main():
     for failure in failures:
         print('FAIL', failure)
     assert not failures, f'{len(failures)} scenarios differ from the Rust recordings'
-    print(f'PTY golden: {len(SCENARIOS)} scenarios match the Rust editor ({identical} byte-identical, {batched} identical screens)')
+    print(f'PTY golden: {len(SCENARIOS)} scenarios match saved Rust-reference recordings ({identical} byte-identical, {batched} screen-equivalent with different output batching)')
 
 
 main()
