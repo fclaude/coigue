@@ -50,10 +50,10 @@ func TestVersionExitsWithoutATerminal(t *testing.T) {
 	if code != 0 || stderr != "" {
 		t.Fatalf("exit %d stderr %q", code, stderr)
 	}
-	if !strings.HasPrefix(stdout, "coigue 0.2.1") || !strings.Contains(stdout, "main build") || !strings.Contains(stdout, "commit") {
+	if !strings.HasPrefix(stdout, "coigue 0.2.2") || !strings.Contains(stdout, "main build") || !strings.Contains(stdout, "commit") {
 		t.Fatalf("stdout = %q", stdout)
 	}
-	if stdout != "coigue 0.2.1 (main build development; commit unknown)\n" {
+	if stdout != "coigue 0.2.2 (main build development; commit unknown)\n" {
 		t.Fatalf("default build identity = %q", stdout)
 	}
 }
@@ -63,7 +63,7 @@ func TestVersionIdentityIsInjectedAtLinkTime(t *testing.T) {
 	binary := build(t, "-X github.com/fclaude/coigue/internal/version.PackageRevision=r42 "+
 		"-X github.com/fclaude/coigue/internal/version.SourceCommit=abc1234")
 	stdout, _, code := run(t, binary, "--version")
-	if code != 0 || stdout != "coigue 0.2.1 (main build r42; commit abc1234)\n" {
+	if code != 0 || stdout != "coigue 0.2.2 (main build r42; commit abc1234)\n" {
 		t.Fatalf("exit %d stdout %q", code, stdout)
 	}
 }
@@ -99,7 +99,7 @@ func TestArgumentContractWithoutATerminal(t *testing.T) {
 		}
 	}
 	stdout, _, code := run(t, binary, "--version", "x")
-	if code != 0 || !strings.HasPrefix(stdout, "coigue 0.2.1") {
+	if code != 0 || !strings.HasPrefix(stdout, "coigue 0.2.2") {
 		t.Errorf("--version x: exit %d stdout %q", code, stdout)
 	}
 	for _, args := range [][]string{{"a", "b"}, {"x", "--version"}} {
