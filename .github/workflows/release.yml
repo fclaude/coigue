@@ -1,0 +1,167 @@
+# Publishes a GitHub release for a tag vMAJOR.MINOR.PATCH. The tag's numbers
+# must match internal/version.Version. CI runs first; packages are uploaded
+# only after it passes. Running this workflow again on the same tag replaces
+# the assets and the notes.
+#
+#   git tag v0.1.0
+#   git push origin v0.1.0
+#
+# workflow_dispatch works when the selected ref is that tag.
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    name: Check tag
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.tag.outputs.version }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Require a release tag that matches the source version
+        id: tag
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_REF_TYPE" != "tag" ]; then
+            echo "Publish from a tag, not ${GITHUB_REF}." >&2
+            echo "Push vMAJOR.MINOR.PATCH, or run this workflow with that tag selected." >&2
+            exit 1
+          fi
+          tag="$GITHUB_REF_NAME"
+          version="${tag#v}"
+          if ! printf '%s\n' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "Tag ${tag} is not vMAJOR.MINOR.PATCH." >&2
+            exit 1
+          fi
+          source=$(sed -n 's/^[[:space:]]*Version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' internal/version/version.go)
+          if [ "$source" != "$version" ]; then
+            echo "internal/version.Version is ${source}, tag is ${tag}." >&2
+            echo "Bump Version and tag that same number." >&2
+            exit 1
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+  test:
+    name: Test
+    needs: gate
+    uses: ./.github/workflows/ci.yml
+
+  packages:
+    name: Package
+    needs: [gate, test]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      # Use the Go that setup-go installs; never fetch another toolchain when
+      # go.mod asks for a newer release.
+      GOTOOLCHAIN: local
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.x"
+
+      - name: Install rpm
+        run: sudo apt-get update && sudo apt-get install -y rpm
+
+      - name: Build packages
+        run: scripts/release-packages.sh "${{ needs.gate.outputs.version }}" "$GITHUB_SHA" dist
+
+      - name: Upload packages
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: packages
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    name: Publish
+    needs: [gate, packages]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download packages
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: packages
+          path: dist
+
+      - name: Write release notes
+        env:
+          VERSION: ${{ needs.gate.outputs.version }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, pathlib, textwrap
+          version = os.environ["VERSION"]
+          sha = os.environ["GITHUB_SHA"]
+          sums = pathlib.Path("dist/SHA256SUMS").read_text().rstrip()
+          text = textwrap.dedent(f"""\
+          coigue {version}
+
+          Static binaries. Each archive includes LICENSE and THIRD_PARTY_NOTICES.md. The deb and rpm packages install the binary at `/usr/bin/coigue` and those two files under `/usr/share/doc/coigue/`.
+
+          | System | Package |
+          | --- | --- |
+          | Ubuntu, Debian | `coigue_{version}_linux_amd64.deb`, `coigue_{version}_linux_arm64.deb` (`sudo dpkg -i ./coigue_{version}_linux_amd64.deb`) |
+          | Fedora, RHEL | `coigue-{version}-1.x86_64.rpm`, `coigue-{version}-1.aarch64.rpm` (`sudo dnf install ./coigue-{version}-1.x86_64.rpm`) |
+          | macOS | `coigue_{version}_darwin_amd64.tar.gz`, `coigue_{version}_darwin_arm64.tar.gz` |
+          | Windows | `coigue_{version}_windows_amd64.zip`, `coigue_{version}_windows_arm64.zip` |
+
+          The Linux `.tar.gz` files are the same binaries as the packages. macOS and Windows archives unpack to a directory with `coigue` (`coigue.exe` on Windows); put that file on `PATH`.
+
+          The Windows build talks to Windows Terminal and the Windows console with virtual-terminal sequences. Explorer rename, delete, and restore still require Linux or macOS, and the terminal test suite does not run on Windows.
+
+          `coigue --version` reports `coigue {version} (main build v{version}; commit {sha})`.
+
+          Check a download with `sha256sum -c SHA256SUMS`.
+
+          ```
+          {sums}
+          ```
+          """)
+          pathlib.Path("release-notes.md").write_text(text)
+          PY
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.gate.outputs.version }}
+        run: |
+          set -euo pipefail
+          tag="v${VERSION}"
+          files=(dist/*)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "no packages to publish" >&2
+            exit 1
+          fi
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$tag" --repo "$GITHUB_REPOSITORY" --clobber "${files[@]}"
+            gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --title "coigue ${VERSION}" --notes-file release-notes.md
+          else
+            gh release create "$tag" --repo "$GITHUB_REPOSITORY" --title "coigue ${VERSION}" --notes-file release-notes.md "${files[@]}"
+          fi

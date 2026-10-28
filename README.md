@@ -27,6 +27,27 @@ terminal test suite runs; it is not part of the editor. The Go sources are
 `cmd/coigue` and `internal/`; `go.mod` lists the three runtime dependencies
 (goldmark, `golang.org/x/sys`, `golang.org/x/term`).
 
+## Releases
+
+Pushing a tag `vX.Y.Z` whose numbers match `internal/version.Version` runs the
+[release workflow](.github/workflows/release.yml). It waits for CI, then
+publishes a GitHub release. Running the workflow again on that tag replaces
+the assets.
+
+| System | Files |
+| --- | --- |
+| Ubuntu, Debian | `.deb` for amd64 and arm64 |
+| Fedora, RHEL | `.rpm` for x86_64 and aarch64 |
+| macOS | `.tar.gz` for Intel and Apple Silicon |
+| Windows | `.zip` for amd64 and arm64 |
+| Other Linux | the same binaries as `.tar.gz` |
+
+`SHA256SUMS` lists every file. Archives contain the binary, `LICENSE` and
+`THIRD_PARTY_NOTICES.md`. The packages install `coigue` at `/usr/bin/coigue`
+and those two files under `/usr/share/doc/coigue/`. Locally,
+`make packages VERSION=0.1.0 COMMIT=$(git rev-parse HEAD)` writes the same
+files to `dist/`.
+
 ## Compatibility
 
 Linux and macOS terminals are the intended platforms. [GitHub Actions CI](.github/workflows/ci.yml)
@@ -41,7 +62,7 @@ replay runs on Linux only.
 | macOS Intel | Tested in CI | Native `macos-15-intel` runner; builds, unit tests, and the terminal, language-server and signal suites pass. The recorded-session replay skips itself. |
 | macOS Apple Silicon | Tested in CI | Native `macos-15` ARM64 runner; builds, unit tests, and the terminal, language-server and signal suites pass. The recorded-session replay skips itself. |
 | Linux ARM64 and other architectures | Unverified | No architecture-specific application code, but compilation and runtime behavior have not been verified. |
-| Windows native | Not an intended platform | Core editing is unverified; explorer rename, delete, and restore operations explicitly fail. |
+| Windows | Release builds, unverified | amd64 and arm64 zips. The console uses virtual-terminal sequences (Windows Terminal). Explorer rename, delete, and restore still fail. The terminal test suite does not run here. |
 | BSD and other Unix systems | Not an intended platform | Core editing is unverified; explorer rename, delete, and restore operations explicitly fail. |
 
 CI coverage applies to the runner systems listed above; minimum OS versions

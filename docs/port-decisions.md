@@ -326,8 +326,10 @@ Further entries are added when the evidence for a new package is collected.
 macOS (Intel and Apple Silicon): `renamex_np` (in `fsx` and `fileops`), `pbcopy`/`pbpaste` helpers, `LC_CTYPE`,
 `PENDIN` after raw mode, `F_FULLFSYNC`, case-insensitive path comparisons, `tests/pty_golden.py` (skips
 itself there because the status line shows `/tmp/...` paths). Only `go vet` and compilation were run for
-`darwin/amd64` and `darwin/arm64`, and `GOOS=windows go vet` for `fileops`. Windows and other platforms are out
-of scope. Real language servers and real clipboard helpers were not driven; the suites use fakes.
+`darwin/amd64` and `darwin/arm64`, and `GOOS=windows go vet` for `fileops`. A Windows console backend now
+lets release builds produce a binary; that backend was not checked against the Rust editor. Explorer rename,
+delete, and restore still refuse except on Linux and macOS. Other platforms are out of scope. Real language
+servers and real clipboard helpers were not driven; the suites use fakes.
 
 Also not verified: Markdown reflow against real-world documents (only generated ones were compared);
 `ignore` regex size limit (10 MB, which would drop a whole ignore file), `DT_UNKNOWN` file systems, a clock before

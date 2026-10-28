@@ -1,4 +1,5 @@
 /bin/
+/dist/
 site/content/
 site/public/
 site/audit/node_modules/

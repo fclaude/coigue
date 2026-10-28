@@ -1,9 +1,15 @@
 name: CI
 
 on:
+  # Tag pushes are not listed here. The release workflow calls this one, so a
+  # tag is tested once and the packages are published only after that passes.
   push:
+    branches:
+      - "*"
+      - "**"
   pull_request:
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read

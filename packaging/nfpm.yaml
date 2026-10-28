@@ -1,0 +1,36 @@
+# Linux packages for one static coigue binary. scripts/release-packages.sh
+# sets ARCH, VERSION, SRC_BINARY, SRC_LICENSE and SRC_NOTICES, then runs
+# `nfpm package` twice (deb and rpm). ARCH is a Debian name (amd64, arm64);
+# nfpm translates it for the rpm.
+name: coigue
+arch: ${ARCH}
+platform: linux
+version: ${VERSION}
+release: "1"
+section: editors
+priority: optional
+maintainer: "Francisco Claude-Faust <fclaude@recoded.cl>"
+vendor: Francisco Claude-Faust
+homepage: https://github.com/fclaude/coigue
+license: MIT
+description: |
+  A small terminal modal editor.
+  One UTF-8 file at a time.
+contents:
+  - src: ${SRC_BINARY}
+    dst: /usr/bin/coigue
+    expand: true
+    file_info:
+      mode: 0755
+  - src: ${SRC_LICENSE}
+    dst: /usr/share/doc/coigue/LICENSE
+    expand: true
+    file_info:
+      mode: 0644
+  - src: ${SRC_NOTICES}
+    dst: /usr/share/doc/coigue/THIRD_PARTY_NOTICES.md
+    expand: true
+    file_info:
+      mode: 0644
+rpm:
+  summary: A small terminal modal editor

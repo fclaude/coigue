@@ -1,27 +1,15 @@
 //go:build unix
 
-// Package term owns the terminal: raw mode and the alternate screen with
-// restoration on every exit path, size queries, and the stream of decoded
-// input events. It deliberately stays below any widget or screen model: the
-// renderer writes bytes, this package only guarantees the terminal is left as
-// it was found.
 package term
 
 import (
-	"errors"
 	"io"
 	"os"
 	"sync"
 
 	"golang.org/x/sys/unix"
 	xterm "golang.org/x/term"
-
-	"github.com/fclaude/coigue/internal/guard"
 )
-
-// readSize is crossterm's TTY buffer size. A read that fills it signals that
-// more input is probably pending, which keeps a trailing ESC unresolved.
-const readSize = 1024
 
 // Terminal is a raw-mode alternate-screen session. Close undoes it, and is
 // safe to call more than once and from any goroutine.
@@ -113,33 +101,9 @@ func Size(out *os.File) (cols, rows int, err error) {
 	return 0, 0, firstErr
 }
 
-// ErrInputClosed is delivered when the terminal can no longer be read.
-var ErrInputClosed = errors.New("terminal input closed")
-
 // Events starts reading the terminal and returns the decoded events. A
 // ResizeEvent is sent when the window changes size so the caller redraws at
 // once, and a nil event with the read error closes the stream.
 func (t *Terminal) Events() <-chan Event {
-	events := make(chan Event, 64)
-	guard.Go(func() {
-		defer close(events)
-		parser := Parser{Raw: true}
-		buf := make([]byte, readSize)
-		for {
-			n, err := t.in.Read(buf)
-			for _, event := range parser.Feed(buf[:n], n == readSize) {
-				events <- event
-			}
-			if err != nil {
-				return
-			}
-		}
-	})
-	notifyResize(func() {
-		select {
-		case events <- Event{Type: ResizeEvent}:
-		default:
-		}
-	})
-	return events
+	return readEvents(t.in, notifyResize)
 }

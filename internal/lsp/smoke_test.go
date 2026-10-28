@@ -20,7 +20,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 )
@@ -182,7 +181,7 @@ func (s *smoke) assertReaped() {
 			if !ok {
 				continue
 			}
-			if err := syscall.Kill(int(pid), 0); err == nil {
+			if processAlive(int(pid)) {
 				s.t.Errorf("language server not reaped: %d", pid)
 			}
 		}

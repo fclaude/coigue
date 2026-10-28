@@ -1,6 +1,6 @@
 # Setting it up
 
-You need a terminal on Linux or macOS and Go 1.26 or newer. Coigüe is a single program with no runtime dependencies beyond that, and you don't need any other tool for it to work.
+To build from source you need a terminal on Linux or macOS and Go 1.26 or newer. Coigüe is a single program with no runtime dependencies beyond that, and you don't need any other tool for it to work. A Windows console build is in the GitHub releases.
 
 ## Installing
 
@@ -21,6 +21,8 @@ make build
 ```
 
 That makes `bin/coigue`. `go run ./cmd/coigue` starts it without building anything first, which is handy while you're changing the code.
+
+GitHub releases carry the same program already built. Ubuntu and Debian install the `.deb`, Fedora and other RPM systems install the `.rpm`. macOS and Windows archives unpack to one `coigue` program (`coigue.exe` on Windows); put that file on your `PATH`. `SHA256SUMS` on the release checks the download. The Windows build needs Windows Terminal or another console that understands virtual-terminal sequences.
 
 ## Checking that it works
 
