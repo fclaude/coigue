@@ -2,6 +2,7 @@ package editor
 
 import (
 	"errors"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -45,22 +46,26 @@ func (e *Editor) LoadInit(path string) {
 	}
 	e.commands.list("reload")
 	if e.extensions == nil {
-		e.extensions = ext.New(e.extensionOptions(&e.Themes, func(t theme.Theme) { e.Theme = t }, e.defineExtensionCommand))
+		e.extensions = ext.New(e.extensionOptions(&e.Themes, func(t theme.Theme) { e.Theme = t }, e.checkExtensionCommand))
 	}
 	if err := e.extensions.Load(e.ctx, source); err != nil {
 		e.Message = "init.scm: " + ext.Tidy(err.Error())
 	}
+	// Commands defined before an error stay. A key two modules bound, and
+	// that init.scm did not, is left unbound; the status line says so.
+	e.installExtensionCommands(e.extensions)
 }
 
 // extensionOptions are the options of a runtime that loads init.scm into
 // themes, with the given way to define commands and to choose the theme.
 func (e *Editor) extensionOptions(themes *theme.Set, setTheme func(theme.Theme), define func(name, doc string) error) ext.Options {
 	return ext.Options{
-		Define:   define,
-		Themes:   themes,
-		SetTheme: setTheme,
-		Bind:     bindable,
-		Deadline: e.extDeadline,
+		Define:    define,
+		Themes:    themes,
+		SetTheme:  setTheme,
+		Bind:      bindable,
+		ConfigDir: filepath.Dir(e.initPath),
+		Deadline:  e.extDeadline,
 		Watch: func(interrupt func()) func() {
 			if e.interrupter == nil {
 				return func() {}
@@ -104,16 +109,8 @@ func (e *Editor) reloadInit() {
 }
 
 func (e *Editor) commitReload(stage *ext.Runtime, themes theme.Set, chosen *theme.Theme) {
-	if e.extensions != nil {
-		for _, c := range e.extensions.Commands() {
-			e.commands.remove(c.Name)
-		}
-	}
-	for _, c := range stage.Commands() {
-		e.commands.add(commandSpec{name: c.Name, args: true, run: extensionCommand, extension: true})
-	}
+	e.installExtensionCommands(stage)
 	e.commands.list("reload")
-	e.commandCompletion = nil
 	previous := e.Themes.Name(e.Theme)
 	e.extensions = stage
 	e.Themes = themes
@@ -126,8 +123,32 @@ func (e *Editor) commitReload(stage *ext.Runtime, themes theme.Set, chosen *them
 		e.Theme = theme.CatppuccinMocha
 		note = "; theme " + previous + " is gone, using " + e.Themes.Name(e.Theme)
 	}
-	e.Message = ext.Tidy("Reloaded init.scm: " + plural(len(stage.Commands()), "command") + ", " +
-		plural(len(stage.Bindings()), "key binding") + note)
+	e.Message = ext.Tidy("Reloaded init.scm: " + reloadSummary(stage) + note)
+}
+
+// installExtensionCommands replaces the extension commands with the ones the
+// runtime resolved: the short names, then every module/name form.
+func (e *Editor) installExtensionCommands(rt *ext.Runtime) {
+	e.commands.removeExtensions()
+	add := func(c ext.Command) {
+		e.commands.add(commandSpec{name: c.Name, args: true, run: extensionCommand, extension: true})
+	}
+	for _, c := range rt.Commands() {
+		add(c)
+	}
+	for _, c := range rt.QualifiedCommands() {
+		add(c)
+	}
+	e.commandCompletion = nil
+}
+
+func reloadSummary(rt *ext.Runtime) string {
+	parts := make([]string, 0, 3)
+	if n := len(rt.Modules()); n > 0 {
+		parts = append(parts, plural(n, "module"))
+	}
+	parts = append(parts, plural(len(rt.QualifiedCommands()), "command"), plural(len(rt.Bindings()), "key binding"))
+	return strings.Join(parts, ", ")
 }
 
 func plural(n int, noun string) string {
@@ -146,16 +167,6 @@ func (e *Editor) checkExtensionCommand(name, _ string) error {
 	if spec, taken := e.commands.lookup(name); taken && !spec.extension {
 		return errors.New("\"" + name + "\" is a built-in command")
 	}
-	return nil
-}
-
-// defineExtensionCommand adds :name to the command table, so completion and
-// execution treat it like a built-in one.
-func (e *Editor) defineExtensionCommand(name, doc string) error {
-	if err := e.checkExtensionCommand(name, doc); err != nil {
-		return err
-	}
-	e.commands.add(commandSpec{name: name, args: true, run: extensionCommand, extension: true})
 	return nil
 }
 
@@ -225,12 +236,18 @@ func (e *Editor) RunStart() {
 		return
 	}
 	e.startDone = true
-	before := e.Message
-	e.runExtension("on-start", nil, func(s *ext.Session) error {
-		return e.extensions.RunStart(e.ctx, s)
-	})
-	if e.Message == "Ran on-start" {
-		e.Message = before
+	for _, owner := range e.extensions.StartOwners() {
+		label := "on-start"
+		if owner != ext.InitModule {
+			label = "on-start " + owner
+		}
+		before := e.Message
+		e.runExtension(label, nil, func(s *ext.Session) error {
+			return e.extensions.RunStartOwner(e.ctx, owner, s)
+		})
+		if e.Message == "Ran "+label {
+			e.Message = before
+		}
 	}
 }
 
@@ -277,7 +294,7 @@ func (e *Editor) newHelp(topic help.Topic) *help.Help {
 	if e.extensions != nil {
 		bindings = e.extensions.Bindings()
 	}
-	if len(commands) == 0 && len(bindings) == 0 {
+	if len(commands) == 0 && len(bindings) == 0 && len(moduleGuide(nil, e.extensions)) == 0 {
 		return h
 	}
 	if len(commands) > 0 {
@@ -308,5 +325,56 @@ func (e *Editor) newHelp(topic help.Topic) *help.Help {
 			h.Extension = append(h.Extension, strings.TrimRight(line, " "))
 		}
 	}
+	h.Extension = moduleGuide(h.Extension, e.extensions)
 	return h
+}
+
+// moduleGuide appends the modules a load read: what each exports, the
+// commands and keys it registered, and the notes about names it hides or
+// lost to init.scm. With no modules and nothing to note, the guide is unchanged.
+func moduleGuide(lines []string, rt *ext.Runtime) []string {
+	if rt == nil {
+		return lines
+	}
+	mods := rt.Modules()
+	notes := rt.InitNotes()
+	if len(mods) == 0 && len(notes) == 0 {
+		return lines
+	}
+	if len(lines) > 0 {
+		lines = append(lines, "")
+	}
+	lines = append(lines, "Modules (see docs/extending.md).", "")
+	if len(notes) > 0 {
+		lines = append(lines, "init.scm")
+		for _, n := range notes {
+			lines = append(lines, "  "+n)
+		}
+		if len(mods) > 0 {
+			lines = append(lines, "")
+		}
+	}
+	for i, m := range mods {
+		if i > 0 {
+			lines = append(lines, "")
+		}
+		head := m.Name
+		if m.Doc != "" {
+			head += "  " + m.Doc
+		}
+		lines = append(lines, head)
+		if len(m.Exports) > 0 {
+			lines = append(lines, "  exports "+strings.Join(m.Exports, " "))
+		}
+		for _, c := range m.Commands {
+			lines = append(lines, "  :"+c)
+		}
+		for _, k := range m.Keys {
+			lines = append(lines, "  "+k)
+		}
+		for _, n := range m.Notes {
+			lines = append(lines, "  "+n)
+		}
+	}
+	return lines
 }

@@ -27,6 +27,31 @@ func InitPath(getenv func(string) string, homeDir func() (string, error)) (path 
 // ReadInit reads the init file. A file that does not exist is normal and
 // reported as found == false with no error.
 func ReadInit(path string) (source string, found bool, err error) {
+	return readScheme(path)
+}
+
+// ReadModule reads modules/NAME.scm under the configuration directory, the
+// only place a module is ever loaded from. name has already been checked, so
+// it cannot name a path outside that directory.
+func ReadModule(configDir, name string) (string, error) {
+	if err := checkModuleName(name); err != nil {
+		return "", err
+	}
+	path := filepath.Join(configDir, "modules", name+".scm")
+	source, found, err := readScheme(path)
+	if err != nil {
+		return "", fmt.Errorf("module %s: %s", name, err.Error())
+	}
+	if !found {
+		return "", fmt.Errorf("module %s: not found at %s", name, path)
+	}
+	return source, nil
+}
+
+// readScheme reads one Scheme file with the init file's rules: a missing file
+// is found == false, anything else must be a regular file of at most
+// MaxInitSize bytes.
+func readScheme(path string) (source string, found bool, err error) {
 	f, err := os.Open(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return "", false, nil

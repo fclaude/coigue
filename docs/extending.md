@@ -8,10 +8,11 @@ to a procedure (see *Key bindings*), run one procedure when the editor starts, a
 without restarting (see *Start-up and reloading*). This page is the contract for that capability.
 Each statement is tested; the last section says where.
 
-Scheme runs in three ways: as a `:name` command you type, from a key you bound, and once at start-up.
-It is loaded from one place (your `init.scm`) and has a small set of host operations. It is not a
-plugin system: there is no package manager, installer or debugger, no key sequences, and nothing
-runs unless you typed a command, pressed a key you bound, or started the editor.
+Scheme runs in three ways: as a `:name` command you type, from a key you bound, and at start-up.
+It is loaded from your `init.scm`, which can require modules that live next to it (see *Modules*),
+and it has a small set of host operations. There is no package manager, installer or debugger, no
+key sequences, and nothing runs unless you typed a command, pressed a key you bound, or started
+the editor.
 
 Brote's language is documented in its own repository (`docs/scheme.md`, `docs/embedding.md`); this
 page documents only what Coigüe adds to it.
@@ -102,11 +103,11 @@ interpreter is refused (see *Trust*).
 
 | Operation | Does | Available |
 | --- | --- | --- |
-| `(define-command name proc [doc])` | Defines `:name` as a command that applies `proc` to its arguments. `name` is 1 to 32 characters: a lowercase letter, then lowercase letters, digits and `-`. It must not be a built-in command or already defined, and at most 100 commands can be defined. `doc` is a one-line description. | only while `init.scm` loads |
-| `(define-theme name spec)` | Defines the theme `name`, which `:theme` and `set-theme` can then use. `name` follows the rule for command names, cannot be the name or alias of a built-in theme or of a theme already defined, and at most 16 themes can be defined. `spec` is a list of `("key" . value)` pairs (see *Themes*). | only while `init.scm` loads |
-| `(set-theme name)` | Starts the editor in the theme `name`, a built-in one or one defined earlier. An unknown name is an error that lists the choices. | only while `init.scm` loads |
-| `(bind-key mode key proc [doc [override]])` | Binds `key` in `mode` (`"normal"` or `"visual"`) to the procedure `proc`, which runs as a command does, with no arguments. See *Key bindings* for the key syntax and for which keys can be bound. At most 100 keys can be bound. | only while `init.scm` loads |
-| `(on-start proc)` | Registers `proc` to run once, as a command does, when the editor has started and a file is open. It can be called once. See *Start-up and reloading*. | only while `init.scm` loads |
+| `(define-command name proc [doc])` | Defines `:name` as a command that applies `proc` to its arguments. `name` is 1 to 32 characters: a lowercase letter, then lowercase letters, digits and `-`. It must not be a built-in command or already defined in the same file, and at most 100 commands can be defined. Two modules may use the same name (see *Modules*). `doc` is a one-line description. | only while `init.scm` loads |
+| `(define-theme name spec)` | Defines the theme `name`, which `:theme` and `set-theme` can then use. `name` follows the rule for command names, cannot be the name or alias of a built-in theme or of a theme already defined, and at most 16 themes can be defined. A module's theme is stored as `module/name`. `spec` is a list of `("key" . value)` pairs (see *Themes*). | only while `init.scm` loads |
+| `(set-theme name)` | Starts the editor in the theme `name`, a built-in one or one defined earlier. An unknown name is an error that lists the choices. Only `init.scm` may call it. | only while `init.scm` loads |
+| `(bind-key mode key proc [doc [override]])` | Binds `key` in `mode` (`"normal"` or `"visual"`) to the procedure `proc`, which runs as a command does, with no arguments. See *Key bindings* for the key syntax and for which keys can be bound. At most 100 keys can be bound. Only `init.scm` may pass `#t` for `override`. | only while `init.scm` loads |
+| `(on-start proc)` | Registers `proc` to run once, as a command does, when the editor has started and a file is open. Once in `init.scm` and once in each module. See *Start-up and reloading*. | only while `init.scm` loads |
 | `(selection?)` | `#t` if the command was started from a Visual selection and no edit has happened yet. | in a command |
 | `(selection-text)` | The selected text (see above). Error if there is no selection, it is longer than 65,536 characters, or an edit already happened in this command. | in a command |
 | `(buffer-text start [end])` | The text of lines `start` to `end` (1-based, inclusive; `end` defaults to `start`) of the current buffer as it is at this point of the command (edits already made are visible), joined with `\n` and without a trailing newline. Error if a line is outside the buffer or the text is longer than 65,536 characters. | in a command |
@@ -284,12 +285,15 @@ one undo step, the deadline, Ctrl-C, and every read and edit operation. `(mode)`
 `docs/examples/start.scm` opens log files at their last line.
 
 If the editor started on the welcome screen, with no file, the procedure waits and runs when the first
-file is opened. It runs once per session, so opening a second file does not run it again. It can be
-registered once; a second call is an error at load time.
+file is opened. It runs once per session, so opening a second file does not run it again. `init.scm`
+can register one, and so can each module; a second call in the same file is an error at load time.
+They run in the order the modules loaded, and `init.scm` last. Each is its own command: its own undo
+step, its own deadline and its own failure. A failure is `on-start failed: ...` for `init.scm` and
+`on-start name failed: ...` for a module, and it does not stop the procedures after it.
 
-An error in the procedure is reported in the status line (`on-start failed: ...`) and nothing else
-happens: the editor is up and the file is open as it would have been. The procedure leaves the status
-line alone when it has nothing to say, so a message about `init.scm` that was already there stays.
+An error in the procedure is reported in the status line and nothing else happens to the editor: it
+is up and the file is open as it would have been. The procedure leaves the status line alone when it
+has nothing to say, so a message that was already there stays.
 
 ### `:reload`
 
@@ -299,12 +303,13 @@ succeeds does the editor switch to it, replacing as one unit:
 * the commands, which are removed and defined again (a command missing from the new file is gone);
 * the themes, which are the ones the new file defines;
 * the key bindings;
-* the start-up procedure, which is read but not run (see below).
+* the modules, which are read again from disk;
+* the start-up procedures, which are read but not run (see below).
 
 If the file fails to load, for any reason a first load could fail (a syntax error, a Scheme error, a
-refused key, a built-in command's name, a second `on-start`, the deadline, Ctrl-C, a file that is
-missing or too big), nothing has changed. Every command, theme and binding is exactly as it was, the
-theme in use is the same one, and the status line says why:
+refused key, a built-in command's name, a second `on-start`, a module that is missing or clashes on a
+key, the deadline, Ctrl-C, a file that is missing or too big), nothing has changed. Every command,
+theme and binding is exactly as it was, the theme in use is the same one, and the status line says why:
 
 ```
 init.scm: failed: bad file 7; nothing changed
@@ -320,16 +325,145 @@ What is and is not run again:
 * `set-theme` runs again, so it wins over a `:theme` you typed since start-up. If the new file does not call
   it, you stay in the theme you are in when it still exists, and go to Mocha when it doesn't (the status
   line says so).
-* The start-up procedure does not run again. The editor is up, and running it twice would repeat whatever
-  it did. If the editor is still on the welcome screen, the procedure from the reloaded file is the one
-  that runs when you open a file.
+* The start-up procedures do not run again. The editor is up, and running them twice would repeat whatever
+  they did. If the editor is still on the welcome screen, the procedures from the reloaded file are the
+  ones that run when you open a file.
 * The buffer, its undo history, the registers, the cursor and the selection are not touched.
 
-The status line says `Reloaded init.scm: 3 commands, 2 key bindings` when it worked.
+The status line says `Reloaded init.scm: 3 commands, 2 key bindings` when it worked, and
+`Reloaded init.scm: 2 modules, 5 commands, 3 key bindings` when the file required modules.
 
 `:reload` works from the first start even if `init.scm` didn't exist then, so you can create the file and
 reload. Tab completes it only once an init file has been found, which keeps the completion list for an
 editor without one exactly as it was.
+
+## Modules
+
+A module is a file `modules/NAME.scm` next to `init.scm`, in the same configuration directory and
+nowhere else. `init.scm` pulls one in with `require`. This is `docs/examples/modules/`, and a test
+loads it.
+
+`modules/text-tools.scm`:
+
+```scheme
+(define-module text-tools
+  (doc "Wrap and reshape the selection")
+  (export wrap))
+
+(define (surround open close)
+  (replace-selection (string-append open (selection-text) close)))
+
+(define (wrap open close)
+  (surround open close))
+
+(define-command "wrap" wrap "Wrap the selection in OPEN and CLOSE")
+(bind-key "visual" "<A-w>" (lambda () (wrap "(" ")")) "Parenthesize")
+```
+
+`modules/md-tools.scm` exports its own `wrap`, which bolds the selection, and binds `<A-w>` and `<A-b>`.
+`init.scm`:
+
+```scheme
+(require text-tools)
+(require md-tools (prefix md:))
+
+(define (bold)
+  (md:wrap)
+  (message "bolded"))
+
+(bind-key "visual" "<A-w>" bold "Bold the selection")
+```
+
+`require` and `define-module` are declarations, not procedures. They are read from the top level of a
+file before its code runs, and every `require` in the file runs first, in the order written, whether
+it sits above or below the definitions. A module loads once per editor session (and once per
+`:reload`, which starts from a fresh interpreter), so requiring it from several places evaluates it
+once. `(require 'text-tools)` is the same as `(require text-tools)`.
+
+The first form of a module file is `(define-module NAME ...)`, and `NAME` is the file's name. A copy
+or a rename cannot pose as another module. `init.scm` has no header; a `define-module` there is an
+error that says where the form belongs. A name is a lowercase letter, then lowercase letters, digits
+and `-`, up to 32 characters, so it cannot name a path. `init` and `coigue` are reserved.
+
+The header may carry `(doc "one line")` and `(export name ...)`. Exporting a name the module does not
+define is an error, and so is exporting a name twice. Everything that is not exported stays inside
+the module. `surround` above is private: `init.scm` cannot mention it, and `wrap` still calls it,
+because an exported procedure keeps the environment it was defined in.
+
+Options on `require` narrow or rename what is imported. They apply left to right:
+
+| Option | Does |
+| --- | --- |
+| `(only name ...)` | import just these |
+| `(except name ...)` | import everything else |
+| `(rename old new)` | import `old` under the name `new` |
+| `(prefix p)` | put `p` in front of each name, as in `(prefix md:)` |
+
+`only` and `except` do not go together in one `require`. A name listed twice, or a name the module
+does not export, is an error that names it. Importing the same export of the same module twice is
+quiet. At most 64 modules are loaded, and each file is a regular file of at most 1 MiB, the same
+limit as `init.scm`.
+
+### Visibility and shadowing
+
+Each module, and `init.scm` itself, is evaluated in its own environment. A `(define filter ...)` or a
+`(set! car ...)` in one file changes what that file sees and nothing else: not another module, and
+not the procedures the language already defined, which keep the bindings they were born with. The
+copy is of the value. `(set! n 9)` on an imported `n` changes the importer's `n`, and a `set!` inside
+the module that exported it is not seen by importers. Export a procedure when the value should stay
+shared. A hash table or a vector is shared by reference, because that is what those values are.
+
+An import never covers a name quietly.
+
+* A name that is a built-in or a host operation is an error: `car is a built-in name; use prefix or rename to import it from text-tools`.
+* A name already imported from somewhere else is an error: `wrap is exported by text-tools and md-tools; use prefix, rename or only`.
+* A name the file itself defines is an error, found when the file finishes: `wrap is defined in init.scm and also imported from text-tools; use prefix, rename or only`.
+
+Defining the same name as a built-in on purpose is allowed, and it stays inside that file. The guide
+notes it (`defines filter, which hides the built-in of that name inside text-tools`). To use an
+imported procedure under a built-in name, rename the import and define the name yourself:
+`(require strings (prefix str:))` and `(define join str:join)`.
+
+Commands, keys, themes and the start-up procedure are the editor's, not a module's, so they are
+resolved once the whole load has finished. The order of the files does not decide a winner.
+`init.scm` does.
+
+* **Commands.** A built-in command name is an error, and the message names the module that used it.
+  Every command can be typed with its owner in front: `:text-tools/wrap`, and `:init/wrap` for one
+  `init.scm` defined. The short `:wrap` runs the command when exactly one module defined it. When
+  more than one did, `:wrap` runs nothing and reports `wrap is ambiguous: md-tools/wrap, text-tools/wrap`.
+  A `define-command` in `init.scm` takes the short name whatever else defined it, and the others stay
+  reachable with their owner in front. The same command defined twice in one file is still an error.
+  The limit of 100 is across the whole load, and the message names the module that reached it.
+* **Keys.** A key has no qualified form. The same key bound twice in one file is an error, as before.
+  Bound by two modules, the load fails, the message names both (`normal X is bound by a ... and b ...; a key has no qualified name, so it is left unbound`), and the key is left unbound. The commands
+  from that load stay, at start-up; `:reload` of a file that clashes changes nothing, as any other
+  failure does. A binding in `init.scm` wins the key, and the guide notes the module bindings it
+  displaced. A key the editor already uses still needs `override`, and only `init.scm` may pass it.
+  From a module, `#t` is an error.
+* **Themes.** A module's `(define-theme "dusk" ...)` is stored as `tools/dusk`, so two modules cannot
+  collide and a module cannot cover a theme `init.scm` defined. `init.scm` keeps short names.
+  `(set-theme "tools/dusk")` from `init.scm` starts the editor in it. A module that calls `set-theme`
+  is an error.
+* **Start-up.** Described above: one procedure per file, load order, `init.scm` last, and a failure
+  in one does not skip the rest.
+
+F1's topic "Your commands and keys" grows a Modules section when a module was loaded or a file hid a
+built-in: the name, the doc, the exports, the commands and keys the module registered, and the notes
+(a hidden built-in, a command that became ambiguous, a key `init.scm` took). With no modules and no
+such note the guide is what it was, and the 42 recorded sessions still replay byte for byte.
+
+### What a load reports
+
+An error names the file. A Scheme error in a module is `init.scm: failed: bad.scm: unbound variable: x`.
+A missing module names the path it was looked up at, under `modules/` next to `init.scm`. A cycle
+names the chain: `module cycle: a -> b -> a`. The deadline, Ctrl-C and the memory limit cover
+`init.scm` and every module it is in the middle of requiring, as one load. A module that fails part
+way through leaves the commands defined before it, the same way `init.scm` does; `:reload` still
+keeps the previous set when anything in the new load fails.
+
+`(load "other.scm")` is still refused. `require` is not a way past that: the name is not a path, and
+the file is read by the editor from the one directory, not by Scheme.
 
 ## Themes
 
@@ -461,17 +595,18 @@ moves the cursor is applied too, but records no undo step.
 
 ## Loading and trust
 
-* Scheme is loaded from **one place**: `$XDG_CONFIG_HOME/coigue/init.scm`, or `~/.config/coigue/init.scm`
-  when `XDG_CONFIG_HOME` is unset, empty or not an absolute path. It is read when the editor
-  starts and again when you type `:reload`, and at no other time.
+* Scheme is loaded from **one directory**: `$XDG_CONFIG_HOME/coigue/`, or `~/.config/coigue/` when
+  `XDG_CONFIG_HOME` is unset, empty or not an absolute path. `init.scm` there is read when the editor
+  starts and again when you type `:reload`, and a module only when `init.scm` requires it, from
+  `modules/NAME.scm` in that same directory. At no other time, and from no other path.
 * It is **never** loaded from the directory of the file you open, the working directory, or any
-  project directory, and nothing is run because a repository contains a file. A `init.scm` next to
-  the file you edit is just a text file.
-* A **missing file is normal** and says nothing. A file that cannot be read, or an error while it
-  loads (a syntax error, a Scheme error, the deadline, Ctrl-C), is reported in the status line as
-  `init.scm: ...` and **does not stop start-up**. Commands defined before the error stay defined.
-  (`:reload` is stricter: a file that fails changes nothing.)
-  The file must be a regular file of at most 1 MiB.
+  project directory, and nothing is run because a repository contains a file. A `init.scm` or a
+  `modules` directory next to the file you edit is just files.
+* A **missing init file is normal** and says nothing. A file that cannot be read, or an error while it
+  loads (a syntax error, a Scheme error, the deadline, Ctrl-C, a module that fails), is reported in
+  the status line as `init.scm: ...` and **does not stop start-up**. Commands defined before the error
+  stay defined. (`:reload` is stricter: a file that fails changes nothing.)
+  Each file must be a regular file of at most 1 MiB.
 * The program you write is as trusted as your shell's start-up files, but it is limited to the
   host interface above. In particular, Brote's `load` builtin, which reads any file the process can
   read, is declared a host operation and **a gate refuses every primitive declared `Host`** (and
@@ -486,8 +621,9 @@ moves the cursor is applied too, but records no undo step.
 
 Key sequences, bindings in Insert mode or in the command line, running Scheme from an event other than
 the start of the editor, reading or writing other files, LSP data, running a command from Scheme, a
-`:eval` command, defining modes, scripts distributed as packages. Each needs its own decision about trust
-and threading first.
+`:eval` command, defining modes. Modules have no package manager, no nested names (`author/name`),
+no re-exports, and `require` is not available while a command runs. Each of those needs its own
+decision about trust and threading first.
 
 ## Differences from the Rust editor
 
@@ -545,5 +681,17 @@ Names are Go tests unless a file is given. `ext` is `internal/ext/ext_test.go`, 
 | Without an init file nothing is visible: `:reload` is not completed, no binding path | `TestReloadCompletesOnlyOnceThereIsAnInit`, `TestBindingsDoNotMoveTheGoldenPaths` (editor); `tests/pty_golden.py` |
 | The guide lists bindings next to commands | `TestHelpListsBindingsNextToCommands` (editor) |
 | The three example scripts load and do what the page says | `TestExampleInit` (editor) |
+| A module's environment is its own: `set!` and `define` of a built-in stay inside it, and the prelude is unchanged | `TestModulesKeepTheirOwnCopyOfTheLanguage` (ext) |
+| An export is visible, a private name is not, and the exported procedure still sees its private helpers | `TestAnExportedProcedureKeepsItsPrivateNames` (ext) |
+| An import is a copy of the value | `TestAnImportIsACopy` (ext) |
+| `require` options, collisions, reserved names, a missing module | `TestRequireOptionsAndCollisions` (ext) |
+| The header matches the file; a cycle names the chain; a dangling export; size and a non-file | `TestModuleHeadersAndCycles` (ext) |
+| At most 64 modules | `TestAtMostSixtyFourModules` (ext) |
+| Commands are qualified, ambiguous, or taken by `init.scm`; a clashing key is unbound; only `init.scm` overrides a key or calls `set-theme`; a module theme is `module/name` | `TestCommandsAndKeysResolveAcrossModules` (ext); `TestAClashingKeyIsUnboundAtStartupAndBlocksReload`, `TestAModuleThemeIsQualifiedAndChosenFromInit` (editor) |
+| Start-up procedures run in load order, `init.scm` last, each its own invocation | `TestStartProceduresRunInLoadOrder` (ext); `TestStartProceduresFromModulesRunSeparately` (editor) |
+| A module error names the file, and commands defined before it stay | `TestAModuleErrorNamesTheFileAndEarlierCommandsStay` (ext) |
+| The deadline and Ctrl-C cover a module required by `init.scm` | `TestTheDeadlineAndInterruptCoverARequiredModule` (ext) |
+| The example modules load; `:module/name`, the ambiguous short name, `init.scm` winning a key, Tab and the guide | `TestExampleModules` (editor) |
+| `:reload` re-reads modules, and a broken module changes nothing | `TestModuleReloadReplacesTheModulesOrChangesNothing` (editor) |
 | Everything above in a real terminal, with a temporary `HOME` and `XDG_CONFIG_HOME` | `tests/pty_extension.py` |
 | `docs/examples/sample.scm` loads and does what its comments say | `TestSampleInit` (editor) |

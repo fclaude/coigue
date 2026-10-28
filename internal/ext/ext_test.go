@@ -301,9 +301,12 @@ func TestOperationsRefuseOutsideInvocation(t *testing.T) {
 	// A procedure retained from init, applied by something that is not an
 	// invocation the editor started: no session in the context.
 	for _, name := range []string{"leak", "read"} {
-		proc, ok := r.interp.Global().Lookup(name)
+		proc, ok := r.root.defs.Lookup(name)
 		if !ok {
-			t.Fatalf("%s not defined", name)
+			t.Fatalf("%s not defined in init.scm", name)
+		}
+		if _, inGlobal := r.interp.Global().Lookup(name); inGlobal {
+			t.Fatalf("%s leaked into the global environment", name)
 		}
 		_, err := r.interp.Apply(context.Background(), proc, nil)
 		if err == nil || !strings.Contains(err.Error(), "not inside an extension command") {

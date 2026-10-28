@@ -1,9 +1,10 @@
 // Package ext runs the user's Scheme extensions: one Brote interpreter per
 // editor, the host operations a Scheme program may use, and the limits on
-// every run. It knows nothing of the editor's state. An invocation works on a
-// Session, a private copy of the buffer that the editor builds before the run
-// and applies after it succeeded, so a failure, a timeout or an interrupt
-// leaves nothing behind. See docs/extending.md for the contract.
+// every run. init.scm and each module it requires are evaluated in their own
+// environments. The package knows nothing of the editor's state. An invocation
+// works on a Session, a private copy of the buffer that the editor builds
+// before the run and applies after it succeeded, so a failure, a timeout or an
+// interrupt leaves nothing behind. See docs/extending.md for the contract.
 //
 // Threading. A Runtime is used by one goroutine at a time, the editor's.
 // Scheme is evaluated, and every host operation runs, on the goroutine that
@@ -41,8 +42,10 @@ const (
 	MaxMessage = 500
 	// MaxCommands bounds the commands a program can define.
 	MaxCommands = 100
-	// MaxInitSize bounds the init file, in bytes.
+	// MaxInitSize bounds the init file and each module, in bytes.
 	MaxInitSize = 1 << 20
+	// MaxModules bounds how many modules one load may read.
+	MaxModules = 64
 	// DefaultDeadline bounds one run.
 	DefaultDeadline = 5 * time.Second
 	// DefaultMemoryLimit is how far the heap may grow during one run.
@@ -74,6 +77,10 @@ type Options struct {
 	// itself. Returning an error rejects the binding and raises it in the
 	// program; nil accepts every key.
 	Bind func(mode string, k key.Key, override bool) error
+	// ConfigDir is the directory init.scm lives in. Modules are read from
+	// ConfigDir/modules and from nowhere else. Empty means require cannot
+	// find a module.
+	ConfigDir string
 	// Watch lets the user interrupt a run; nil means no one can.
 	Watch Watcher
 	// Deadline bounds each run; 0 means DefaultDeadline.
@@ -83,9 +90,12 @@ type Options struct {
 	MemoryLimit uint64
 }
 
-// Command is a command the program defined.
+// Command is a command the program defined. Name is what is typed after :,
+// either the short name or module/name. When several modules define the short
+// name and init.scm does not, Clash says so and the command does not run.
 type Command struct {
 	Name, Doc string
+	Clash     string
 	proc      scheme.Value
 }
 
@@ -93,16 +103,28 @@ var commandName = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
 
 // Runtime is the editor's interpreter. It is not safe for concurrent use.
 type Runtime struct {
-	interp      *scheme.Interp
-	opts        Options
-	deadline    time.Duration
-	memoryLimit uint64
-	commands    map[string]*Command
-	order       []string
-	bindings    []*Binding
-	start       *scheme.Value
-	themes      *theme.Set
-	busy        atomic.Bool
+	interp          *scheme.Interp
+	opts            Options
+	deadline        time.Duration
+	memoryLimit     uint64
+	commands        map[string]*Command
+	order           []string
+	qualified       []Command
+	bindings        []*Binding
+	pendingCommands []pendingCommand
+	pendingBindings []pendingBinding
+	starts          []starter
+	themes          *theme.Set
+	busy            atomic.Bool
+
+	// pristine is the global environment as it was after the prelude and the
+	// host operations were registered. Each module gets a private copy, so a
+	// definition or assignment in one cannot reach another or the prelude.
+	pristine    map[string]scheme.Value
+	modules     map[string]*module
+	moduleOrder []string
+	root        *module
+	loadStack   []string
 }
 
 // New creates a Runtime with the host operations registered, the gate
@@ -140,6 +162,8 @@ func newRuntime(opts Options, extra ...*scheme.Prim) *Runtime {
 	r.interp.SetGate(gate{})
 	// No program can add a primitive (register-tool) once this is called.
 	r.interp.Freeze()
+	r.pristine = r.interp.Global().Snapshot()
+	r.modules = map[string]*module{}
 	return r
 }
 
@@ -204,11 +228,20 @@ func (e *RunError) Stopped() bool {
 // same Runtime: the interpreter has no locking.
 var ErrBusy = errors.New("the extension interpreter is already running")
 
-// Load evaluates the init program, in which define-command is allowed.
-// Definitions made before an error stay.
+// Load evaluates the init program, in which define-command is allowed, and
+// every module it requires. init.scm is evaluated in its own environment, not
+// the interpreter's global one. Definitions made before an error stay.
+// One deadline, one interrupt and one memory watch cover the init file and
+// every module, because they all run inside this one invocation.
 func (r *Runtime) Load(ctx context.Context, source string) error {
 	return r.invoke(ctx, initSession(), func(ctx context.Context) error {
-		_, err := r.interp.EvalString(ctx, source)
+		err := r.loadRoot(ctx, source)
+		// Resolve even when the file failed, so commands defined before the
+		// error stay reachable. A failure of the file wins over a key clash
+		// found while resolving; the clashing key is left unbound either way.
+		if rerr := r.resolve(); err == nil {
+			err = rerr
+		}
 		return err
 	})
 }
@@ -225,6 +258,9 @@ func (r *Runtime) Run(ctx context.Context, name string, args []string, s *Sessio
 		values[i] = scheme.Str(a)
 	}
 	s.kind = kindCommand
+	if cmd.Clash != "" {
+		return &RunError{Stop: Failed, Err: errors.New(cmd.Clash)}
+	}
 	return r.invoke(ctx, s, func(ctx context.Context) error {
 		_, err := r.interp.Apply(ctx, cmd.proc, values)
 		return err

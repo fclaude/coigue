@@ -378,7 +378,7 @@ on terminals that support them. LF and existing trailing newlines are preserved 
 
 Saving compares the file's bytes with the last loaded/saved snapshot, writes and syncs a same-directory temporary file, then atomically replaces the destination. Failed writes leave existing contents intact. New files are created without clobbering an existing destination. Existing symlinks are resolved at opening, so later changes to the original link do not redirect the session. Saves refuse read-only destinations or a resolved target replaced by a symlink. Unix permission bits are preserved; new files use private temporary-file permissions (0600 on Unix). Atomic replacement changes inode identity (including hard-link relationships); ownership, ACLs and extended attributes are not preserved. If another program writes after the final byte comparison but before the atomic rename, its update can still be overwritten without detection; this is not a locking editor. Use one writer per file. No force-write command bypasses conflicts.
 
-Limits: in-memory files, scalar-value rather than grapheme-cluster editing (combining marks may be edited independently), fixed four-column tabs, terminal-dependent emoji/combining display width. No multiple buffers or persistent settings yet; the one file read at startup is your optional Scheme `init.scm` (see [Extending with Scheme](#extending-with-scheme)). Raw mode, cursor and alternate screen are restored on normal exits, returned errors, panics, and SIGHUP, SIGTERM and SIGINT; uncatchable termination (SIGKILL) cannot run cleanup.
+Limits: in-memory files, scalar-value rather than grapheme-cluster editing (combining marks may be edited independently), fixed four-column tabs, terminal-dependent emoji/combining display width. No multiple buffers or persistent settings yet; the configuration read at startup is your optional Scheme `init.scm`, and the modules it requires from the `modules` directory next to it (see [Extending with Scheme](#extending-with-scheme)). Raw mode, cursor and alternate screen are restored on normal exits, returned errors, panics, and SIGHUP, SIGTERM and SIGINT; uncatchable termination (SIGKILL) cannot run cleanup.
 
 ## Extending with Scheme
 
@@ -397,8 +397,9 @@ editor to change it:
 
 Select text with `v` or `V`, press `!`, type `wrap ( )` and Enter. The whole command is one undo
 step; a command that fails, or that runs away and is stopped by Ctrl-C or its five-second limit,
-changes nothing. Scheme is loaded only from that one file, never from a project directory, and it
-cannot read files, run programs or reach the network. [docs/extending.md](docs/extending.md) is the
+changes nothing. Scheme is loaded only from that file and from modules it requires in the `modules`
+directory beside it, never from a project directory, and it cannot read other files, run programs or
+reach the network. [docs/extending.md](docs/extending.md) is the
 contract: the host operations, the exact behaviour, every failure, and how it is tested.
 
 The same file can define themes. This one starts from Gruvbox, changes two colours and makes
@@ -442,8 +443,8 @@ no key sequences, and a key the editor already uses needs `#t` as the last argum
 `:`, Esc, Ctrl-C, Ctrl-O and Ctrl-P can't be bound at all. F1 lists your commands and keys.
 
 `(on-start proc)` runs a procedure once when the editor has started and a file is open. `:reload` reads
-`init.scm` again: if the file loads, its commands, themes and bindings replace the old ones, and if it
-doesn't, nothing changes and the status line says why.
+`init.scm` and its modules again: if the load succeeds, its commands, themes and bindings replace the
+old ones, and if it doesn't, nothing changes and the status line says why.
 
 `docs/examples/sample.scm` is one file with these pieces, plus a key that joins the next line and one
 that comments the current line.

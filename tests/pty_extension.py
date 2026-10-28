@@ -688,6 +688,48 @@ def reload(root):
 
 
 
+def modules(root):
+    """A module's command by its qualified name, an ambiguous short name, and init.scm winning a key."""
+    box = Sandbox(root, 'modules', """
+(require text-tools)
+(require md-tools (prefix md:))
+(define (bold) (md:wrap) (message "bolded"))
+(bind-key "visual" "<A-w>" bold "Bold the selection")
+""", files={'doc.txt': 'abcd\n'})
+    mod = box.config / 'coigue' / 'modules'
+    mod.mkdir()
+    (mod / 'text-tools.scm').write_text("""
+(define-module text-tools
+  (doc "Wrap and reshape the selection")
+  (export wrap))
+(define (wrap open close)
+  (replace-selection (string-append open (selection-text) close)))
+(define-command "wrap" wrap "Wrap the selection in OPEN and CLOSE")
+(bind-key "visual" "<A-w>" (lambda () (wrap "(" ")")) "Parenthesize")
+""", encoding='utf-8')
+    (mod / 'md-tools.scm').write_text("""
+(define-module md-tools (export wrap))
+(define (wrap)
+  (replace-selection (string-append "**" (selection-text) "**")))
+(define-command "wrap" wrap "Bold the selection")
+(bind-key "visual" "<A-w>" (lambda () (wrap)) "Bold")
+""", encoding='utf-8')
+    path = box.project / 'doc.txt'
+    s = box.start('doc.txt')
+    s.send(b'vl')
+    s.send_text('!text-tools/wrap ( )\r', expect=b'Ran :text-tools/wrap')
+    s.save(path, '(ab)cd\n')
+    s.send(b'u', expect=b'Undone')
+    s.send(b'0vl')
+    s.send_text('!wrap\r', expect=b'wrap is ambiguous: md-tools/wrap, text-tools/wrap')
+    s.save(path, 'abcd\n')
+    s.send(b'0vl')
+    s.send(b'\x1bw', expect=b'bolded')
+    s.save(path, '**ab**cd\n')
+    s.quit()
+    print('modules: qualified command, ambiguous short name, init.scm wins the key')
+
+
 def command_line_contract(root):
     # --version and --help are answered before any configuration is read.
     box = Sandbox(root, 'contract', '(let loop () (loop))')
@@ -710,7 +752,7 @@ with tempfile.TemporaryDirectory() as directory:
     for scenario in (wrap_undo_redo, failures_change_nothing, runaway, file_switching, load_is_refused,
                      only_the_user_configuration_is_loaded, where_the_user_file_lives,
                      missing_or_broken_init, themes_from_init, key_bindings, edit_operations,
-                     start_procedure, reload, command_line_contract):
+                     start_procedure, reload, modules, command_line_contract):
         if not chosen or scenario.__name__ in chosen:
             scenario(directory)
 print('PTY extension suite passed')

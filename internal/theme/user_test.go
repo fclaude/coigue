@@ -180,6 +180,25 @@ func TestASetWithNoUserThemesIsTheBuiltInOnes(t *testing.T) {
 	}
 }
 
+func TestAModuleThemeNameHasOneSlash(t *testing.T) {
+	var s Set
+	th, err := s.Define("text-tools/dusk", "gruvbox", []Entry{{Key: "keyword", Value: "#ff79c6"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := s.Parse("text-tools/dusk"); !ok || got != th || s.Name(th) != "text-tools/dusk" {
+		t.Fatalf("parse %v %v name %q", got, ok, s.Name(th))
+	}
+	if _, ok := s.Parse("dusk"); ok {
+		t.Fatal("the short name of a module theme parsed")
+	}
+	for _, name := range []string{"Text/dusk", "text-tools/Dusk", "a/b/c", "/dusk", "text-tools/", "dusk/"} {
+		if _, err := s.Define(name, "", nil); err == nil || !strings.Contains(err.Error(), "is not a theme name") {
+			t.Errorf("%q: %v", name, err)
+		}
+	}
+}
+
 func TestUserThemesJoinTheSet(t *testing.T) {
 	var s Set
 	a, _ := s.Define("dusk", "gruvbox", nil)

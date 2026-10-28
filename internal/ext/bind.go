@@ -67,15 +67,44 @@ func (r *Runtime) RunBinding(ctx context.Context, mode string, k key.Key, s *Ses
 }
 
 // HasStart reports whether the program registered a start-up procedure.
-func (r *Runtime) HasStart() bool { return r.start != nil }
+func (r *Runtime) HasStart() bool { return len(r.starts) > 0 }
 
-// RunStart calls the procedure on-start registered, under the same rules as
-// Run. The editor calls it once.
+// StartOwners lists who registered a start-up procedure, in the order they
+// run: modules in the order they loaded, then init.scm.
+func (r *Runtime) StartOwners() []string {
+	out := make([]string, len(r.starts))
+	for i, st := range r.starts {
+		out[i] = st.owner
+	}
+	return out
+}
+
+// RunStart calls one start-up procedure, under the same rules as Run: the
+// init.scm one when it registered one, otherwise the only one. The editor
+// runs each owner itself, through RunStartOwner, so each has its own undo
+// step and deadline.
 func (r *Runtime) RunStart(ctx context.Context, s *Session) error {
-	if r.start == nil {
+	if len(r.starts) == 0 {
 		return &RunError{Stop: Failed, Err: fmt.Errorf("no on-start procedure")}
 	}
-	return r.runProc(ctx, *r.start, s)
+	owner := r.starts[0].owner
+	for _, st := range r.starts {
+		if st.owner == InitModule {
+			owner = InitModule
+			break
+		}
+	}
+	return r.RunStartOwner(ctx, owner, s)
+}
+
+// RunStartOwner calls the start-up procedure owner registered.
+func (r *Runtime) RunStartOwner(ctx context.Context, owner string, s *Session) error {
+	for _, st := range r.starts {
+		if st.owner == owner {
+			return r.runProc(ctx, st.proc, s)
+		}
+	}
+	return &RunError{Stop: Failed, Err: fmt.Errorf("no on-start procedure")}
 }
 
 func (r *Runtime) runProc(ctx context.Context, proc scheme.Value, s *Session) error {
@@ -114,6 +143,10 @@ func (r *Runtime) bindKey(c *scheme.Call) (scheme.Value, error) {
 		}
 		override = c.Args[4].IsTrue()
 	}
+	owner := r.owner()
+	if override && owner != InitModule {
+		return scheme.Value{}, fmt.Errorf("only init.scm may override a built-in key")
+	}
 	if mode != ModeNormal && mode != ModeVisual {
 		return scheme.Value{}, fmt.Errorf("%q is not a mode: use \"normal\" or \"visual\"", mode)
 	}
@@ -121,24 +154,36 @@ func (r *Runtime) bindKey(c *scheme.Call) (scheme.Value, error) {
 	if err != nil {
 		return scheme.Value{}, err
 	}
-	number := len(r.bindings) + 1
-	for _, b := range r.bindings {
-		if b.Mode == mode && b.Key == k {
+	number := len(r.pendingBindings) + 1
+	for _, b := range r.pendingBindings {
+		if b.owner == owner && b.b.Mode == mode && b.b.Key == k {
 			return scheme.Value{}, fmt.Errorf("%s %s is already bound by binding %d (%s); binding %d (%s) cannot also use it",
-				mode, spec, b.Number, describe(b.Doc), number, describe(doc))
+				mode, spec, b.b.Number, describe(b.b.Doc), number, describe(doc))
 		}
 	}
-	if len(r.bindings) >= MaxBindings {
-		return scheme.Value{}, fmt.Errorf("at most %d keys can be bound", MaxBindings)
+	if len(r.pendingBindings) >= MaxBindings {
+		if owner == InitModule {
+			return scheme.Value{}, fmt.Errorf("at most %d keys can be bound", MaxBindings)
+		}
+		return scheme.Value{}, fmt.Errorf("at most %d keys can be bound; %s reached the limit", MaxBindings, owner)
 	}
 	if r.opts.Bind != nil {
 		if err := r.opts.Bind(mode, k, override); err != nil {
+			if owner != InitModule {
+				return scheme.Value{}, fmt.Errorf("%s: %w", owner, err)
+			}
 			return scheme.Value{}, err
 		}
 	}
-	r.bindings = append(r.bindings, &Binding{
-		Mode: mode, Key: k, Spec: spec, Doc: Tidy(doc), Override: override, Number: number, proc: proc,
-	})
+	doc = Tidy(doc)
+	r.pendingBindings = append(r.pendingBindings, pendingBinding{owner: owner, b: &Binding{
+		Mode: mode, Key: k, Spec: spec, Doc: doc, Override: override, Number: number, proc: proc,
+	}})
+	if owner != InitModule {
+		if m := r.modules[owner]; m != nil {
+			m.keys = append(m.keys, mode+" "+spec)
+		}
+	}
 	return scheme.Void, nil
 }
 
@@ -157,9 +202,16 @@ func (r *Runtime) onStart(c *scheme.Call) (scheme.Value, error) {
 	if err != nil {
 		return scheme.Value{}, err
 	}
-	if r.start != nil {
-		return scheme.Value{}, fmt.Errorf("on-start was already called; there is one start-up procedure")
+	owner := r.owner()
+	for _, st := range r.starts {
+		if st.owner != owner {
+			continue
+		}
+		if owner == InitModule {
+			return scheme.Value{}, fmt.Errorf("on-start was already called; there is one start-up procedure")
+		}
+		return scheme.Value{}, fmt.Errorf("on-start was already called in %s", owner)
 	}
-	r.start = &proc
+	r.starts = append(r.starts, starter{owner: owner, proc: proc})
 	return scheme.Void, nil
 }

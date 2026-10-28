@@ -253,22 +253,36 @@ func (r *Runtime) defineCommand(c *scheme.Call) (scheme.Value, error) {
 			return scheme.Value{}, err
 		}
 	}
+	owner := r.owner()
 	switch {
 	case !commandName.MatchString(name):
 		return scheme.Value{}, fmt.Errorf("%q is not a command name: use a lowercase letter, then lowercase letters, digits and -, up to 32 characters", name)
-	case r.commands[name] != nil:
-		return scheme.Value{}, fmt.Errorf("the command %q is already defined", name)
-	case len(r.commands) >= MaxCommands:
-		return scheme.Value{}, fmt.Errorf("at most %d commands can be defined", MaxCommands)
+	case r.commandTaken(owner, name):
+		if owner == InitModule {
+			return scheme.Value{}, fmt.Errorf("the command %q is already defined", name)
+		}
+		return scheme.Value{}, fmt.Errorf("the command %q is already defined in %s", name, owner)
+	case len(r.pendingCommands) >= MaxCommands:
+		if owner == InitModule {
+			return scheme.Value{}, fmt.Errorf("at most %d commands can be defined", MaxCommands)
+		}
+		return scheme.Value{}, fmt.Errorf("at most %d commands can be defined; %s reached the limit", MaxCommands, owner)
 	}
 	doc = Tidy(doc)
 	if r.opts.Define != nil {
 		if err := r.opts.Define(name, doc); err != nil {
+			if owner != InitModule {
+				return scheme.Value{}, fmt.Errorf("%s: %w", owner, err)
+			}
 			return scheme.Value{}, err
 		}
 	}
-	r.commands[name] = &Command{Name: name, Doc: doc, proc: proc}
-	r.order = append(r.order, name)
+	r.pendingCommands = append(r.pendingCommands, pendingCommand{owner: owner, name: name, doc: doc, proc: proc})
+	if owner != InitModule {
+		if m := r.modules[owner]; m != nil {
+			m.commands = append(m.commands, owner+"/"+name)
+		}
+	}
 	return scheme.Void, nil
 }
 
@@ -279,6 +293,13 @@ func (r *Runtime) defineTheme(c *scheme.Call) (scheme.Value, error) {
 	name, err := c.String(0)
 	if err != nil {
 		return scheme.Value{}, err
+	}
+	owner := r.owner()
+	if !commandName.MatchString(name) {
+		return scheme.Value{}, fmt.Errorf("%q is not a theme name: use a lowercase letter, then lowercase letters, digits and -, up to 32 characters", name)
+	}
+	if owner != InitModule {
+		name = owner + "/" + name
 	}
 	items, err := c.List(1)
 	if err != nil {
@@ -311,6 +332,9 @@ func (r *Runtime) defineTheme(c *scheme.Call) (scheme.Value, error) {
 		}
 	}
 	if _, err := r.themes.Define(name, base, entries); err != nil {
+		if owner != InitModule {
+			return scheme.Value{}, fmt.Errorf("%s: %w", owner, err)
+		}
 		return scheme.Value{}, err
 	}
 	return scheme.Void, nil
@@ -319,6 +343,9 @@ func (r *Runtime) defineTheme(c *scheme.Call) (scheme.Value, error) {
 func (r *Runtime) setTheme(c *scheme.Call) (scheme.Value, error) {
 	if _, err := sessionFor(c, kindInit); err != nil {
 		return scheme.Value{}, err
+	}
+	if r.owner() != InitModule {
+		return scheme.Value{}, fmt.Errorf("only init.scm may choose the starting theme")
 	}
 	name, err := c.String(0)
 	if err != nil {

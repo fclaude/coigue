@@ -40,15 +40,17 @@ func (t *commandTable) add(spec commandSpec) {
 	t.byName = nil
 }
 
-// remove drops the command called name, if there is one.
-func (t *commandTable) remove(name string) {
-	for i := range t.specs {
-		if t.specs[i].name == name {
-			t.specs = append(t.specs[:i], t.specs[i+1:]...)
-			t.byName = nil
-			return
+// removeExtensions drops every command the init file installed, short names
+// and module/name alike, so a reload replaces them as one set.
+func (t *commandTable) removeExtensions() {
+	kept := make([]commandSpec, 0, len(t.specs))
+	for _, spec := range t.specs {
+		if !spec.extension {
+			kept = append(kept, spec)
 		}
 	}
+	t.specs = kept
+	t.byName = nil
 }
 
 // list makes the command called name show up in Tab completion.

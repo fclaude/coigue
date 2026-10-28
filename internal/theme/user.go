@@ -15,7 +15,10 @@ const MaxUser = 16
 // after it follow in definition order.
 const firstUser = Terminal + 1
 
-var userThemeName = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
+// A theme name is the short form init.scm uses, or module/name for a theme
+// a module defined. Each part is a lowercase letter, then lowercase letters,
+// digits and -, up to 32 characters, and there is at most one slash.
+var userThemeName = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}(/[a-z][a-z0-9-]{0,31})?$`)
 
 var hexColor = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
 
