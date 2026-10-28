@@ -41,8 +41,7 @@ keys. A test loads it.
 
 Select text with `v` or `V`, press `!`, type `wrap ( )` and Enter. The selection is now surrounded by
 parentheses. (`!` opens the usual command line, shown as `:`, and keeps the selection for the one
-command you type. `:` itself is still ignored in Visual mode, as it always was; see *Differences
-from the Rust editor*.)
+command you type. `:` itself is still ignored in Visual mode.)
 
 ### Exactly what `:wrap OPEN CLOSE` does
 
@@ -625,22 +624,6 @@ the start of the editor, reading or writing other files, LSP data, running a com
 `:eval` command, defining modes. Modules have no package manager, no nested names (`author/name`),
 no re-exports, and `require` is not available while a command runs. Each of those needs its own
 decision about trust and threading first.
-
-## Differences from the Rust editor
-
-Visual mode has one new key. `!` opens the command line (it looks like `:`) and keeps the selection,
-still highlighted, for the one command typed. Enter runs the command; Esc cancels both the command
-and the selection. A built-in command run this way ignores the selection and ends it, and so does
-a menu action. The Rust editor ignored `!` in Visual mode.
-
-`:` is deliberately left as it was. In Visual mode the Rust editor ignores it, the recorded
-sessions in `tests/pty_golden.py` type `:theme terminal` in Visual-line mode and pin that, and so
-does the ported editor test for Visual mode. Making `:` do what `!` does would be the natural
-change and a one-line one (`visualKey` in `internal/editor/input.go`) if those expectations are
-updated. Without an `init.scm` nothing else in the editor changed: the one new command, `:reload`, is
-not offered by Tab completion until an init file has been found, and the 42 recorded sessions replay
-byte for byte. With one, a bound key in Normal or Visual mode runs its procedure where the Rust editor
-ignored it or acted on it (see *Key bindings* for the keys that need an explicit override).
 
 ## Building
 

@@ -1,6 +1,6 @@
 # Coigüe
 
-Coigüe is a small terminal editor written in Go. It opens one file at a time, and if you've used vi the everyday keys will feel familiar: `h j k l` to move, `i` to type, `dd` to delete a line, `u` to undo. You can write your own commands, key bindings and themes in Scheme, which [Brote](https://github.com/fclaude/brote) runs for it. It started life in Rust and was ported to Go, and the Go version reproduces 42 recorded terminal sessions of the Rust one byte for byte.
+Coigüe is a small terminal editor written in Go. It opens one file at a time, and if you've used vi the everyday keys will feel familiar: `h j k l` to move, `i` to type, `dd` to delete a line, `u` to undo. You can write your own commands, key bindings and themes in Scheme, which [Brote](https://github.com/fclaude/brote) runs for it.
 
 ## What it does
 

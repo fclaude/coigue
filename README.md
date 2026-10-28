@@ -27,14 +27,6 @@ terminal test suite runs; it is not part of the editor. The Go sources are
 `cmd/coigue` and `internal/`; `go.mod` lists the three runtime dependencies
 (goldmark, `golang.org/x/sys`, `golang.org/x/term`).
 
-### The Rust origin
-
-The editor was first written in Rust and then ported to Go. The Rust sources were
-removed once the Go editor was accepted; the git tag `rust-reference` is the last
-commit that contains them. The 42 recorded terminal sessions in `tests/golden/` and the
-differential runs listed in [docs/port-decisions.md](docs/port-decisions.md) come from
-that editor.
-
 ## Compatibility
 
 Linux and macOS terminals are the intended platforms. [GitHub Actions CI](.github/workflows/ci.yml)
@@ -45,7 +37,7 @@ replay runs on Linux only.
 
 | System | Status | Evidence and limitations |
 | --- | --- | --- |
-| Linux x86-64 | Tested in CI | Native `ubuntu-24.04` runner; builds, unit tests, and all five PTY suites pass, including the replay of the recorded Rust sessions. |
+| Linux x86-64 | Tested in CI | Native `ubuntu-24.04` runner; builds, unit tests, and all five PTY suites pass, including the replay of the recorded sessions. |
 | macOS Intel | Tested in CI | Native `macos-15-intel` runner; builds, unit tests, and the terminal, language-server and signal suites pass. The recorded-session replay skips itself. |
 | macOS Apple Silicon | Tested in CI | Native `macos-15` ARM64 runner; builds, unit tests, and the terminal, language-server and signal suites pass. The recorded-session replay skips itself. |
 | Linux ARM64 and other architectures | Unverified | No architecture-specific application code, but compilation and runtime behavior have not been verified. |
@@ -465,8 +457,7 @@ make notices      # rewrite the Go-library section of THIRD_PARTY_NOTICES.md aft
 
 `make check` finds `staticcheck` on `PATH` or in `~/go/bin`; CI installs
 `honnef.co/go/tools/cmd/staticcheck@v0.8.1` (`go install` it the same way).
-`staticcheck.conf` allows capitalised error strings because user-visible messages are
-kept from the original Rust editor. The PTY suites need `TERM=xterm-256color`, which
+`staticcheck.conf` allows capitalised error strings in user-visible messages. The PTY suites need `TERM=xterm-256color`, which
 `make acceptance` sets. `make build REVISION=123 COMMIT=$(git rev-parse HEAD)` fixes
 the identity `coigue --version` prints (`coigue 0.1.0 (main build 123; commit ...)`);
 without them it prints `development` and `unknown`.
@@ -482,7 +473,7 @@ TERM=xterm-256color python3 tests/pty_golden.py bin/coigue
 TERM=xterm-256color python3 tests/pty_extension.py bin/coigue
 ```
 
-The Unix PTY smoke test uses only disposable files and checks save/reopen, repeated edits, resize, quit safeguards and terminal restoration after errors and unwinding. Its last step runs `bin/deps/coigue-terminal-guard`, which enters and leaves the terminal by an error and by a panic and checks that the modes are back. The additional `/dev/full` output-failure test runs on Linux and is skipped when that device is unavailable (including macOS). The language-server suite starts itself as a fake server, so no real server is needed. `pty_signals.py` checks the signal exits, which differ from the Rust editor on purpose. `pty_golden.py` replays 42 sessions recorded from the Rust editor and requires the same terminal bytes (or at least the same screens); it is Linux only because the status line shows `/tmp` paths.
+The Unix PTY smoke test uses only disposable files and checks save/reopen, repeated edits, resize, quit safeguards and terminal restoration after errors and unwinding. Its last step runs `bin/deps/coigue-terminal-guard`, which enters and leaves the terminal by an error and by a panic and checks that the modes are back. The additional `/dev/full` output-failure test runs on Linux and is skipped when that device is unavailable (including macOS). The language-server suite starts itself as a fake server, so no real server is needed. `pty_signals.py` checks the signal exits. `pty_golden.py` replays 42 recorded sessions and requires the same terminal bytes (or at least the same screens); it is Linux only because the status line shows `/tmp` paths.
 
 `pty_extension.py` drives the Scheme command in a real terminal (undo, bound keys, `:reload`, the start-up procedure, failures, cancellation, file
 switching, loading rules) with a temporary `XDG_CONFIG_HOME`. The other suites read the caller's real
