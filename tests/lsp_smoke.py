@@ -112,10 +112,11 @@ def fake_server():
 
 
 class Editor:
-    def __init__(self, binary, path, root, env):
+    def __init__(self, binary, path, root, env, width=None):
         self.master, self.slave = pty.openpty()
         self.original = termios.tcgetattr(self.slave)
-        width = max(140, len(os.fsencode(path)) + 80)
+        if width is None:
+            width = max(140, len(os.fsencode(path)) + 80)
         fcntl.ioctl(self.slave, termios.TIOCSWINSZ, struct.pack('HHHH', 16, width, 0, 0))
         self.proc = subprocess.Popen([binary, str(path)], stdin=self.slave, stdout=self.slave,
                                      stderr=self.slave, cwd=root, env=env)
