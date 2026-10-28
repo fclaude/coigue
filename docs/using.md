@@ -129,4 +129,6 @@ You don't have to restart to try a change. Edit `init.scm`, type `:reload`, and 
 
 <!-- include: docs/examples/start.scm scheme -->
 
+`docs/examples/sample.scm` is these pieces in one file, plus `J`, which joins the next line onto this one, and `Alt-;`, which comments the current line or removes the comment. Copy it to the path above.
+
 What else you can do with Scheme, and the exact rules, are in [Scheme and themes](extending.md).

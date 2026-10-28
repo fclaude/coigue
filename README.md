@@ -445,6 +445,9 @@ no key sequences, and a key the editor already uses needs `#t` as the last argum
 `init.scm` again: if the file loads, its commands, themes and bindings replace the old ones, and if it
 doesn't, nothing changes and the status line says why.
 
+`docs/examples/sample.scm` is one file with these pieces, plus a key that joins the next line and one
+that comments the current line.
+
 ## Development checks
 
 [GitHub Actions CI](.github/workflows/ci.yml) runs the checks below on pushes,

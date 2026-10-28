@@ -14,6 +14,8 @@ import (
 	"github.com/fclaude/coigue/internal/file"
 	"github.com/fclaude/coigue/internal/help"
 	"github.com/fclaude/coigue/internal/key"
+	"github.com/fclaude/coigue/internal/syntax"
+	"github.com/fclaude/coigue/internal/theme"
 )
 
 const wrapInit = `
@@ -136,6 +138,146 @@ func TestExampleInit(t *testing.T) {
 			}
 		}
 	})
+}
+
+// TestSampleInit loads docs/examples/sample.scm, the file a person can copy
+// as init.scm, and checks the claims its comments make.
+func TestSampleInit(t *testing.T) {
+	program, err := os.ReadFile(filepath.Join("..", "..", "docs", "examples", "sample.scm"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := string(program)
+	open := func(name, text string) *Editor {
+		t.Helper()
+		e := newEditor(t, &file.File{Path: filepath.Join(t.TempDir(), name)}, text)
+		loadInit(t, e, src)
+		if e.Message != "" {
+			t.Fatalf("loading the sample reported %q", e.Message)
+		}
+		return e
+	}
+
+	e := open("main.go", "return value\nsecond\nthird")
+	e.RunStart()
+	if e.Buffer.Row != 0 || e.Message != "" {
+		t.Fatalf("a go file is not a log: row %d message %q", e.Buffer.Row, e.Message)
+	}
+	command(e, "theme")
+	if !strings.HasPrefix(e.Message, "Theme: dusk |") {
+		t.Fatalf("theme %q", e.Message)
+	}
+	p := e.Palette()
+	gruvbox := theme.GruvboxDark.Palette()
+	if p.Syntax(syntax.Keyword) != pink || !p.Bold(syntax.Keyword) ||
+		p.Syntax(syntax.String) == gruvbox.Syntax(syntax.String) || p.Syntax(syntax.Comment) != gruvbox.Syntax(syntax.Comment) {
+		t.Fatalf("palette: keyword %+v string %+v comment %+v", p.Syntax(syntax.Keyword), p.Syntax(syntax.String), p.Syntax(syntax.Comment))
+	}
+
+	// The cursor was on 'v'. The marker goes at the start of the line, and
+	// the cursor comes back to that same 'v'.
+	send(e, "7l")
+	alt(e, ';')
+	if e.Buffer.Text() != "// return value\nsecond\nthird" || cursor(e) != [2]int{0, 10} {
+		t.Fatalf("comment: %q cursor %v", e.Buffer.Text(), cursor(e))
+	}
+	alt(e, ';')
+	if e.Buffer.Text() != "return value\nsecond\nthird" || cursor(e) != [2]int{0, 7} {
+		t.Fatalf("uncomment: %q cursor %v", e.Buffer.Text(), cursor(e))
+	}
+
+	send(e, "gg2lJ")
+	if e.Buffer.Text() != "return value second\nthird" || cursor(e) != [2]int{0, 2} {
+		t.Fatalf("join: %q cursor %v", e.Buffer.Text(), cursor(e))
+	}
+	send(e, "u")
+	if e.Buffer.Text() != "return value\nsecond\nthird" || cursor(e) != [2]int{0, 2} {
+		t.Fatalf("join undo: %q cursor %v", e.Buffer.Text(), cursor(e))
+	}
+	send(e, "G")
+	send(e, "J")
+	if e.Buffer.Text() != "return value\nsecond\nthird" || !strings.HasPrefix(e.Message, "Ran ") {
+		t.Fatalf("join at the end: %q message %q", e.Buffer.Text(), e.Message)
+	}
+
+	for _, c := range []struct{ name, text, want string }{
+		{"note.go", "return", "// return"},
+		{"note.go", "// return", "return"},
+		{"note.go", "//tight", "// //tight"},
+		{"lib.scm", "(define x)", "; (define x)"},
+		{"lib.el", "(define x)", "; (define x)"},
+		{"app.py", "print(1)", "# print(1)"},
+		{"run.sh", "echo hi", "# echo hi"},
+		{"app.rb", "puts 1", "# puts 1"},
+		{"empty.go", "", "// "},
+	} {
+		e := open(c.name, c.text)
+		alt(e, ';')
+		if e.Buffer.Text() != c.want || !strings.HasPrefix(e.Message, "Ran ") {
+			t.Errorf("%s: %q message %q", c.name, e.Buffer.Text(), e.Message)
+		}
+	}
+	e = open("empty.go", "// ")
+	alt(e, ';')
+	if e.Buffer.Text() != "" {
+		t.Fatalf("uncomment of a bare marker: %q", e.Buffer.Text())
+	}
+
+	e, _ = initEditor(t, "one\ntwo wide\nthree", src)
+	send(e, "jll")
+	ctrl(e, 'd')
+	if e.Buffer.Text() != "one\ntwo wide\ntwo wide\nthree" || cursor(e) != [2]int{2, 2} {
+		t.Fatalf("Ctrl-D: %q cursor %v", e.Buffer.Text(), cursor(e))
+	}
+	alt(e, 'j')
+	if e.Buffer.Text() != "one\ntwo wide\nthree\ntwo wide" || cursor(e) != [2]int{3, 2} {
+		t.Fatalf("Alt-J: %q cursor %v", e.Buffer.Text(), cursor(e))
+	}
+	alt(e, 'k')
+	if e.Buffer.Text() != "one\ntwo wide\ntwo wide\nthree" || cursor(e) != [2]int{2, 2} {
+		t.Fatalf("Alt-K: %q cursor %v", e.Buffer.Text(), cursor(e))
+	}
+	send(e, "ggjvelU")
+	if e.Buffer.Text() != "one\nTWO wide\ntwo wide\nthree" || e.Mode != ModeNormal {
+		t.Fatalf("U: %q mode %v", e.Buffer.Text(), e.Mode)
+	}
+
+	e = open("doc.txt", "héllo 界 wörld")
+	send(e, "v4l")
+	command(e, "wrap ( )")
+	if e.Buffer.Text() != "(héllo) 界 wörld" || e.Message != "Ran :wrap" {
+		t.Fatalf("wrap: %q message %q", e.Buffer.Text(), e.Message)
+	}
+
+	press(e, key.F(1))
+	for e.Help.Topic != help.Extensions {
+		press(e, key.Tab)
+	}
+	guide := strings.Join(e.Help.Lines(), "\n")
+	for _, want := range []string{
+		"Wrap the selection in OPEN and CLOSE",
+		"Copy the current line below it",
+		"Move the current line down",
+		"Move the current line up",
+		"Make the selection upper case",
+		"Join the next line onto this one",
+		"Comment the current line, or remove the comment",
+	} {
+		if !strings.Contains(guide, want) {
+			t.Errorf("the guide does not say %q:\n%s", want, guide)
+		}
+	}
+
+	for name, want := range map[string]struct {
+		row     int
+		message string
+	}{"notes.txt": {0, ""}, "server.log": {2, "Log file: at the last line"}} {
+		e := open(name, "a\nb\nc")
+		e.RunStart()
+		if e.Buffer.Row != want.row || e.Message != want.message {
+			t.Errorf("%s: row %d message %q", name, e.Buffer.Row, e.Message)
+		}
+	}
 }
 
 func TestWrapCommand(t *testing.T) {

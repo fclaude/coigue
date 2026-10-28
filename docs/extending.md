@@ -34,6 +34,9 @@ defined commands follow the built-in ones, in the order `init.scm` defined them)
 one more guide topic, "Your commands and keys", listing each with its description. Without `init.scm`
 the guide is exactly what it was.
 
+`docs/examples/sample.scm` is a complete `init.scm`: this command, the later examples, and two more
+keys. A test loads it.
+
 Select text with `v` or `V`, press `!`, type `wrap ( )` and Enter. The selection is now surrounded by
 parentheses. (`!` opens the usual command line, shown as `:`, and keeps the selection for the one
 command you type. `:` itself is still ignored in Visual mode, as it always was; see *Differences
@@ -543,3 +546,4 @@ Names are Go tests unless a file is given. `ext` is `internal/ext/ext_test.go`, 
 | The guide lists bindings next to commands | `TestHelpListsBindingsNextToCommands` (editor) |
 | The three example scripts load and do what the page says | `TestExampleInit` (editor) |
 | Everything above in a real terminal, with a temporary `HOME` and `XDG_CONFIG_HOME` | `tests/pty_extension.py` |
+| `docs/examples/sample.scm` loads and does what its comments say | `TestSampleInit` (editor) |
