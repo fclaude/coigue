@@ -28,7 +28,7 @@ GitHub releases carry the same program already built. Ubuntu and Debian install 
 
 ```console
 $ coigue --version
-coigue 0.1.0 (main build development; commit unknown)
+coigue 0.2.0 (main build development; commit unknown)
 $ coigue --help
 Usage: coigue [FILE]
 
@@ -80,3 +80,11 @@ Coigüe reads one optional file at start-up: `init.scm`, in `$XDG_CONFIG_HOME/co
 Copying to the system clipboard, which is separate from the editor's own yank register, needs a tool on your system. macOS has `pbcopy` and `pbpaste`. On Linux, Wayland needs `wl-clipboard` and X11 needs `xclip` or `xsel`. Without one, `y` and `p` still work inside the editor.
 
 Language servers are separate programs too. Install `gopls` for Go, `rust-analyzer` for Rust or Marksman for Markdown, and make sure they're on your `PATH`.
+
+### Scheme configuration files
+
+Install `brote-lsp` on `PATH` (the Beauties `brote` package includes it), or run
+`go install github.com/fclaude/brote/cmd/brote-lsp@latest`. Coigüe starts it for
+`.scm` files. F6–F9 provide symbols and lexical navigation; syntax errors appear
+as diagnostics. Its generated editor API profile is enabled only under the
+Coigüe configuration directory. Cross-module imports are not resolved yet.

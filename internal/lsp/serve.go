@@ -186,7 +186,7 @@ func initializeRequest(program, rootURI, rootName, version string) object {
 		"workspaceFolders": []any{
 			object{"uri": rootURI, "name": rootName},
 		},
-		"initializationOptions": initializationOptions(program),
+		"initializationOptions": initializationOptionsForRoot(program, rootURI),
 		"capabilities": object{
 			"general": object{"positionEncodings": []string{"utf-16"}},
 			"workspace": object{
@@ -216,6 +216,13 @@ func initializeRequest(program, rootURI, rootName, version string) object {
 			},
 		},
 	}}
+}
+
+func initializationOptionsForRoot(program, rootURI string) any {
+	if program == "brote-lsp" {
+		return schemeInitializationOptions(rootURI)
+	}
+	return initializationOptions(program)
 }
 
 func initializationOptions(program string) any {

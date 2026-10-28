@@ -545,11 +545,14 @@ corresponding executable is on `PATH`:
 
 | Files | Server command | Workspace root |
 | --- | --- | --- |
+| `.scm` | `brote-lsp` | Coigüe configuration directory for its init/modules; otherwise the file’s parent directory. |
 | `.rs` | `rust-analyzer` | Nearest ancestor containing `Cargo.toml`. |
 | `.go` | `gopls` | Nearest ancestor containing `go.work` or `go.mod`. |
 | `.md`, `.markdown` (case-insensitive) | `marksman server` | Nearest ancestor containing `.marksman.toml` or `.git`. |
 
 Without a matching workspace marker, the file's parent directory is used.
+For Scheme, install Brote’s server with `go install github.com/fclaude/brote/cmd/brote-lsp@latest`, or install the `brote` Beauties package. It provides syntax diagnostics and lexical navigation without executing the file. Coigüe sends its generated host API profile only for files in its configuration directory. Module import navigation, completion UI and hover UI are not implemented yet. Regenerate API metadata with `go generate ./internal/lsp` after changing host primitives.
+
 Install whichever servers you need separately. No server is bundled or downloaded
 by the editor. Welcome and other file types start no server.
 

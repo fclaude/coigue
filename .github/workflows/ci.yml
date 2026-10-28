@@ -81,6 +81,11 @@ jobs:
           go install honnef.co/go/tools/cmd/staticcheck@v0.8.1
           "$(go env GOPATH)/bin/staticcheck" ./...
 
+      - name: Build the pinned Brote language server for integration tests
+        run: |
+          go build -o "$RUNNER_TEMP/brote-lsp" github.com/fclaude/brote/cmd/brote-lsp
+          echo "COIGUE_BROTE_LSP=$RUNNER_TEMP/brote-lsp" >> "$GITHUB_ENV"
+
       - name: Run unit tests
         run: go test -race ./...
 

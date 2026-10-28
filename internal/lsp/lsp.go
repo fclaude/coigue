@@ -45,6 +45,7 @@ const (
 	languageRust language = iota
 	languageGo
 	languageMarkdown
+	languageScheme
 )
 
 func languageForPath(path string) (language, bool) {
@@ -57,6 +58,8 @@ func languageForPath(path string) (language, bool) {
 		return languageRust, true
 	case "go":
 		return languageGo, true
+	case "scm":
+		return languageScheme, true
 	case "md", "markdown":
 		return languageMarkdown, true
 	}
@@ -76,6 +79,8 @@ func asciiLower(s string) string {
 
 func (l language) id() string {
 	switch l {
+	case languageScheme:
+		return "scheme"
 	case languageRust:
 		return "rust"
 	case languageGo:
@@ -86,6 +91,8 @@ func (l language) id() string {
 
 func (l language) command() (string, []string) {
 	switch l {
+	case languageScheme:
+		return "brote-lsp", nil
 	case languageRust:
 		return "rust-analyzer", nil
 	case languageGo:
@@ -100,6 +107,12 @@ func (l language) root(path string) string {
 	parent, ok := fsx.Parent(path)
 	if !ok {
 		parent = "/"
+	}
+	if l == languageScheme {
+		if root, ok := configRoot(path); ok {
+			return root
+		}
+		return parent
 	}
 	var markers []string
 	switch l {

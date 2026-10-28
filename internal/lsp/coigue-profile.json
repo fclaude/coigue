@@ -1,0 +1,203 @@
+{
+  "name": "coigue",
+  "symbols": [
+    {
+      "doc": "Define the editor command :NAME as the procedure PROC applied to the words typed after it. Only while init.scm loads.",
+      "name": "define-command",
+      "parameters": [
+        "name",
+        "proc",
+        "[doc]"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "Define the theme NAME, usable with :theme and set-theme. SPEC is a list of (\"key\" . value) pairs: base names the built-in theme to start from (mocha when left out), every other key sets one palette entry to a \"#rrggbb\" colour or \"default\", and bold-keywords takes #t or #f. Only while init.scm loads.",
+      "name": "define-theme",
+      "parameters": [
+        "name",
+        "spec"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "Start the editor with the theme NAME, a built-in one or one define-theme made. Only while init.scm loads.",
+      "name": "set-theme",
+      "parameters": [
+        "name"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "True if the command was started from a Visual selection and no edit has happened yet.",
+      "name": "selection?",
+      "parameters": [],
+      "variadic": false
+    },
+    {
+      "doc": "The selected text: v selections include each newline they cross, V selections are whole lines joined with newlines.",
+      "name": "selection-text",
+      "parameters": [],
+      "variadic": false
+    },
+    {
+      "doc": "The text of lines START to END of the buffer, 1-based and inclusive, END defaulting to START, joined with newlines.",
+      "name": "buffer-text",
+      "parameters": [
+        "start",
+        "[end]"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "The number of lines in the buffer.",
+      "name": "line-count",
+      "parameters": [],
+      "variadic": false
+    },
+    {
+      "doc": "The 1-based line of the cursor, which is the end of the selection when there is one.",
+      "name": "cursor-line",
+      "parameters": [],
+      "variadic": false
+    },
+    {
+      "doc": "Replace the selection with TEXT. The cursor ends on the first character of TEXT.",
+      "name": "replace-selection",
+      "parameters": [
+        "text"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "Insert TEXT before the cursor character. The cursor ends on the first character of TEXT.",
+      "name": "insert-text",
+      "parameters": [
+        "text"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "Set the status line shown when the command finishes; the last call wins.",
+      "name": "message",
+      "parameters": [
+        "text"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "Bind a key in MODE to the procedure PROC, which runs as a command does, with no arguments. KEY is one character such as \"x\", Ctrl and a lowercase letter such as \"\u003cC-x\u003e\", or Alt and a character such as \"\u003cA-x\u003e\". A key the editor already uses needs OVERRIDE to be #t. Only while init.scm loads.",
+      "name": "bind-key",
+      "parameters": [
+        "mode",
+        "key",
+        "proc",
+        "[doc]",
+        "[override]"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "Run the procedure PROC once, with no arguments and as a command does, after the editor has started and a file is open. Only while init.scm loads, and once.",
+      "name": "on-start",
+      "parameters": [
+        "proc"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "The path of the file being edited, or \"\" when the buffer has no file.",
+      "name": "buffer-path",
+      "parameters": [],
+      "variadic": false
+    },
+    {
+      "doc": "The 1-based column of the cursor, counted in characters.",
+      "name": "cursor-column",
+      "parameters": [],
+      "variadic": false
+    },
+    {
+      "doc": "The mode the command was started from: \"normal\", \"visual\" or \"visual-line\".",
+      "name": "mode",
+      "parameters": [],
+      "variadic": false
+    },
+    {
+      "doc": "The selection as the list (START-LINE START-COLUMN END-LINE END-COLUMN), 1-based and inclusive at both ends, or #f when there is no selection or an edit has ended it. A V selection runs from the first column of its first line to the last character of its last.",
+      "name": "selection-range",
+      "parameters": [],
+      "variadic": false
+    },
+    {
+      "doc": "The word under the cursor: the letters, digits and underscores around it on its line. It is \"\" when the cursor is on anything else.",
+      "name": "word-at-cursor",
+      "parameters": [],
+      "variadic": false
+    },
+    {
+      "doc": "The first place TEXT occurs at or after the position (LINE COLUMN), as the list (LINE COLUMN), or #f. The search is literal, case-sensitive and does not wrap; LINE and COLUMN default to the start of the buffer, and TEXT must be on one line.",
+      "name": "find",
+      "parameters": [
+        "text",
+        "[line]",
+        "[column]"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "Replace lines START to END, 1-based and inclusive, with TEXT, which may hold any number of lines; \"\" leaves one empty line. The cursor ends on the first character of TEXT. Ends the selection.",
+      "name": "replace-lines",
+      "parameters": [
+        "start",
+        "end",
+        "text"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "Delete lines START to END, 1-based and inclusive. Deleting every line leaves one empty line. The cursor ends on the first column of the line that took the place of the first deleted one, or of the last line. Ends the selection.",
+      "name": "delete-lines",
+      "parameters": [
+        "start",
+        "end"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "Insert TEXT before the character at LINE and COLUMN, 1-based; the column one past the end of a line appends to it. TEXT may hold several lines. The cursor ends on the first character of TEXT. Ends the selection.",
+      "name": "insert-at",
+      "parameters": [
+        "line",
+        "column",
+        "text"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "Move the cursor to LINE and COLUMN, 1-based; a column one past the end of a line puts it on the last character, as in Normal mode. It does not end the selection: the selection then runs from where it started to the new cursor.",
+      "name": "set-cursor",
+      "parameters": [
+        "line",
+        "column"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "Import a module from modules/ beside init.scm; supports only, except, rename and prefix.",
+      "name": "require",
+      "parameters": [
+        "module",
+        "[options ...]"
+      ]
+    },
+    {
+      "doc": "Declare the module name, documentation and exported names as the first form of a module.",
+      "name": "define-module",
+      "parameters": [
+        "name",
+        "[clauses ...]"
+      ]
+    }
+  ]
+}

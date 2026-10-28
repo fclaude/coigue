@@ -13,7 +13,7 @@ import "fmt"
 
 // Build identity. These are variables only so that -ldflags -X can set them.
 var (
-	Version         = "0.1.0"
+	Version         = "0.2.0"
 	PackageRevision = "development"
 	SourceCommit    = "unknown"
 )
