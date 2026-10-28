@@ -1,6 +1,6 @@
 # The Coigüe site
 
-The site is a small [Zola](https://www.getzola.org) project that GitHub Pages publishes at <https://fclaude.github.io/coigue/>. Its pages are the repository's own Markdown: `docs/home.md`, `docs/setup.md`, `docs/using.md`, `docs/keys.md` and `docs/extending.md`. Nothing under `site/content` is checked in, and `site/build.py` writes it every time. The Keys page takes its tables from the README, and the Using page includes the example files from `docs/examples`, so those can't drift from the editor.
+The site is a small [Zola](https://www.getzola.org) project that GitHub Pages publishes at <https://fclaude.github.io/coigue/>. Its pages are the repository's own Markdown: `docs/home.md`, `docs/setup.md`, `docs/using.md`, `docs/keys.md`, `docs/writing.md` and `docs/extending.md`. Nothing under `site/content` is checked in, and `site/build.py` writes it every time. The Keys page takes its tables from the README, and the Using page includes the example files from `docs/examples`, so those can't drift from the editor.
 
 ## Building it
 

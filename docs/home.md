@@ -13,12 +13,12 @@ The colours come from five built-in themes, and `F1` opens a guide inside the ed
 ## What it doesn't do
 
 - It edits one file at a time. There are no tabs, splits or multiple buffers.
-- It has no settings file. The only file it reads at start-up is `init.scm`, which holds your Scheme commands, key bindings and themes.
-- Scheme works on the text of the file you're editing. It can bind single keys in Normal and Visual mode, but there are no key sequences, plugins or packages, and a script can't read other files, run programs or use the network.
+- It has no settings file. At start-up it reads `init.scm`, if you have one, and the modules that file requires from the `modules` directory next to it.
+- Scheme works on the text of the file you're editing. It can bind single keys in Normal and Visual mode. There are no key sequences or packages, and a script can't read other files, run programs or use the network. Your own scripts can live in modules next to `init.scm`.
 - It edits characters, so a letter and its combining accent are two things to the cursor.
 - It has no mouse support.
 - It's tested on Linux and macOS. Windows and the BSDs aren't targets.
 
 ## Where to go from here
 
-[Setting it up](setup.md) installs it and shows what the first start looks like. [Using it](using.md) walks through a practice file, one key at a time, and [Keys and commands](keys.md) is the same material as a reference. If you want your own commands, keys or colours, [Scheme and themes](extending.md) has the rules and the exact list of what a script can do.
+[Setting it up](setup.md) installs it and shows what the first start looks like. [Using it](using.md) walks through a practice file, one key at a time, and [Keys and commands](keys.md) is the same material as a reference. [Writing an extension](writing.md) builds a command and splits it into modules. [Scheme and themes](extending.md) has the rules and the exact list of what a script can do.

@@ -34,4 +34,4 @@ The names `catppuccin-mocha`, `gruvbox-dark` and `catppuccin-latte` also work. T
 
 ## Keys from your init.scm
 
-A script in `init.scm` can bind keys in Normal and Visual mode, and `:reload` reads the file again. Neither exists until you write the file, and `F1` lists what you bound. [Scheme and themes](extending.md) has the key syntax, the keys that need an explicit override and the ones that can't be bound.
+A script in `init.scm` can bind keys in Normal and Visual mode, and `:reload` reads the file again. Neither exists until you write the file, and `F1` lists what you bound. [Writing an extension](writing.md) builds one, and [Scheme and themes](extending.md) has the key syntax, the keys that need an explicit override and the ones that can't be bound.

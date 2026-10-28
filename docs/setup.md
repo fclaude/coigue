@@ -71,7 +71,7 @@ Files have to be UTF-8. A file with Windows line endings opens and saves with th
 
 ## Your own commands and themes
 
-Coigüe reads one optional file at start-up: `init.scm`, in `$XDG_CONFIG_HOME/coigue/`, or in `~/.config/coigue/` when that variable isn't set. That file can require modules from the `modules` directory next to it, and from nowhere else. A missing file is normal and says nothing. If the file has an error, the status line tells you and the editor still starts. It never reads an `init.scm` from the folder you're working in, so opening someone else's project can't run anything. [Scheme and themes](extending.md) says what you can put in it, and `:reload` reads it again without restarting. `docs/examples/sample.scm` is a complete file you can copy to that path.
+Coigüe reads one optional file at start-up: `init.scm`, in `$XDG_CONFIG_HOME/coigue/`, or in `~/.config/coigue/` when that variable isn't set. That file can require modules from the `modules` directory next to it, and from nowhere else. A missing file is normal and says nothing. If the file has an error, the status line tells you and the editor still starts. It never reads an `init.scm` from the folder you're working in, so opening someone else's project can't run anything. [Writing an extension](writing.md) walks through a command and a module, [Scheme and themes](extending.md) is the full list of what a script can do, and `:reload` reads the file again without restarting. `docs/examples/sample.scm` is a complete file you can copy to that path.
 
 ## Optional extras
 

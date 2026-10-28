@@ -5,7 +5,8 @@ Scheme program in your own configuration file can define editor commands: `:name
 procedure that reads the text you selected and asks the editor to change it. The same file can
 define themes and pick the one the editor starts in (see *Themes* below). It can also bind a key
 to a procedure (see *Key bindings*), run one procedure when the editor starts, and be read again
-without restarting (see *Start-up and reloading*). This page is the contract for that capability.
+without restarting (see *Start-up and reloading*). A walk through writing one is
+[Writing an extension](writing.md). This page is the contract for that capability.
 Each statement is tested; the last section says where.
 
 Scheme runs in three ways: as a `:name` command you type, from a key you bound, and at start-up.
