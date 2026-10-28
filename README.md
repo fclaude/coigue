@@ -4,6 +4,11 @@ A small terminal modal editor written in Go. One UTF-8 file at a time. Your own 
 written in Scheme, run by [Brote](https://github.com/fclaude/brote); see
 [Extending with Scheme](#extending-with-scheme).
 
+[Documentation](https://fclaude.github.io/coigue/) ·
+[Getting started](https://fclaude.github.io/coigue/setup/) ·
+[Keys and commands](https://fclaude.github.io/coigue/keys/) ·
+[Writing an extension](https://fclaude.github.io/coigue/writing/)
+
 Licensed under the [MIT License](LICENSE).
 Theme attribution and the licenses of the Go libraries linked into the executable
 are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md); include it with every
