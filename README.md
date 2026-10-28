@@ -511,7 +511,7 @@ run after a dependency changes, and `scripts/licenses.py --check` fails when the
 is stale).
 
 Rust (`.rs`), Go (`.go`), and Markdown (`.md`, `.markdown`) files receive built-in
-lexical highlighting immediately, including when no language server is installed.
+lexical highlighting immediately, including when no language server is installed. Scheme (`.scm`) also has built-in colouring for forms, comments, ordinary and raw multiline strings, numbers, booleans and punctuation.
 Extensions are case-insensitive. The Rust lexer handles keywords,
 comments, strings, characters, lifetimes, numbers, and macros; the Go lexer handles
 keywords, comments, quoted/raw strings, runes, and numbers. Multiline state is

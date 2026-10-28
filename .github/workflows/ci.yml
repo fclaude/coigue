@@ -108,6 +108,9 @@ jobs:
       - name: Run language-server smoke tests
         run: python3 tests/lsp_smoke.py bin/coigue
 
+      - name: Run real Scheme language-server and colouring smoke test
+        run: python3 tests/scheme_smoke.py bin/coigue "$COIGUE_BROTE_LSP"
+
       - name: Run signal-exit tests
         run: python3 tests/pty_signals.py bin/coigue
 

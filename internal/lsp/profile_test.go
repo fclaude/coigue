@@ -7,6 +7,7 @@ import (
 	"github.com/fclaude/coigue/internal/ext"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -94,6 +95,15 @@ func TestRealBroteServer(t *testing.T) {
 	result := client.NavigationResult
 	if result.Err != nil || len(result.Targets) != 1 || result.Targets[0].Location.Col != 8 {
 		t.Fatal(result)
+	}
+	client.NavigationResult = nil
+	if err := client.Navigate(Symbols, "", 0, 0, lines); err != nil {
+		t.Fatal(err)
+	}
+	wait(func() bool { return client.NavigationResult != nil })
+	symbols := client.NavigationResult
+	if symbols.Err != nil || len(symbols.Targets) != 1 || !strings.Contains(symbols.Targets[0].Label, "value") {
+		t.Fatal(symbols)
 	}
 	text = "(define value"
 	lines = [][]rune{[]rune(text)}

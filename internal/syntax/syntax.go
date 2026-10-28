@@ -9,7 +9,7 @@ import (
 )
 
 // ForPath picks a lexer by file extension (ASCII case-insensitive): rs, go,
-// md and markdown. It returns nil when the extension has no lexer, like the
+// scm, md and markdown. It returns nil when the extension has no lexer, like the
 // None of Rust's for_path; a file with lexer and no lines gives an empty,
 // non-nil result.
 func ForPath(path string, lines [][]rune) [][]Style {
@@ -22,6 +22,8 @@ func ForPath(path string, lines [][]rune) [][]Style {
 		return Rust(lines)
 	case "go":
 		return Go(lines)
+	case "scm":
+		return Scheme(lines)
 	case "md", "markdown":
 		return highlightMarkdown(lines)
 	}

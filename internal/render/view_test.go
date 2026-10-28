@@ -855,3 +855,28 @@ func TestNoColorReducesColourCommandsToABareReset(t *testing.T) {
 		t.Fatalf("attributes are still sent: %q", out)
 	}
 }
+
+func TestSchemeConfigColoursRenderWithoutLanguageServer(t *testing.T) {
+	e := newEditor(t, filepath.Join(t.TempDir(), "init.scm"), "; Configuration\n(define title \"hello 界\")\n(set-theme \"mocha\")")
+	var view View
+	e.Theme = theme.CatppuccinMocha
+	rendered := draw(t, &view, e, 80, 8)
+	if view.styles[0][0] != syntax.Comment || view.styles[1][1] != syntax.Keyword || view.styles[1][14] != syntax.String {
+		t.Fatal("Scheme lexer was not used", view.styles)
+	}
+	want := foreground(e.Theme.Palette().Syntax(syntax.String)) + "\"hello 界\""
+	if !strings.Contains(rendered, want) {
+		t.Fatalf("missing rendered Scheme string colour %q in %q", want, rendered)
+	}
+	e.Buffer.Row = 0
+	typeKeys(e, 6, "dd")
+	draw(t, &view, e, 80, 8)
+	if view.styles[0][1] != syntax.Keyword {
+		t.Fatal("highlighting did not follow edit")
+	}
+	e.Key(key.Char('u'), 6)
+	draw(t, &view, e, 80, 8)
+	if view.styles[0][0] != syntax.Comment {
+		t.Fatal("highlighting did not follow undo")
+	}
+}

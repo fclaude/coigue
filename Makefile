@@ -24,6 +24,7 @@ endif
 build:
 	go build -ldflags "$(LDFLAGS)" -o bin/coigue ./cmd/coigue
 	go build -o bin/deps/coigue-terminal-guard ./internal/term/guardcheck
+	go build -o bin/deps/brote-lsp github.com/fclaude/brote/cmd/brote-lsp
 
 check:
 	test -z "$$(gofmt -l .)"
@@ -44,6 +45,7 @@ packages:
 acceptance: build
 	TERM=xterm-256color python3 tests/pty_smoke.py bin/coigue
 	TERM=xterm-256color python3 tests/lsp_smoke.py bin/coigue
+	TERM=xterm-256color python3 tests/scheme_smoke.py bin/coigue bin/deps/brote-lsp
 	TERM=xterm-256color python3 tests/pty_signals.py bin/coigue
 	TERM=xterm-256color python3 tests/pty_golden.py bin/coigue
 	TERM=xterm-256color python3 tests/pty_extension.py bin/coigue
