@@ -1,5 +1,5 @@
-github.com/fclaude/brote v0.3.0 h1:aVgwM6C6I7k7w6/Kt9FVAw2aNvygjaastP+XshjYmKU=
-github.com/fclaude/brote v0.3.0/go.mod h1:w2JmjAXZwTqb3dQCfeUjc1Ar5eBu6uw3pJg3NY5Xupg=
+github.com/fclaude/brote v0.4.0 h1:9mICceBgFEKXkq/2RglVZYq2OpOfZzbOd0/cd2KViZ8=
+github.com/fclaude/brote v0.4.0/go.mod h1:w2JmjAXZwTqb3dQCfeUjc1Ar5eBu6uw3pJg3NY5Xupg=
 github.com/yuin/goldmark v1.8.6 h1:d0VcaP1sx9GkFVkoW+KtggpGi2KZ965i14b0+bDQST4=
 github.com/yuin/goldmark v1.8.6/go.mod h1:ip/1k0VRfGynBgxOz0yCqHrbZXhcjxyuS66Brc7iBKg=
 golang.org/x/sys v0.49.0 h1:XbzkgYJHdqh/8m2Uu0W/dQv8nktxx4BFHp1M0gROTXA=
