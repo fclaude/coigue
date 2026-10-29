@@ -449,6 +449,7 @@ func (e *Editor) syncLSP() {
 func (e *Editor) Tick(pageRows int) {
 	e.pollLSP()
 	e.pollModules()
+	e.pollEvents()
 	if e.Picker != nil {
 		e.Picker.Poll()
 	}

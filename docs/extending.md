@@ -127,6 +127,8 @@ interpreter is refused (see *Trust*).
 | `(insert-at line column text)` | Inserts `text` before the character at `line` and `column`. | in a command |
 | `(set-cursor line column)` | Moves the cursor. | in a command |
 | `(message text)` | Sets the status line shown when the command finishes successfully; the last call wins. Control characters become spaces and the text is cut at 500 characters. | in a command |
+| `(on-channel channel handler)` | Runs `handler` with each value that arrives on `channel`, as a command of its own (see *Events and timers*). `channel` is a Brote channel from `make-channel`, and should be buffered. At most 64 channels can have a handler. | in a command |
+| `(timer seconds)` | A channel that receives `#t` once, `seconds` from now (0.01 to 604,800). At most 64 timers wait at once. | in a command |
 
 "In a command" means: while the editor is running a `:name` command, a bound key or the start-up
 procedure. Called any other way (while `init.scm` loads, or by anything that is not an invocation the
@@ -137,6 +139,70 @@ editor started) these operations raise `name: not inside an extension command`; 
 Line numbers and columns in the interface are 1-based, and every size is in characters. A column counts
 characters, so a tab or a wide character is one column, whatever it takes on the screen. The questions
 that return a position return it as a list, which `car` and `cadr` take apart.
+
+## Events and timers
+
+A command can ask for something to happen later. `on-channel` takes a Brote channel and a procedure;
+for each value that arrives on the channel the editor runs the procedure with that value, **as a
+command of its own**: a fresh copy of the buffer, its own undo step, its own deadline, and the same
+status line on success and on failure. `timer` makes a channel that receives `#t` once after a delay.
+
+```scheme
+(define-command "break"
+  (lambda ()
+    (message "Break in 25 minutes")
+    (on-channel (timer 1500)
+                (lambda (_) (message "Time to stand up")))))
+```
+
+A channel can also be filled by another command, which is how two commands share a handler:
+
+```scheme
+(define notes (make-channel 16))
+(define (append-line text)
+  (let ((n (line-count)))
+    (insert-at n (+ (string-length (buffer-text n)) 1) (string-append "\n" text))))
+(on-start (lambda () (on-channel notes append-line)))
+(define-command "note" (lambda (word) (channel-send! notes word)))
+```
+
+How it behaves:
+
+* **The editor never waits for a channel.** It looks between keys, a few values at a time, with
+  Brote's `channel-try-recv`. A send on an *unbuffered* channel waits for a receiver, so use
+  `(make-channel 16)`, not `(make-channel)`: with an unbuffered channel the sending command fails
+  with Brote's `deadlock` error.
+* **A handler runs only when nothing else is going on:** Normal mode, no operator or count half typed,
+  no Visual selection, no window or prompt open. Until then values stay in their channel, so a timer
+  that fires while you type in Insert mode runs its handler when you press Esc, not in the middle of
+  your sentence.
+* **A handler that registers more** (`on-channel`, `timer`) is adopted if it succeeds, like any
+  command. A command that fails registers nothing.
+* **A handler that fails** shows `on-channel from :break failed: ...` and stays registered; the next
+  value runs it again. A handler with nothing to say leaves the status line as it was.
+* **A closed channel** is read until it is empty, then forgotten.
+* **`:reload` drops every handler and timer.** Nothing registered by the old code reaches the new.
+  Quitting drops them too. Nothing is saved.
+* **Use `timer`, not `after`.** Brote's `(after secs)` belongs to the command that made it and
+  does not fire once that command has returned.
+
+### Tasks
+
+Brote's tasks (`spawn`, `pmap`, `race`, `with-timeout`, channels, atoms) are available. They are
+parallelism **inside one command**: a command may spawn tasks and wait for them, and any still
+running when the command ends are stopped. A task shares the program's data, so a variable several
+tasks write needs `make-atom` and `swap!` (the language server warns about the common mistakes).
+
+A task cannot read or edit the buffer. Doing so fails with `not inside an extension command: a task
+cannot read or edit the buffer, so do that in the command or in an on-channel handler and give the
+task the data it needs`. Read what the task needs first, compute in the task, and apply the result
+in the command:
+
+```scheme
+(define (line-widths)
+  (let ((lines (map (lambda (i) (buffer-text (+ i 1))) (iota (line-count)))))
+    (pmap (lambda (l) (string-length l)) lines)))
+```
 
 ## Editing beyond the selection
 
@@ -625,8 +691,9 @@ moves the cursor is applied too, but records no undo step.
 
 ## Threading and reentrancy
 
-* One interpreter per editor, created the first time `init.scm` is loaded and used by one
-  goroutine at a time. Brote's `*Interp` has no locking. `:reload` makes a second interpreter and uses it
+* One interpreter per editor, created the first time `init.scm` is loaded. Commands, handlers and
+  loads run one at a time on the editor goroutine; tasks a command starts run in parallel inside it
+  and end with it. `:reload` makes a second interpreter and uses it
   from the same goroutine, and the editor keeps the new one only if the file loaded.
 * Scheme is evaluated on the editor goroutine: the goroutine that calls `Editor.Key`, which in
   the `coigue` command is the main goroutine running the event loop. Only `Editor.Key` (running a
@@ -643,15 +710,18 @@ moves the cursor is applied too, but records no undo step.
 * Accidental callbacks are refused. Every operation first checks three things: the
   evaluation's context carries an invocation the editor started, that invocation is still live
   (it is only between the editor starting the command and the command returning), and the
-  operation is running on the goroutine that started it. Go has no portable goroutine identity, so
+  operation is running on the goroutine that started it. A task Brote starts is another goroutine, so
+  it fails the last check with its own message (see *Tasks*). Go has no portable goroutine identity, so
   the last check reads the goroutine number from the first line of `runtime.Stack`. A procedure
   retained from `init.scm` and applied by anything else, an operation invoked after its command
   ended, one with no context, and one called from another goroutine in the middle of a command
-  all fail with `not inside an extension command` and change nothing. (No primitive starts a
-  goroutine and Brote has no concurrency of its own, so this is a backstop, tested by calling an
-  operation from a second goroutine while the command runs.)
-* No reentrancy. No operation starts a command or loads a file. As a backstop, starting an
-  invocation while another is running on the same interpreter returns an error instead of racing.
+  all fail with `not inside an extension command` and change nothing. (Tasks are how a second goroutine
+  comes to call one, and the tests call an operation from a task and from a second goroutine while
+  the command runs.)
+* No reentrancy. No operation starts a command or loads a file. A handler (*Events and timers*) is
+  started by the editor between keys, never by Scheme and never inside another command. As a backstop,
+  starting an invocation while another is running on the same interpreter returns an error instead
+  of racing.
 
 ## Cancellation and limits
 
@@ -698,7 +768,8 @@ moves the cursor is applied too, but records no undo step.
 ## Not here
 
 Key sequences, bindings in Insert mode or in the command line, running Scheme from an event other than
-the start of the editor, reading or writing other files, LSP data, running a command from Scheme, a
+the start of the editor, a command you typed, a key you bound, a timer or a channel value, work that
+continues after a command ends, reading or writing other files, LSP data, running a command from Scheme, a
 `:eval` command, defining modes. Modules have no version solver, no nested names (`author/name`), no private repositories,
 no re-exports, and `require` is not available while a command runs. `:module-add` copies files and
 records where they came from; it does not resolve what a module requires. Each of those needs its own
@@ -767,5 +838,10 @@ Names are Go tests unless a file is given. `ext` is `internal/ext/ext_test.go`, 
 | `:module-update`, `-remove`, `-list` and `-sync`, one job at a time, errors as messages | `TestModuleUpdateShowsADiffAndAppliesIt`, `TestModuleRemoveAndSync`, `TestModuleListIsAPageWithNothingToAnswer`, `TestOneModuleJobAtATime`, `TestModuleCommandsExplainTheirMistakes` (editor) |
 | The commands complete only once there is an init file | `TestModuleCommandsCompleteOnlyOnceThereIsAnInitFile` (editor) |
 | The review page wraps without losing text and keeps its scroll inside the page | `TestWrapLinesKeepsEveryCharacter`, `TestModuleReviewPageWrapsScrollsAndNamesItsKeys` (render) |
+| A handler runs once per value, in order; a closed channel is drained then forgotten; a failed command registers nothing; the editor never waits for a channel; handlers and timers are capped | `TestAHandlerRunsForEachValueInOrder`, `TestPollTakesNoMoreThanItIsAsked`, `TestAClosedChannelIsDrainedThenForgotten`, `TestACommandThatFailsRegistersNothing`, `TestTheEditorNeverWaitsForAChannel`, `TestHandlersAndTimersAreCapped` (ext) |
+| A timer sends once, when due; `timer` and `on-channel` check their arguments | `TestTimerSendsOnceWhenDue`, `TestTimerAndOnChannelCheckTheirArguments` (ext) |
+| Tasks work inside a command, end with it, and cannot touch the buffer | `TestTaskProceduresAreAvailable`, `TestTasksEndWithTheirCommand`, `TestATaskCannotTouchTheBuffer` (ext) |
+| A handler runs as its own undo step, only when the editor is idle, leaves a quiet status line alone, reports a failure and stays registered; `:reload` drops handlers and timers | `TestATimerHandlerRunsAsACommandAfterTheDelay`, `TestAHandlerWaitsUntilTheEditorIsIdle`, `TestAHandlerThatFailsSaysSoAndStaysRegistered`, `TestAHandlerWithNothingToSayLeavesTheStatusLineAlone`, `TestReloadDropsHandlersAndTimers`, `TestAFailedCommandLeavesNoTimerBehind` (editor) |
+| The examples in *Events and timers* run | `TestDocumentedExamplesRun` (editor) |
 | Everything above in a real terminal, with a temporary `HOME` and `XDG_CONFIG_HOME` | `tests/pty_extension.py` |
 | `docs/examples/sample.scm` loads and does what its comments say | `TestSampleInit` (editor) |

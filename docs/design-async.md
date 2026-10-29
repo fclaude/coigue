@@ -33,7 +33,9 @@ The Brote design record is `docs/design/tasks.md` in its repository. What matter
   the mistakes: `set!` of a variable a task shares, a read followed by `set!`, waiting for another
   task while holding a lock, and side effects inside the function given to `swap!`.
 * **Channels, `select`, `after`, `with-timeout`, `race`, `pmap-limit`, `task-group`** are in the
-  language. `(after secs)` is a channel that receives once, so timers need no new feature.
+  language. `(after secs)` is a channel that receives once, but it ends with the evaluation that
+  made it (measured), so it only works inside a task or one command; Coigüe adds `timer` for
+  waiting across commands.
 * **Tasks end with the evaluation that started them.** When the outermost `Apply` returns, running
   tasks are cancelled and waited for. A task cannot outlive its command.
 * **A grant.** `WithTasks(TaskLimits{MaxTasks, MaxDepth})` turns them on, as the host's statement
@@ -129,15 +131,19 @@ language's own. `show-list` returns a channel for the person's answer, as every 
 value, each its own undo step and each with a fresh view of the buffer. A mark (below) lets a
 handler point at the line a URL came from even after the text has moved.
 
-### Example: a timer, with no new feature
+### Example: a timer
 
 ```scheme
 (define-command "sprint"
   (lambda ()
     (let ((start (words-in-buffer)))
-      (on-channel (after 600)
+      (on-channel (timer 600)
                   (lambda (_) (message (string-append "10 minutes: +" (number->string (- (words-in-buffer) start)) " words")))))))
 ```
+
+`timer` is Coigüe's, not Brote's `after`. Measured on v0.5.0: a channel from `(after secs)` belongs
+to the evaluation that made it and never fires once that command has returned. `timer` is a
+channel the editor keeps and sends on, so it works across commands. (Built in step 1.)
 
 ## Handlers
 
@@ -274,9 +280,10 @@ wildcards by default, and updates re-review.
 
 Each step stands alone and ships.
 
-1. **Handlers and the event queue**, with `on-channel` and Brote's own channels and `after`, which
-   need no background tasks: a command can open a channel, a timer can fire it, and the
-   handler runs as a command. A `(after secs)` timer already gives a useful extension.
+1. **Handlers and the event queue**, with `on-channel`, `timer` and Brote's own channels, which
+   need no background tasks: a command can open a channel, a timer can fire it, and the handler
+   runs as a command. **Built**, together with Brote's tasks inside a command and the explicit error
+   for a task that touches the buffer.
 2. **Modal windows** returning channels. Port the review page onto them.
 3. **Marks.**
 4. **Background tasks**: `spawn-detached` from Brote, `on-done`, the busy rule, the explicit errors,
@@ -297,7 +304,11 @@ Steps 1 to 3 need nothing from Brote beyond v0.5.0. Step 4 needs `spawn-detached
   `(*Policy).CheckNet(method, url string) error`, so a host narrows by caller without a second
   interpreter. The `fs` and `exec` equivalents if those grants are offered.
 * **Host-fed channels**: a way to mark a channel as one the host sends to, so a task waiting on it
-  is not reported as deadlocked.
+  is not reported as deadlocked. Measured: a blocking `channel-recv` with nothing else running
+  raises `deadlock`, which is why the editor takes values with `channel-try-recv` and why an
+  unbuffered channel with an `on-channel` handler cannot be sent to.
+* **A Go-level receive** on a channel (they are private to `scheme`), so the host does not have to
+  poll through the language between keys.
 * Confirm that applying a closure from one goroutine while another evaluation runs on the same
   interpreter is intended to be safe with tasks on, as the embedding notes imply.
 

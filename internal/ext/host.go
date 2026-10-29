@@ -20,6 +20,9 @@ func sessionFor(c *scheme.Call, want kind) (*Session, error) {
 		if want == kindInit {
 			return nil, errNotInInit
 		}
+		if s != nil && s.live.Load() && s.kind == want {
+			return nil, errInTask
+		}
 		return nil, errNotInCommand
 	}
 	return s, nil
@@ -191,6 +194,15 @@ func (r *Runtime) hostOperations() []*scheme.Prim {
 				s.message = Tidy(text)
 				return scheme.Void, nil
 			}),
+		inCommand("on-channel", "Run the procedure HANDLER with each value that arrives on CHANNEL, as a command of its own with a fresh copy of the buffer, until the channel is closed. CHANNEL should be buffered (make-channel n), because a send on an unbuffered one waits for a receiver and the editor never waits. A handler runs when the editor is in Normal mode with nothing pending; until then values stay in the channel. :reload drops it.",
+			[]scheme.Param{
+				{Name: "channel", Type: "any", Doc: "a channel made by make-channel"},
+				{Name: "handler", Type: "any", Doc: "procedure taking the received value"},
+			},
+			r.onChannel),
+		inCommand("timer", "A channel that receives #t once, SECONDS from now (0.01 to 604800), kept by the editor. Brote's own (after secs) ends with the command that made it, so use this one to wait across commands: (on-channel (timer 60) handler). :reload drops it.",
+			[]scheme.Param{{Name: "seconds", Type: "number", Doc: "the delay"}},
+			r.timer),
 		{
 			Name: "bind-key",
 			Meta: scheme.Meta{

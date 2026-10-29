@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/fclaude/coigue/internal/ext"
 	"github.com/fclaude/coigue/internal/fsx"
@@ -215,6 +216,9 @@ func (e *Editor) runExtension(label string, selection *ext.Selection, run func(*
 		e.Message = failureMessage(label, err)
 		return
 	}
+	if e.extensions != nil {
+		e.extensions.Adopt(session)
+	}
 	if session.Edited() {
 		e.Buffer.Edit(func() { e.Buffer.Adopt(scratch) })
 		e.Buffer.Clamp(false)
@@ -385,4 +389,48 @@ func moduleGuide(lines []string, rt *ext.Runtime) []string {
 		}
 	}
 	return lines
+}
+
+// maxEventsPerTick bounds how many handlers run between two frames, so a
+// channel that is filled faster than it is read cannot hold the screen.
+const maxEventsPerTick = 8
+
+// pollEvents fires the timers that are due and runs the handlers of the
+// channels that have values. A handler is a command, so it must not land in
+// the middle of something the person is doing: it runs only in Normal mode
+// with nothing pending and no window open, and the values wait in their
+// channels until then.
+func (e *Editor) pollEvents() {
+	if e.extensions == nil {
+		return
+	}
+	handlers, timers := e.extensions.Waiting()
+	if handlers == 0 && timers == 0 {
+		return
+	}
+	e.extensions.FireTimers(e.ctx, time.Now())
+	if !e.idleForEvents() {
+		return
+	}
+	for _, ev := range e.extensions.PollEvents(e.ctx, maxEventsPerTick) {
+		label := "on-channel"
+		if origin := ev.Origin(); origin != "" {
+			label = "on-channel from :" + origin
+		}
+		before := e.Message
+		e.runExtension(label, nil, func(s *ext.Session) error {
+			return e.extensions.RunEvent(e.ctx, ev, s)
+		})
+		// A handler with nothing to say leaves the status line as it was.
+		if e.Message == "Ran "+label {
+			e.Message = before
+		}
+	}
+}
+
+func (e *Editor) idleForEvents() bool {
+	return e.Mode == ModeNormal && e.pending == 0 && e.count == 0 && e.operatorCount == 0 &&
+		e.selectionAnchor == nil && e.commandVisual == 0 && !e.IsWelcome() &&
+		e.Help == nil && e.Menu == nil && e.Locations == nil && e.Picker == nil &&
+		e.Explorer == nil && e.SwitchPrompt == "" && e.FilesystemPrompt == nil && e.ModuleReview == nil
 }

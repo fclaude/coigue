@@ -42,6 +42,14 @@ const (
 	MaxMessage = 500
 	// MaxCommands bounds the commands a program can define.
 	MaxCommands = 100
+	// MaxHandlers bounds the channels with an on-channel handler, and MaxTimers
+	// the timers waiting to fire.
+	MaxHandlers = 64
+	MaxTimers   = 64
+	// MaxTasks and TaskDepth bound the tasks one run can start and how deeply
+	// each may nest, which together bound the memory they use.
+	MaxTasks  = 32
+	TaskDepth = 1000
 	// MaxInitSize bounds the init file and each module, in bytes.
 	MaxInitSize = 1 << 20
 	// MaxModules bounds how many modules one load may read.
@@ -114,6 +122,8 @@ type Runtime struct {
 	pendingCommands []pendingCommand
 	pendingBindings []pendingBinding
 	starts          []starter
+	handlers        []*handlerReg
+	timers          []*timerReq
 	themes          *theme.Set
 	busy            atomic.Bool
 
@@ -133,7 +143,7 @@ func New(opts Options) *Runtime { return newRuntime(opts) }
 
 func newRuntime(opts Options, extra ...*scheme.Prim) *Runtime {
 	r := &Runtime{
-		interp:      scheme.New(scheme.WithOutput(io.Discard)),
+		interp:      scheme.New(scheme.WithOutput(io.Discard), scheme.WithTasks(scheme.TaskLimits{MaxTasks: MaxTasks, MaxDepth: TaskDepth})),
 		opts:        opts,
 		deadline:    opts.Deadline,
 		memoryLimit: opts.MemoryLimit,
@@ -258,6 +268,7 @@ func (r *Runtime) Run(ctx context.Context, name string, args []string, s *Sessio
 		values[i] = scheme.Str(a)
 	}
 	s.kind = kindCommand
+	s.label = name
 	if cmd.Clash != "" {
 		return &RunError{Stop: Failed, Err: errors.New(cmd.Clash)}
 	}

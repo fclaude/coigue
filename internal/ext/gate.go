@@ -26,6 +26,9 @@ func (gate) Before(_ context.Context, p *scheme.Prim, _ []scheme.Value) error {
 	return nil
 }
 
+// ConcurrentSafe says the gate keeps no state, so tasks may call it at once.
+func (gate) ConcurrentSafe() {}
+
 func (gate) RegisterChecker(string, string, scheme.Value) error {
 	return errors.New("editor extensions cannot add policy checks")
 }

@@ -54,6 +54,12 @@ type Session struct {
 	inserted int
 	kind     kind
 	live     atomic.Bool
+	// handlers and timers are what the command registered; the editor adopts
+	// them only if the command succeeded, as it does the text.
+	handlers []*handlerReg
+	timers   []*timerReq
+	// label names the command in a handler's failure message.
+	label string
 	// owner is the goroutine that started the invocation, the only one whose
 	// host operations are honoured.
 	owner uint64
@@ -99,6 +105,7 @@ var (
 	errNoSelection   = errors.New("no selection; select text with v or V, then press !")
 	errSelectionGone = errors.New("the selection is gone after an earlier edit in this command")
 	errNotInCommand  = errors.New("not inside an extension command")
+	errInTask        = fmt.Errorf("%w: a task cannot read or edit the buffer, so do that in the command or in an on-channel handler and give the task the data it needs", errNotInCommand)
 	errNotInInit     = errors.New("only allowed while init.scm loads")
 	errTextNotUTF8   = errors.New("text is not valid UTF-8")
 )
