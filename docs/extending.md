@@ -11,9 +11,10 @@ Each statement is tested; the last section says where.
 
 Scheme runs in three ways: as a `:name` command you type, from a key you bound, and at start-up.
 It is loaded from your `init.scm`, which can require modules that live next to it (see *Modules*),
-and it has a small set of host operations. There is no package manager, installer or debugger, no
-key sequences, and nothing runs unless you typed a command, pressed a key you bound, or started
-the editor.
+and it has a small set of host operations. There is no debugger and there are no key sequences.
+Modules can be copied from a GitHub repository by a command you type (see *Modules from GitHub*),
+but nothing is fetched or run unless you typed a command, pressed a key you bound, or started the
+editor.
 
 Brote's language is documented in its own repository (`docs/scheme.md`, `docs/embedding.md`); this
 page documents only what Coigüe adds to it.
@@ -465,6 +466,80 @@ keeps the previous set when anything in the new load fails.
 `(load "other.scm")` is still refused. `require` is not a way past that: the name is not a path, and
 the file is read by the editor from the one directory, not by Scheme.
 
+## Modules from GitHub
+
+A repository can offer modules, and you can copy them into your `modules/` directory with a command.
+Nothing else changes: afterwards they are ordinary files, `require` reads them from disk like any
+module you wrote, and loading never touches the network.
+
+A repository offers modules as `modules/NAME.scm` at its top level, the layout your own directory
+has. Other files and deeper directories are ignored.
+
+| Command | What it does |
+| --- | --- |
+| `:module-add owner/repo[@ref] [module ...]` | Fetches the repository at a tag, branch or commit (the default branch when `@ref` is left out), and shows what it would install. With no module names it offers every module the repository has. |
+| `:module-update [module ...]` | Looks up the commit each installed module's ref names now, and shows what would change. |
+| `:module-remove module` | Deletes an installed module's file and forgets where it came from. |
+| `:module-list` | Shows the installed modules, where each came from, and the files in `modules/` that no repository installed. |
+| `:module-sync` | Fetches whatever `modules.lock` records and writes the files that are missing. |
+
+`:module-add` and `:module-update` work in the background, with `Fetching ...` in the status line, and
+end in a page that shows the repository, the commit, and the code: a new file whole, a changed one
+as a diff. Read it. `y` writes the files, and `n`, `q` or Esc writes nothing. Up, Down, Page Up and
+Page Down scroll, and while the page is open no other key reaches the editor. Characters that could
+hide or repaint code (control characters, right-to-left overrides, zero-width characters) are
+shown as `<U+202E>`, and long lines wrap instead of being cut off. Then add `(require name)` to
+`init.scm` and type `:reload`. Installing a module does not run it.
+
+### What is recorded
+
+`modules.lock` sits next to `init.scm`. It is read as data and never evaluated:
+
+```scheme
+(modules
+  (text-tools (source "owner/repo") (ref "v1.2") (commit "<40 hex digits>") (sha256 "<64 hex digits>")))
+```
+
+`ref` is what you asked for, so `:module-update` knows where to look; a ref of a commit pins the
+module. `commit` is the exact commit the file was read at, and `sha256` is the hash of the file as
+installed. It is safe to keep in version control. On another machine `:module-sync` fetches those
+commits and writes each missing file, but only when the file the repository serves hashes to what
+the lock says. A repository whose history was rewritten, or a lock that was edited, is reported by
+name and nothing is written for it.
+
+### What it refuses
+
+* A module you wrote. A file in `modules/` that the lock does not know is never overwritten, and
+  neither is a link or anything that is not a regular file.
+* A module installed from another repository.
+* A module you edited after installing it. `:module-update` and `:module-remove` leave it alone;
+  delete the file yourself to take the repository's copy.
+* A file that does not begin with `(define-module NAME ...)` for its own name.
+* A download over 32 MiB or an archive that unpacks to over 128 MiB, a module over 1 MiB, more than 64 modules, a name that is not a module
+  name, or an archive holding a path that leaves its directory.
+
+Any of these stops the whole command, with the reason on the page and nothing written. The files are
+written one at a time and the lock last; if anything fails the files already written are put back.
+A file that changes between the page and the `y` is refused.
+
+A module that needs another module from the same repository gets a note when the other one is not
+installed (`a requires b, which is not installed`); name both modules, or install all of them.
+Modules a repository drops stay installed, with a note.
+
+### What it can and cannot do
+
+The fetch is the editor's only network use. It makes HTTPS requests to `api.github.com` (to turn a
+ref into a commit) and `codeload.github.com` (for the archive of that commit), follows redirects
+only between those two, and reads public repositories only. It does not run `git` or any other
+program, sends no token or credential of its own, and every address in it is fixed in the program.
+Your proxy settings (`HTTPS_PROXY`) apply as they do to any Go program.
+
+Once installed, a module has exactly the powers any module has: the host operations above, the
+deadline, and the other limits. It cannot read files, reach the network or run programs. What it can
+do is edit the buffer you run its commands in and bind keys, so read the code you install as you
+would read a script you are about to put in your shell's start-up files, and prefer a tag or a
+commit to a branch. A module cannot take a key `init.scm` binds.
+
 ## Themes
 
 A theme is a set of colours. The editor comes with five and `:theme` switches between them.
@@ -599,6 +674,9 @@ moves the cursor is applied too, but records no undo step.
   `XDG_CONFIG_HOME` is unset, empty or not an absolute path. `init.scm` there is read when the editor
   starts and again when you type `:reload`, and a module only when `init.scm` requires it, from
   `modules/NAME.scm` in that same directory. At no other time, and from no other path.
+* The only way code gets into `modules/` from outside is the `:module` commands (see *Modules from
+  GitHub*), which you type, which show the code first, and which write files. They are the one place
+  the editor uses the network; Scheme never does, and a file is not run by being fetched.
 * It is **never** loaded from the directory of the file you open, the working directory, or any
   project directory, and nothing is run because a repository contains a file. A `init.scm` or a
   `modules` directory next to the file you edit is just files.
@@ -621,8 +699,9 @@ moves the cursor is applied too, but records no undo step.
 
 Key sequences, bindings in Insert mode or in the command line, running Scheme from an event other than
 the start of the editor, reading or writing other files, LSP data, running a command from Scheme, a
-`:eval` command, defining modes. Modules have no package manager, no nested names (`author/name`),
-no re-exports, and `require` is not available while a command runs. Each of those needs its own
+`:eval` command, defining modes. Modules have no version solver, no nested names (`author/name`), no private repositories,
+no re-exports, and `require` is not available while a command runs. `:module-add` copies files and
+records where they came from; it does not resolve what a module requires. Each of those needs its own
 decision about trust and threading first.
 
 ## Building
@@ -630,6 +709,7 @@ decision about trust and threading first.
 Coigüe depends on `github.com/fclaude/brote`, at `v0.4.0` (`go.sum` records its hashes). It is a public module, so a
 plain `go build ./cmd/coigue` downloads it. Brote is MIT licensed; its notice is in
 `THIRD_PARTY_NOTICES.md`, which `scripts/licenses.py` generates.
+The `:module` commands use only the Go standard library for HTTPS, so they add no dependency.
 
 ## What the tests check
 
@@ -677,5 +757,15 @@ Names are Go tests unless a file is given. `ext` is `internal/ext/ext_test.go`, 
 | The deadline and Ctrl-C cover a module required by `init.scm` | `TestTheDeadlineAndInterruptCoverARequiredModule` (ext) |
 | The example modules load; `:module/name`, the ambiguous short name, `init.scm` winning a key, Tab and the guide | `TestExampleModules` (editor) |
 | `:reload` re-reads modules, and a broken module changes nothing | `TestModuleReloadReplacesTheModulesOrChangesNothing` (editor) |
+| A repository's archive yields only `modules/NAME.scm`, and refuses links, odd names, repeats, big files, too many modules, escaping paths and an archive that expands without bound | `TestExtractReturnsOnlyTopLevelModules`, `TestExtractRefusesWhatItCannotTrust`, `TestExtractStopsAnArchiveThatExpandsWithoutBound` (modsrc) |
+| The lockfile is data, closely checked, written all or nothing | `TestLockRoundTripsAndIsSorted`, `TestLockfileIsReadAsDataAndCheckedClosely`, `TestWriteLockRefusesAnInvalidEntry` (modsrc) |
+| Refs become commits; only GitHub's two hosts are contacted, a redirect elsewhere is refused, the download is capped and cancellable | `TestResolveAsksGitHubForTheCommit`, `TestARedirectToAnotherHostIsRefused`, `TestRedirectPolicyChecks`, `TestFetchStopsADownloadThatIsTooLarge`, `TestContextCancelsAFetch` (modsrc) |
+| A plan writes nothing; apply is all or nothing; it never covers a module you wrote, another repository's or an edited one; it refuses a file that changed after the plan and puts files back when the lock cannot be written | `TestAddNeverCoversWhatIsNotItsOwn`, `TestAddRefusesAModuleInstalledFromElsewhereOrEdited`, `TestApplyRefusesAFileThatChangedAfterThePlan`, `TestAFailedApplyPutsEverythingBack` (modsrc) |
+| Update, remove and sync, and sync checks the hash against the lock | `TestUpdateMovesToTheNewCommitAndReusesTheRef`, `TestRemove`, `TestSyncRestoresWhatIsMissingAndChecksTheHash` (modsrc) |
+| The review cannot hide or repaint code, and shows new files whole and changes as diffs | `TestPrintableWritesOutWhatCouldHideCode`, `TestDiff`, `TestReviewShowsEverythingASafeDecisionNeeds` (modsrc) |
+| `:module-add` shows the code, writes nothing until `y`, keeps keys away from the editor behind it, and what it installs loads; cancelling and a blocked plan write nothing | `TestModuleAddShowsTheCodeThenInstallsOnYAndTheLoaderUsesIt`, `TestModuleAddCancelWritesNothing`, `TestAReviewWithABlockedChangeCannotBeApplied` (editor) |
+| `:module-update`, `-remove`, `-list` and `-sync`, one job at a time, errors as messages | `TestModuleUpdateShowsADiffAndAppliesIt`, `TestModuleRemoveAndSync`, `TestModuleListIsAPageWithNothingToAnswer`, `TestOneModuleJobAtATime`, `TestModuleCommandsExplainTheirMistakes` (editor) |
+| The commands complete only once there is an init file | `TestModuleCommandsCompleteOnlyOnceThereIsAnInitFile` (editor) |
+| The review page wraps without losing text and keeps its scroll inside the page | `TestWrapLinesKeepsEveryCharacter`, `TestModuleReviewPageWrapsScrollsAndNamesItsKeys` (render) |
 | Everything above in a real terminal, with a temporary `HOME` and `XDG_CONFIG_HOME` | `tests/pty_extension.py` |
 | `docs/examples/sample.scm` loads and does what its comments say | `TestSampleInit` (editor) |

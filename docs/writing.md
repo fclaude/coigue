@@ -84,4 +84,6 @@ Defining a built-in name yourself, on purpose, stays inside that file. Other fil
 
 Commands, keys and themes are the editor's names, so `init.scm` decides them after every module has loaded. A key bound by two modules, and by no binding in `init.scm`, is an error. The first load leaves that key unbound, and a `:reload` that fails leaves the previous keys in place. A module can't pass `#t` to take a key the editor already uses. Only `init.scm` can. A theme a module defines is named with the module in front, such as `text-tools/dusk`, and only `init.scm` may call `set-theme`.
 
+You can also copy modules from a GitHub repository: `:module-add owner/repo@v1` shows the code and installs it into `modules/` when you press `y`, after which `(require name)` works like any other. [Scheme and themes](extending.md) has the details and what it refuses.
+
 Each file, including `init.scm`, may register one procedure with `on-start`. They run in the order the modules loaded, with yours last, and each is its own undo step. One that fails doesn't skip the others.
