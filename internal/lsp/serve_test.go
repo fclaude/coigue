@@ -82,7 +82,11 @@ func TestServeKillsAndReapsTheChildOnEveryExit(t *testing.T) {
 		wantErr    string
 	}{
 		{"malformed output", "garbage", time.Second, false, "invalid LSP header"},
-		{"initialization timeout", "silent", 200 * time.Millisecond, false, "timed out"},
+		// The limit starts when the child is launched, and python3 can take
+		// longer than a short limit to reach its first line on a loaded
+		// runner; it would then be killed before it wrote the file readPid
+		// waits for.
+		{"initialization timeout", "silent", 2 * time.Second, false, "timed out"},
 		{"stop before initialization", "silent", 5 * time.Second, true, ""},
 		{"server exits", "exit", time.Second, false, ""},
 	} {
