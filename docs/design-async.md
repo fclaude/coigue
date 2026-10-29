@@ -241,9 +241,10 @@ The same goes the other way: in a background task, `insert-text` fails with
 `insert-text: a background task cannot read or edit the buffer; return what you found and apply it in a handler`.
 The operations stay defined; the context decides what they do.
 
-**Scope.** `std` takes one policy per interpreter. The plan is to install it with the union of the
-grants the person has approved and have the gate narrow each call to its own module's grant, which
-needs Brote to expose the check (see the requests).
+**Scope.** `std` takes one policy per interpreter. Coigüe installs it once with the widest policy a
+module could have (any public host, any method, 2 MB, 20 s) and narrows every step of every request to
+the grant of the module whose code started it, with Brote's `WithNetCheck` (v0.8.0). The module is a
+value in the evaluation's context, so a task started by a handler keeps it.
 
 **What this does not protect.** A module that can read the buffer and reach a host can send the
 buffer there. Brote's documentation says the same of any allowed host. The defence is honesty and
@@ -292,8 +293,12 @@ Each step stands alone and ships.
 4. **Background tasks**: `spawn-detached` from Brote, `on-done`, the busy rule, the explicit errors,
    lifetime and limits, and the operation table. **Built** on Brote v0.6.0 (`Background` grant,
    `WithTaskFailed`, `Shutdown`, Go handles for tasks and channels): `on-done`, status-line reports of
-   unwatched failures, tasks ended on `:reload` and quit. Not yet built: the module context for the gate.
-5. **Grants**: `requires`, the review page, the lock, the gate.
+   unwatched failures, tasks ended on `:reload` and quit.
+5. **Grants**: `requires`, the review page, the lock, the gate. **Built** on Brote v0.8.0, whose
+   `WithNetCheck` judges every redirect hop and connection with the calling module's grant (see *The
+   network* in `extending.md`). Only `net` is offered; `time`, `fs` and `exec` are not. Commands and
+   handlers cannot wait on the network (the gate says so), `init.scm` has no grant, and a module installed
+   from a repository gets at most the grant approved at install, which `modules.lock` records.
 6. **Docked panes**, then sub-buffers if wanted.
 
 Steps 1 to 3 need nothing from Brote beyond v0.5.0. Step 4 needs `spawn-detached`.

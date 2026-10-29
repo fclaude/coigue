@@ -38,6 +38,8 @@ func words(t *testing.T, hop string) (*httptest.Server, string) {
 			http.Redirect(w, r, hop, http.StatusFound)
 		case "/post":
 			fmt.Fprint(w, r.Method)
+		case "/rhyme":
+			fmt.Fprintf(w, `[{"word":"free","score":2000},{"word":"sea","score":1900}]`)
 		default:
 			fmt.Fprint(w, "tree,free,sea")
 		}
@@ -295,5 +297,41 @@ func TestTheUrlHelperIsThereWithoutAGrant(t *testing.T) {
 	r := loaded(t, Options{}, `(define-command "enc" (lambda () (insert-text (url-encode "a b&c"))))`)
 	if got := run(t, r, "enc").Buffer.Text(); got != "a+b%26c" {
 		t.Fatalf("got %q", got)
+	}
+}
+
+// The example in *The network* with the server's address in place of
+// api.datamuse.com, run for real.
+func TestTheDocumentedRhymeExampleRuns(t *testing.T) {
+	privateOK(t)
+	_, host := words(t, "")
+	r := netRuntime(t, Options{Grants: withPrivate}, map[string]string{
+		"wordsmith.scm": `(define-module wordsmith
+  (doc "Rhymes for the word under the cursor.")
+  (export rhymes)
+  (requires (net (allow "` + host + `") (methods get))))
+
+(define (rhymes word)
+  (map (lambda (entry) (cdr (assoc "word" entry)))
+       (http-get-json (string-append "http://` + host + `/rhyme?rel_rhy=" (url-encode word)))))
+
+(define-command "rhyme"
+  (lambda ()
+    (let ((word (word-at-cursor)))
+      (on-done (spawn-detached (lambda () (rhymes word)))
+               (lambda (task)
+                 (message (apply string-append (map (lambda (w) (string-append w " ")) (task-wait task)))))))))`,
+	}, `(require wordsmith)`)
+	s := session("tree", 0, 1, nil, false)
+	if err := r.Run(context.Background(), "wordsmith/rhyme", nil, s); err != nil {
+		t.Fatal(err)
+	}
+	r.Adopt(s)
+	done := session("tree", 0, 1, nil, false)
+	if err := r.RunEvent(context.Background(), events(t, r, 1)[0], done); err != nil {
+		t.Fatal(err)
+	}
+	if got := done.Message(); got != "free sea " {
+		t.Fatalf("message %q", got)
 	}
 }

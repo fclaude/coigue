@@ -258,6 +258,67 @@ task's value, or raises the task's error, so `guard` works as everywhere else:
 * `(after-detached seconds)` is Brote's timer that outlives the command, as `timer` is. Use either with
   `on-channel`.
 
+## The network
+
+A module can reach hosts it names, from a background task, and nothing else. It asks in its header:
+
+```scheme
+(define-module wordsmith
+  (doc "Rhymes for the word under the cursor.")
+  (export rhymes)
+  (requires (net (allow "api.datamuse.com") (methods get))))
+
+(define (rhymes word)
+  (map (lambda (entry) (cdr (assoc "word" entry)))
+       (http-get-json (string-append "https://api.datamuse.com/words?rel_rhy=" (url-encode word)))))
+
+(define-command "rhyme"
+  (lambda ()
+    (let ((word (word-at-cursor)))
+      (on-done (spawn-detached (lambda () (rhymes word)))
+               (lambda (task)
+                 (message (apply string-append (map (lambda (w) (string-append w " ")) (task-wait task)))))))))
+```
+
+The command returns at once; the request runs in the task; when it ends, the handler shows the result.
+
+* **`(requires (net (allow HOST ...) [(methods M ...)]))`** is the only thing a module can ask for. A host is
+  `name` or `name:port` (a name alone means HTTPS on 443, or HTTP on 80), lower case, written out in full:
+  there are no wildcards, and at most 16 hosts. Methods are `get`, `head`, `post`, `put`, `patch`, `delete`
+  and `options`; without `methods`, only `get` and `head`. A request can also not ask for private addresses,
+  a body size or a timeout. The editor sets those: bodies up to 2 MB, 20 seconds.
+* **The procedures** are Brote's: `http-request`, `http-get`, `http-post`, `http-get-json` and
+  `http-post-json`, plus `url-encode`, `url-decode`, `base64-encode`, `base64-decode`, `hex-encode`,
+  `hex-decode`, `csv-parse` and `csv-emit`. The last group needs no grant. See Brote's *extended library* for
+  what they do.
+* **Every step is judged against the grant of the module whose code started it**: the request, each
+  redirect (with the method the hop is sent with, so a POST that becomes a GET is judged as a GET), and each
+  connection, against the address the name resolved to. A redirect to a host the module did not name is
+  refused, and so is a name that resolves to a loopback, private or link-local address, whatever the module
+  named. Each request has connections of its own, so one module's connection never carries another's request.
+* **A command cannot wait on the network.** While the editor runs a command, or a handler, it waits for it, and
+  a slow server would freeze it. So `http-get` in a command fails with `a command cannot use the network
+  while the editor waits; start a (spawn-detached ...) task and handle its result with on-done`. Start the
+  task in the command and use the result in the handler. A task started by a handler belongs to the same module.
+* **The error says what to add.** A module with no grant gets `this module has no network access; add
+  (requires (net (allow "host"))) to its header`, and `init.scm`, which has no grant, is told to put the code
+  in a module. A refusal cannot be caught with `guard`, so a module cannot hide it; the task fails and the
+  handler's `task-wait` raises it, or the status line shows `background task failed: ...`. Failures of the
+  network itself (a timeout, a server that is down, a status of 400 or more from `http-get-json`) are
+  ordinary errors that `guard` catches.
+* **A module you installed gets only what you approved.** See *Modules from GitHub*. A module you wrote
+  gets what its header asks for.
+* **Brote's `require`, `modules` and `module-info` are refused**, with a message pointing here: they describe
+  the editor's own limit, not a module's grant.
+
+**What this does not protect.** A module that can read your text (its commands run on your buffer) and
+reach a host can send the text to that host. The defences are that hosts are named, one by one, that the
+review page says so in words before you install, that an update which asks for more is marked, and that
+the grant in `modules.lock` is the limit. A host you allow can see everything the module sends it, and the
+allow list is by name: a name whose DNS someone else controls is theirs.
+
+The editor's only other network use is `:module-add` and its relatives, which talk to GitHub.
+
 ## Windows
 
 A command can put a window on the screen. Each of `show-list`, `show-text` and `prompt` returns a
@@ -708,7 +769,9 @@ shown as `<U+202E>`, and long lines wrap instead of being cut off. Then add `(re
 
 ```scheme
 (modules
-  (text-tools (source "owner/repo") (ref "v1.2") (commit "<40 hex digits>") (sha256 "<64 hex digits>")))
+  (text-tools (source "owner/repo") (ref "v1.2") (commit "<40 hex digits>") (sha256 "<64 hex digits>"))
+  (wordsmith (source "owner/words") (commit "<40 hex digits>") (sha256 "<64 hex digits>")
+             (net (allow "api.datamuse.com") (methods get head))))
 ```
 
 `ref` is what you asked for, so `:module-update` knows where to look; a ref of a commit pins the
@@ -718,6 +781,22 @@ commits and writes each missing file, but only when the file the repository serv
 the lock says. A repository whose history was rewritten, or a lock that was edited, is reported by
 name and nothing is written for it.
 
+`net` is the network you approved for that module (see *The network*), and it is absent for a module that
+asks for none. The review page says it in words under the module, before you answer:
+
+```
+  add           wordsmith (1832 bytes, sha256 ...)
+                NETWORK: can reach api.datamuse.com (GET, HEAD)
+                It can read your text while its commands run, so it could send text to these hosts.
+```
+
+An update that asks for more than the last one you approved adds `NETWORK ACCESS GROWS (new hosts: ...)`
+to that page, and `y` approves it. At load a module gets what its header asks for **only up to the
+approved grant**: if the file on disk asks for another host (an edit, or a lockfile that was changed), the
+module has no network, `:reload` reports the reason in the guide, and its requests fail with the same
+words. A module with no entry in `modules.lock`, one you wrote, gets what its header asks for.
+`:module-list` shows the approved network of each module.
+
 ### What it refuses
 
 * A module you wrote. A file in `modules/` that the lock does not know is never overwritten, and
@@ -725,7 +804,8 @@ name and nothing is written for it.
 * A module installed from another repository.
 * A module you edited after installing it. `:module-update` and `:module-remove` leave it alone;
   delete the file yourself to take the repository's copy.
-* A file that does not begin with `(define-module NAME ...)` for its own name.
+* A file that does not begin with `(define-module NAME ...)` for its own name, or whose `requires` clause
+  is not one the editor offers (a wildcard, a module other than `net`, a limit it sets itself).
 * A download over 32 MiB or an archive that unpacks to over 128 MiB, a module over 1 MiB, more than 64 modules, a name that is not a module
   name, or an archive holding a path that leaves its directory.
 
@@ -746,8 +826,9 @@ program, sends no token or credential of its own, and every address in it is fix
 Your proxy settings (`HTTPS_PROXY`) apply as they do to any Go program.
 
 Once installed, a module has exactly the powers any module has: the host operations above, the
-deadline, and the other limits. It cannot read files, reach the network or run programs. What it can
-do is edit the buffer you run its commands in and bind keys, so read the code you install as you
+deadline, and the other limits, and the network you approved for it, from a background task. It cannot
+read files or run programs. What it can do is edit the buffer you run its commands in and bind keys, so
+read the code you install as you
 would read a script you are about to put in your shell's start-up files, and prefer a tag or a
 commit to a branch. A module cannot take a key `init.scm` binds.
 
@@ -892,7 +973,8 @@ moves the cursor is applied too, but records no undo step.
   `modules/NAME.scm` in that same directory. At no other time, and from no other path.
 * The only way code gets into `modules/` from outside is the `:module` commands (see *Modules from
   GitHub*), which you type, which show the code first, and which write files. They are the one place
-  the editor uses the network; Scheme never does, and a file is not run by being fetched.
+  the editor itself uses the network; a module's Scheme reaches only the hosts it was granted (see *The
+  network*), and a file is not run by being fetched.
 * It is **never** loaded from the directory of the file you open, the working directory, or any
   project directory, and nothing is run because a repository contains a file. A `init.scm` or a
   `modules` directory next to the file you edit is just files.
@@ -906,8 +988,10 @@ moves the cursor is applied too, but records no undo step.
   read, is declared a host operation and **a gate refuses every primitive declared `Host`** (and
   every `Egress` or `Irreversible` one). `(load "x.scm")` fails with `load: denied: ...` and the
   file is not read. The set of primitives is frozen after registration, so `register-tool` cannot
-  add one. No operation gives access to processes, the network, the file system, environment
-  variables, credentials or the clipboard.
+  add one. No operation gives access to processes, the file system, environment variables,
+  credentials or the clipboard. The network is the one exception: Brote's `http-request` and its helpers
+  are `Host` and `Egress` primitives, and the gate lets them through only for a module that was granted
+  hosts, only from a background task, and only to those hosts (see *The network*).
 * The command line is unchanged: `coigue [FILE]`, `--help`, `--version`. No flag was added, so
   there is nothing that would let a command line (and so a project script) pick a different file.
 
@@ -915,7 +999,8 @@ moves the cursor is applied too, but records no undo step.
 
 Key sequences, bindings in Insert mode or in the command line, running Scheme from an event other than
 the start of the editor, a command you typed, a key you bound, a timer, a channel value or a finished
-background task, reading or writing other files, the network, LSP data, running a command from Scheme, a
+background task, reading or writing other files, a network grant for `init.scm` or for anything but named
+hosts, LSP data, running a command from Scheme, a
 `:eval` command, defining modes. Modules have no version solver, no nested names (`author/name`), no private repositories,
 no re-exports, and `require` is not available while a command runs. `:module-add` copies files and
 records where they came from; it does not resolve what a module requires. Each of those needs its own
@@ -923,7 +1008,7 @@ decision about trust and threading first.
 
 ## Building
 
-Coigüe depends on `github.com/fclaude/brote`, at `v0.6.0` (`go.sum` records its hashes). It is a public module, so a
+Coigüe depends on `github.com/fclaude/brote`, at `v0.8.0` (`go.sum` records its hashes). It is a public module, so a
 plain `go build ./cmd/coigue` downloads it. Brote is MIT licensed; its notice is in
 `THIRD_PARTY_NOTICES.md`, which `scripts/licenses.py` generates.
 The `:module` commands use only the Go standard library for HTTPS, so they add no dependency.
@@ -989,6 +1074,11 @@ Names are Go tests unless a file is given. `ext` is `internal/ext/ext_test.go`, 
 | Tasks work inside a command, end with it, and cannot touch the buffer | `TestTaskProceduresAreAvailable`, `TestTasksEndWithTheirCommand`, `TestATaskCannotTouchTheBuffer` (ext) |
 | A handler runs as its own undo step, only when the editor is idle, leaves a quiet status line alone, reports a failure and stays registered; `:reload` drops handlers and timers | `TestATimerHandlerRunsAsACommandAfterTheDelay`, `TestAHandlerWaitsUntilTheEditorIsIdle`, `TestAHandlerThatFailsSaysSoAndStaysRegistered`, `TestAHandlerWithNothingToSayLeavesTheStatusLineAlone`, `TestReloadDropsHandlersAndTimers`, `TestAFailedCommandLeavesNoTimerBehind` (editor) |
 | The examples in *Events and timers* run | `TestDocumentedExamplesRun` (editor) |
+| A header's `requires` is read closely: only `net`, named hosts, no wildcards, no limits of its own; a grant is within or wider than another | `TestARequestIsReadFromTheHeader`, `TestRequestsThatAreNotOffered`, `TestWithinAndWidening`, `TestThePolicyJudgesRequests` (`internal/grant`) |
+| A module with a grant reaches its hosts from a task; a command cannot wait on the network; no grant, no network, and the error says what to add; `init.scm` has none | `TestAModuleWithAGrantFetchesInATask`, `TestACommandCannotWaitOnTheNetwork`, `TestAModuleWithoutAGrantIsToldWhatToAdd`, `TestInitScmHasNoNetworkAndIsToldWhere` (ext) |
+| Each module is held to its own grant on one interpreter, at every redirect hop, for every method, and a handler's task keeps its module | `TestEachModuleKeepsItsOwnGrantOnOneInterpreter`, `TestARedirectToAHostOutsideTheGrantIsRefused`, `TestOnlyTheGrantedMethodsAreSent`, `TestATaskStartedByAHandlerKeepsTheModule` (ext) |
+| The editor's own limit holds whatever the grant says; a refused grant leaves a note and a reason; Brote's introspection is refused; the example in *The network* runs | `TestTheEditorsOwnLimitHoldsWhateverTheGrantSays`, `TestAGrantTheEditorRefusesLeavesTheModuleWithoutNetworkAndSaysWhy`, `TestBroteIntrospectionIsRefusedWithAnExplanation`, `TestTheDocumentedRhymeExampleRuns` (ext) |
+| The lock records the approved network, the review page says it in words and marks growth, and at load a module gets at most what was approved | `TestInstallingRecordsTheGrantThePersonApproved`, `TestAnUpdateThatAsksForMoreIsMarked`, `TestGrantsFollowWhatWasApproved`, `TestAModuleThatWasInstalledWithoutAGrantCannotGrowOneOnDisk`, `TestAnUnreadableLockfileGrantsNothing` (modsrc); `TestTheReviewShowsTheNetworkAModuleAsksForAndTheLockLimitsIt` (editor) |
 | A window answers on its channel (a list sends a string or the value of a pair, a prompt the text), a cancelled one sends nothing, a text window takes a string or a list, arguments are checked, a failed command opens none, and at most 8 wait | `TestAListWindowAnswersOnItsChannel`, `TestAListSendsAStringItemAsItIs`, `TestACancelledWindowClosesItsChannelWithNothingSent`, `TestAPromptStartsWithTheGivenTextAndSendsWhatWasTyped`, `TestATextWindowTakesLinesAsAStringOrAList`, `TestWindowArgumentsAreChecked`, `TestAFailedCommandOpensNoWindow`, `TestWindowsWaitingAreCapped` (ext) |
 | A window filters, chooses and cancels; a prompt edits its line; a text window is dismissed by Enter, q or Esc; windows come one at a time; every key is the window's; window text cannot hide or repaint; selection stays in range; `:reload` forgets queued windows | `TestAListWindowFiltersAndChoosesAndTheHandlerRuns`, `TestEscCancelsAWindowWithoutRunningItsHandler`, `TestAPromptEditsItsLineAndSendsIt`, `TestATextWindowIsDismissedByEnterQOrEsc`, `TestWindowsAreShownOneAtATimeInOrder`, `TestAWindowGetsEveryKeyAndTheBufferIsUntouched`, `TestWindowTextCannotHideOrRepaint`, `TestWindowKeysStayInRange`, `TestReloadForgetsQueuedWindows` (editor) |
 | A list, a prompt and a confirmation are drawn with their selection, filter, count and keys | `TestListWindowShowsTheSelectionTheFilterAndTheCount`, `TestPromptWindowShowsWhatIsTypedOnTheLastRow`, `TestConfirmWindowNamesWhatYAndNDo` (render) |

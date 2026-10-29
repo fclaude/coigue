@@ -416,8 +416,9 @@ editor to change it:
 Select text with `v` or `V`, press `!`, type `wrap ( )` and Enter. The whole command is one undo
 step; a command that fails, or that runs away and is stopped by Ctrl-C or its five-second limit,
 changes nothing. Scheme is loaded only from that file and from modules it requires in the `modules`
-directory beside it, never from a project directory, and it cannot read other files, run programs or
-reach the network. [docs/extending.md](docs/extending.md) is the
+directory beside it, never from a project directory, and it cannot read other files or run programs. It
+reaches the network only to hosts a module's header names and you approved, from a background task.
+[docs/extending.md](docs/extending.md) is the
 contract: the host operations, the exact behaviour, every failure, and how it is tested.
 
 The same file can define themes. This one starts from Gruvbox, changes two colours and makes
