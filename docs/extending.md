@@ -132,6 +132,11 @@ interpreter is refused (see *Trust*).
 | `(show-list title items)` | Shows a window listing `items` and returns a channel (see *Windows*). An item is a string, or a pair `(label . value)`. | in a command |
 | `(show-text title lines)` | Shows a read-only window and returns a channel that is closed when it is dismissed. `lines` is a string with newlines or a list of strings. | in a command |
 | `(prompt title [initial])` | Asks for a line of text and returns a channel (see *Windows*). | in a command |
+| `(mark-at line column)` | A mark: a place that stays with the text around it as the buffer changes (see *Marks*). At most 256 are alive at once. | in a command |
+| `(mark-line mark)`, `(mark-column mark)` | The 1-based line and column of a mark now. | in a command |
+| `(mark-disturbed? mark)` | `#t` if the text the mark was on has been replaced since it was made, so it stands only for the nearest place. | in a command |
+| `(insert-at-mark mark text)` | Inserts `text` at a mark, as `insert-at` does at a line and column. | in a command |
+| `(goto-mark mark)` | Moves the cursor to a mark, as `set-cursor` does. | in a command |
 
 "In a command" means: while the editor is running a `:name` command, a bound key or the start-up
 procedure. Called any other way (while `init.scm` loads, or by anything that is not an invocation the
@@ -245,6 +250,43 @@ channel, and the answer comes back on it, so a window is used exactly like a tim
   text. Long lines wrap; none is cut off.
 * **The answer is a value, not a position.** It arrives as a handler command, on a fresh copy of the
   buffer, as in *Events and timers*; the text may have changed since the window opened.
+
+## Marks
+
+A handler may run seconds after the command that started the work, and the text may have changed in
+between. A line number taken then would now point at something else. A **mark** is a place that stays
+with the text around it.
+
+```scheme
+(define here #f)
+(define results (make-channel 4))
+
+(define-command "annotate"
+  (lambda ()
+    (set! here (mark-at (cursor-line) (cursor-column)))   ; remember where we are
+    (on-channel results (lambda (note) (insert-at-mark here note)))
+    (on-channel (timer 5) (lambda (_) (channel-send! results " (checked)")))))
+```
+
+While the five seconds pass you can type above the cursor, delete lines, undo: when the handler runs,
+`insert-at-mark` puts the note where the text it was made on now is.
+
+* **How it moves.** Lines an edit did not touch keep their place exactly. Inside the lines it did
+  change, a mark moves by characters: before the change it stays, after it it shifts by the change in
+  length. Typing exactly *at* a mark puts the text after it, so the mark stays before what was typed.
+* **When its text is replaced** the mark falls to the start of the change, or to the end of the text
+  if nothing follows, and `mark-disturbed?` says `#t`. A module that would rather do nothing than
+  insert in a nearby place asks first: `(if (not (mark-disturbed? here)) (insert-at-mark here note))`.
+* **Undo and redo** move marks like any other change, because the text before and after is what is
+  compared.
+* **Inside a command** a mark is resolved against the command's own copy of the buffer, so after an
+  `insert-at-mark` the next mark is still in the right place.
+* **Another file.** A mark belongs to the file it was made in. After another file is opened it is
+  dead, and using it is an error that says so.
+* **A command that fails** makes no marks. A mark kept from it in a variable says it was made by a
+  command that did not finish.
+* **Freed when forgotten.** At most 256 marks are alive at once. A mark nothing refers to any more is
+  collected, so a command may make many over a session. `:reload` drops them all.
 
 ## Editing beyond the selection
 
@@ -888,5 +930,8 @@ Names are Go tests unless a file is given. `ext` is `internal/ext/ext_test.go`, 
 | A window answers on its channel (a list sends a string or the value of a pair, a prompt the text), a cancelled one sends nothing, a text window takes a string or a list, arguments are checked, a failed command opens none, and at most 8 wait | `TestAListWindowAnswersOnItsChannel`, `TestAListSendsAStringItemAsItIs`, `TestACancelledWindowClosesItsChannelWithNothingSent`, `TestAPromptStartsWithTheGivenTextAndSendsWhatWasTyped`, `TestATextWindowTakesLinesAsAStringOrAList`, `TestWindowArgumentsAreChecked`, `TestAFailedCommandOpensNoWindow`, `TestWindowsWaitingAreCapped` (ext) |
 | A window filters, chooses and cancels; a prompt edits its line; a text window is dismissed by Enter, q or Esc; windows come one at a time; every key is the window's; window text cannot hide or repaint; selection stays in range; `:reload` forgets queued windows | `TestAListWindowFiltersAndChoosesAndTheHandlerRuns`, `TestEscCancelsAWindowWithoutRunningItsHandler`, `TestAPromptEditsItsLineAndSendsIt`, `TestATextWindowIsDismissedByEnterQOrEsc`, `TestWindowsAreShownOneAtATimeInOrder`, `TestAWindowGetsEveryKeyAndTheBufferIsUntouched`, `TestWindowTextCannotHideOrRepaint`, `TestWindowKeysStayInRange`, `TestReloadForgetsQueuedWindows` (editor) |
 | A list, a prompt and a confirmation are drawn with their selection, filter, count and keys | `TestListWindowShowsTheSelectionTheFilterAndTheCount`, `TestPromptWindowShowsWhatIsTypedOnTheLastRow`, `TestConfirmWindowNamesWhatYAndNDo` (render) |
+| A position moves with the text: lines left alone keep their place, edits before and after in a line shift it, replaced text falls to the start of the change, splits and joins follow the characters, a huge change is one block | `TestMapper`, `TestMapperStaysInsideTheNewText`, `TestMapperOfAHugeChangeIsOneBlockNotASlowAlignment` (marks) |
+| A mark follows typing above it, on its line and through undo; replaced text disturbs it; two marks stay right while a command edits; a failed command makes none; another file kills them; `goto-mark`; the cap and collection; argument checks; nothing is kept until one exists | `TestAMarkFollowsTheTextWhenLinesAreAddedAbove`, `TestAMarkSurvivesTypingOnItsOwnLineAndUndo`, `TestAMarkInReplacedTextIsDisturbedAndFallsToTheStart`, `TestTwoMarksStayRightWhileTheCommandEdits`, `TestAMarkMadeByACommandThatFailedIsNotUsable`, `TestMarksAreDeadWhenAnotherFileIsOpen`, `TestGotoMarkMovesTheCursor`, `TestAtMostTwoHundredFiftySixMarksAreAliveButFreedOnesAreReused`, `TestMarkOperationsCheckTheirArguments`, `TestMarksCostNothingUntilOneExists` (ext) |
+| A mark stays right while the person types above it in the editor, and through undo | `TestAMarkFollowsTheTextWhileThePersonTypesAboveIt`, `TestAMarkKeepsUpThroughUndoOfTheTyping` (editor) |
 | Everything above in a real terminal, with a temporary `HOME` and `XDG_CONFIG_HOME` | `tests/pty_extension.py` |
 | `docs/examples/sample.scm` loads and does what its comments say | `TestSampleInit` (editor) |

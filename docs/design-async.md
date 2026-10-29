@@ -175,7 +175,7 @@ keeps current as text around it changes, and a handler uses it:
 ```
 
 A mark whose surrounding text is deleted collapses to the nearest surviving position.
-`(buffer-changed-since? mark)` is there for a module that would rather give up. Marks need the
+`(mark-disturbed? mark)` is there for a module that would rather give up. Marks need the
 buffer to adjust live marks on every edit, a contained change in `internal/buffer`.
 
 ## Windows
@@ -286,7 +286,9 @@ Each step stands alone and ships.
    for a task that touches the buffer.
 2. **Modal windows** returning channels. **Built**: `show-list`, `show-text` and `prompt`, and the
    module review page is now one of them (a confirmation window).
-3. **Marks.**
+3. **Marks.** **Built**, by comparing the text before and after a change (line alignment, then
+   characters inside a changed block) so that no edit operation of the buffer had to know about
+   them. `(buffer-changed-since? mark)` became `(mark-disturbed? mark)`.
 4. **Background tasks**: `spawn-detached` from Brote, `on-done`, the busy rule, the explicit errors,
    lifetime and limits, and the operation table.
 5. **Grants**: `requires`, the review page, the lock, the gate.

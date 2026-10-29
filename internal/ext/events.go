@@ -105,6 +105,7 @@ func (r *Runtime) timer(c *scheme.Call, s *Session) (scheme.Value, error) {
 // Adopt takes the handlers and timers a successful command registered. A
 // command that failed registers nothing, like it changes no text.
 func (r *Runtime) Adopt(s *Session) {
+	r.adoptMarks(s)
 	r.handlers = append(r.handlers, s.handlers...)
 	r.timers = append(r.timers, s.timers...)
 	r.windows = append(r.windows, s.windows...)

@@ -125,6 +125,7 @@ type Runtime struct {
 	handlers        []*handlerReg
 	timers          []*timerReq
 	windows         []*WindowReq
+	tracker         tracker
 	themes          *theme.Set
 	busy            atomic.Bool
 

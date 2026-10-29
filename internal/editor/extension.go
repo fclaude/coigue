@@ -210,6 +210,7 @@ func extensionCommand(e *Editor, name string, args []string) bool {
 // applies the copy in one edit transaction if the procedure succeeded. label
 // names it in the status line.
 func (e *Editor) runExtension(label string, selection *ext.Selection, run func(*ext.Session) error) {
+	e.syncMarks()
 	scratch := e.Buffer.Clone()
 	session := ext.NewSession(scratch, selection)
 	session.Path = e.File.Path
@@ -225,6 +226,7 @@ func (e *Editor) runExtension(label string, selection *ext.Selection, run func(*
 		e.Buffer.Edit(func() { e.Buffer.Adopt(scratch) })
 		e.Buffer.Clamp(false)
 	}
+	e.syncMarks()
 	if message := session.Message(); message != "" {
 		e.Message = message
 	} else {
@@ -435,4 +437,12 @@ func (e *Editor) idleForEvents() bool {
 		e.selectionAnchor == nil && e.commandVisual == 0 && !e.IsWelcome() &&
 		e.Help == nil && e.Menu == nil && e.Locations == nil && e.Picker == nil &&
 		e.Explorer == nil && e.SwitchPrompt == "" && e.FilesystemPrompt == nil && e.Window == nil
+}
+
+// syncMarks moves the marks extensions hold to the text as it is now. It costs
+// nothing while there are none or the text has not changed.
+func (e *Editor) syncMarks() {
+	if e.extensions != nil && e.extensions.HasMarks() {
+		e.extensions.SyncMarks(e.Buffer.Lines(), e.Buffer.Revision(), e.Generation)
+	}
 }

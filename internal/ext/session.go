@@ -59,6 +59,11 @@ type Session struct {
 	handlers []*handlerReg
 	timers   []*timerReq
 	windows  []*WindowReq
+	// Marks made in this command and the text they were made on.
+	newMarks []*markObj
+	snap     *textSnap
+	snapRev  uint64
+	mappers  map[*textSnap]*cachedMapper
 	// label names the command in a handler's failure message.
 	label string
 	// owner is the goroutine that started the invocation, the only one whose

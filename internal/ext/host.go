@@ -247,6 +247,7 @@ func (r *Runtime) hostOperations() []*scheme.Prim {
 		},
 	}
 	prims = append(prims, readOperations()...)
+	prims = append(prims, markOps(r)...)
 	return append(prims, editOperations()...)
 }
 

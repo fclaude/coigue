@@ -315,6 +315,7 @@ func (e *Editor) Key(k key.Key, pageRows int) bool {
 	if e.Mode != ModeInsert || e.Picker != nil || e.Explorer != nil {
 		e.Buffer.FinishEdit()
 	}
+	e.syncMarks()
 	e.syncLSP()
 	return quit
 }
@@ -449,6 +450,7 @@ func (e *Editor) syncLSP() {
 // results, scans for the picker and explorer, and delayed searches.
 func (e *Editor) Tick(pageRows int) {
 	e.pollLSP()
+	e.syncMarks()
 	e.pollModules()
 	e.pollEvents()
 	if e.Picker != nil {
