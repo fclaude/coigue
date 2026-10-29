@@ -28,7 +28,7 @@ GitHub releases carry the same program already built. Ubuntu and Debian install 
 
 ```console
 $ coigue --version
-coigue 0.2.3 (main build development; commit unknown)
+coigue 0.3.0 (main build development; commit unknown)
 $ coigue --help
 Usage: coigue [FILE]
 
