@@ -475,7 +475,9 @@ func TestGateRefusesLoadAndEverythingThatTouchesTheSystem(t *testing.T) {
 	}
 	for _, p := range New(Options{}).interp.Prims() {
 		if p.Meta.Host || p.Meta.Egress || p.Meta.Irreversible {
-			if p.Name != "load" {
+			// http-request is the network a module may be granted; the gate
+			// decides it per module (see net_test.go).
+			if p.Name != "load" && p.Name != "http-request" {
 				t.Errorf("Brote now offers %s, which touches the system: review the gate", p.Name)
 			}
 			continue

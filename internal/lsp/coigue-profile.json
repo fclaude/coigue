@@ -303,6 +303,123 @@
       "variadic": false
     },
     {
+      "doc": "The string that Base64 text stands for. An error if the text is not Base64, or decodes to bytes that are not UTF-8 text (strings are text).",
+      "name": "base64-decode",
+      "parameters": [
+        "text",
+        "[url-safe]"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "The Base64 text of a string's UTF-8 bytes. With #t as the second argument, the URL-safe alphabet without padding.",
+      "name": "base64-encode",
+      "parameters": [
+        "text",
+        "[url-safe]"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "CSV text for a list of rows, each a list of strings or numbers (quoted where needed, one line per row).",
+      "name": "csv-emit",
+      "parameters": [
+        "rows",
+        "[delimiter]"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "Parse CSV text (RFC 4180) into a list of rows, each a list of strings. The optional delimiter is a one-character string, \",\" by default.",
+      "name": "csv-parse",
+      "parameters": [
+        "text",
+        "[delimiter]"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "The string that hexadecimal text stands for. An error if it is not hexadecimal or its bytes are not UTF-8 text.",
+      "name": "hex-decode",
+      "parameters": [
+        "text"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "The lower-case hexadecimal text of a string's UTF-8 bytes.",
+      "name": "hex-encode",
+      "parameters": [
+        "text"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "Send an HTTP request and return the response as an association list with \"status\" (integer), \"headers\" (an alist with lower-case names), \"body\" (a string) and \"url\" (the final URL after redirects). Headers are an alist such as '((\"accept\" . \"text/plain\")). A status of 400 or more is a result, not an error; a refused host, method, redirect, a body past the host's limit or a timeout is an error.",
+      "name": "http-request",
+      "parameters": [
+        "method",
+        "url",
+        "[headers]",
+        "[body]"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "Undo url-encode. An error for a bad % escape.",
+      "name": "url-decode",
+      "parameters": [
+        "text"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "Escape text for a URL query value (space becomes +, reserved characters %XX).",
+      "name": "url-encode",
+      "parameters": [
+        "text"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "(http-request \"GET\" url headers): the response as an association list. Needs (requires (net ...)) in the module's header, and runs in a (spawn-detached ...) task, not in a command.",
+      "name": "http-get",
+      "parameters": [
+        "url",
+        "[headers]"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "(http-request \"POST\" url headers body): the response as an association list. Needs (requires (net ...)) in the module's header, and runs in a (spawn-detached ...) task, not in a command.",
+      "name": "http-post",
+      "parameters": [
+        "url",
+        "body",
+        "[headers]"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "The response body of a GET, parsed as JSON. A status of 400 or more is an error. Needs (requires (net ...)) in the module's header, and runs in a (spawn-detached ...) task, not in a command.",
+      "name": "http-get-json",
+      "parameters": [
+        "url",
+        "[headers]"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "Send value as JSON in a POST and return the parsed JSON reply. A status of 400 or more is an error. Needs (requires (net ...)) in the module's header, and runs in a (spawn-detached ...) task, not in a command.",
+      "name": "http-post-json",
+      "parameters": [
+        "url",
+        "value",
+        "[headers]"
+      ],
+      "variadic": false
+    },
+    {
       "doc": "Import a module from modules/ beside init.scm; supports only, except, rename and prefix.",
       "name": "require",
       "parameters": [

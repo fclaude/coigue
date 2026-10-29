@@ -24,6 +24,7 @@ type handlerReg struct {
 	ch      scheme.Channel
 	handler scheme.Value
 	origin  string // the command that registered it, for messages
+	module  string // the module it belongs to
 }
 
 // doneReg is one on-done.
@@ -31,6 +32,7 @@ type doneReg struct {
 	task    scheme.Task
 	handler scheme.Value
 	origin  string
+	module  string
 }
 
 // timerReq is one timer: a channel to send #t on, and when.
@@ -45,6 +47,7 @@ type Event struct {
 	handler scheme.Value
 	arg     scheme.Value
 	origin  string
+	module  string
 }
 
 // Origin names the command that registered the handler, or "".
@@ -77,7 +80,7 @@ func (r *Runtime) onChannel(c *scheme.Call, s *Session) (scheme.Value, error) {
 	// between keys, never while a command runs, so a command that waits on this
 	// channel for the editor to fill it is deadlocked, and Brote should say so
 	// at once instead of the command running into its deadline.
-	s.handlers = append(s.handlers, &handlerReg{ch: ch, handler: handler, origin: s.label})
+	s.handlers = append(s.handlers, &handlerReg{ch: ch, handler: handler, origin: s.label, module: s.module})
 	return scheme.Void, nil
 }
 
@@ -121,7 +124,7 @@ func (r *Runtime) onDone(c *scheme.Call, s *Session) (scheme.Value, error) {
 			return scheme.Value{}, errors.New("that task already has a handler")
 		}
 	}
-	s.dones = append(s.dones, &doneReg{task: task, handler: handler, origin: s.label})
+	s.dones = append(s.dones, &doneReg{task: task, handler: handler, origin: s.label, module: s.module})
 	return scheme.Void, nil
 }
 
@@ -167,7 +170,7 @@ func (r *Runtime) PollEvents(max int) []Event {
 		for len(events) < max {
 			v, ok, closed := h.ch.TryRecv()
 			if ok {
-				events = append(events, Event{handler: h.handler, arg: v, origin: h.origin})
+				events = append(events, Event{handler: h.handler, arg: v, origin: h.origin, module: h.module})
 				continue
 			}
 			alive = !closed
@@ -194,7 +197,7 @@ func (r *Runtime) PollEvents(max int) []Event {
 			if _, err := d.task.Result(); errors.Is(err, context.Canceled) {
 				continue
 			}
-			events = append(events, Event{handler: d.handler, arg: d.task.Value(), origin: d.origin})
+			events = append(events, Event{handler: d.handler, arg: d.task.Value(), origin: d.origin, module: d.module})
 		default:
 			keptDone = append(keptDone, d)
 		}
@@ -207,6 +210,7 @@ func (r *Runtime) PollEvents(max int) []Event {
 func (r *Runtime) RunEvent(ctx context.Context, ev Event, s *Session) error {
 	s.kind = kindCommand
 	s.label = ev.origin
+	s.module = ev.module
 	return r.invoke(ctx, s, func(ctx context.Context) error {
 		_, err := r.interp.Apply(ctx, ev.handler, []scheme.Value{ev.arg})
 		return err

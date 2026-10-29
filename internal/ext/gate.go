@@ -12,9 +12,21 @@ import (
 // reaches the operating system, the network or something irreversible is
 // refused, wherever it was called from. Brote's own `load` is the one builtin
 // declared Host.
-type gate struct{}
+type gate struct{ r *Runtime }
 
-func (gate) Before(_ context.Context, p *scheme.Prim, _ []scheme.Value) error {
+func (g gate) Before(ctx context.Context, p *scheme.Prim, _ []scheme.Value) error {
+	if g.r != nil && g.r.std != nil {
+		switch g.r.std.ModuleOf(p.Name) {
+		case "net":
+			return g.r.beforeNet(ctx, p)
+		case "encoding":
+			return nil
+		case "":
+			if introspection[p.Name] {
+				return &scheme.Denied{Prim: p.Name, Reason: "this describes the editor's own policy; a module's network access is the (requires (net ...)) in its header"}
+			}
+		}
+	}
 	switch {
 	case p.Meta.Host:
 		return &scheme.Denied{Prim: p.Name, Reason: "editor extensions cannot use operating-system operations"}
@@ -27,8 +39,8 @@ func (gate) Before(_ context.Context, p *scheme.Prim, _ []scheme.Value) error {
 }
 
 // ConcurrentSafe says the gate keeps no state, so tasks may call it at once.
-func (gate) ConcurrentSafe() {}
+func (g gate) ConcurrentSafe() {}
 
-func (gate) RegisterChecker(string, string, scheme.Value) error {
+func (g gate) RegisterChecker(string, string, scheme.Value) error {
 	return errors.New("editor extensions cannot add policy checks")
 }

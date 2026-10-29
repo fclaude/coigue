@@ -31,6 +31,8 @@ type Binding struct {
 	// Number counts the program's bindings from 1, so a conflict can name both.
 	Number int
 	proc   scheme.Value
+	// module is who registered it, for the grants its procedure runs with.
+	module string
 }
 
 // Bindings lists the key bindings in the order they were made.
@@ -60,7 +62,7 @@ func (r *Runtime) RunBinding(ctx context.Context, mode string, k key.Key, s *Ses
 	k.Mods &^= key.Shift
 	for _, b := range r.bindings {
 		if b.Mode == mode && b.Key == k {
-			return r.runProc(ctx, b.proc, s)
+			return r.runProc(ctx, b.module, b.proc, s)
 		}
 	}
 	return &RunError{Stop: Failed, Err: fmt.Errorf("no binding for %s in %s mode", k.Code, mode)}
@@ -101,14 +103,15 @@ func (r *Runtime) RunStart(ctx context.Context, s *Session) error {
 func (r *Runtime) RunStartOwner(ctx context.Context, owner string, s *Session) error {
 	for _, st := range r.starts {
 		if st.owner == owner {
-			return r.runProc(ctx, st.proc, s)
+			return r.runProc(ctx, owner, st.proc, s)
 		}
 	}
 	return &RunError{Stop: Failed, Err: fmt.Errorf("no on-start procedure")}
 }
 
-func (r *Runtime) runProc(ctx context.Context, proc scheme.Value, s *Session) error {
+func (r *Runtime) runProc(ctx context.Context, module string, proc scheme.Value, s *Session) error {
 	s.kind = kindCommand
+	s.module = module
 	return r.invoke(ctx, s, func(ctx context.Context) error {
 		_, err := r.interp.Apply(ctx, proc, nil)
 		return err
@@ -177,7 +180,7 @@ func (r *Runtime) bindKey(c *scheme.Call) (scheme.Value, error) {
 	}
 	doc = Tidy(doc)
 	r.pendingBindings = append(r.pendingBindings, pendingBinding{owner: owner, b: &Binding{
-		Mode: mode, Key: k, Spec: spec, Doc: doc, Override: override, Number: number, proc: proc,
+		Mode: mode, Key: k, Spec: spec, Doc: doc, Override: override, Number: number, proc: proc, module: owner,
 	}})
 	if owner != InitModule {
 		if m := r.modules[owner]; m != nil {

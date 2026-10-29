@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"github.com/fclaude/brote/scheme"
+
+	"github.com/fclaude/coigue/internal/grant"
 )
 
 // InitModule is the owner of everything init.scm registers. It is not a file
@@ -38,6 +40,13 @@ type module struct {
 	// exportList is the names the header exports, in source order.
 	exportList    []string
 	exportsValues map[string]scheme.Value
+
+	// asked is the network the header requests; granted is what the editor
+	// gave, and why it is less when it is.
+	asked     grant.Grant
+	granted   grant.Grant
+	denied    string
+	grantNote string
 
 	commands []string
 	keys     []string
@@ -144,10 +153,13 @@ func (m *module) info() Module {
 }
 
 func (m *module) allNotes() []string {
-	if len(m.notes) == 0 && len(m.extra) == 0 {
+	if len(m.notes) == 0 && len(m.extra) == 0 && m.grantNote == "" {
 		return nil
 	}
-	out := make([]string, 0, len(m.notes)+len(m.extra))
+	out := make([]string, 0, len(m.notes)+len(m.extra)+1)
+	if m.grantNote != "" {
+		out = append(out, m.grantNote)
+	}
 	out = append(out, m.notes...)
 	out = append(out, m.extra...)
 	return out
@@ -228,7 +240,7 @@ func (r *Runtime) loadModule(ctx context.Context, name string) error {
 	if len(forms) == 0 || !isForm(forms[0], "define-module") {
 		return moduleErr(name, fmt.Errorf("must start with (define-module %s ...)", name))
 	}
-	doc, exports, err := parseHeader(forms[0], name)
+	doc, exports, asked, err := parseHeader(forms[0], name)
 	if err != nil {
 		return moduleErr(name, err)
 	}
@@ -239,6 +251,8 @@ func (r *Runtime) loadModule(ctx context.Context, name string) error {
 	m := r.newModule(name)
 	m.doc = doc
 	m.exportList = exports
+	m.asked = asked
+	r.decideGrant(m)
 	m.loading = true
 	r.modules[name] = m
 	r.moduleOrder = append(r.moduleOrder, name)
@@ -453,51 +467,59 @@ func splitTop(forms []scheme.Value, moduleBody bool) (body, reqs []scheme.Value,
 	return body, reqs, nil
 }
 
-func parseHeader(form scheme.Value, want string) (doc string, exports []string, err error) {
+func parseHeader(form scheme.Value, want string) (doc string, exports []string, asked grant.Grant, err error) {
 	_, args, ok := formParts(form)
 	if !ok || len(args) == 0 || args[0].Kind != scheme.KSymbol {
-		return "", nil, fmt.Errorf("define-module takes the module name")
+		return "", nil, grant.Grant{}, fmt.Errorf("define-module takes the module name")
 	}
 	if args[0].S != want {
-		return "", nil, fmt.Errorf("defines the module %s, but the file is %s.scm", args[0].S, want)
+		return "", nil, grant.Grant{}, fmt.Errorf("defines the module %s, but the file is %s.scm", args[0].S, want)
 	}
-	var sawDoc, sawExport bool
+	var sawDoc, sawExport, sawRequires bool
 	for _, clause := range args[1:] {
 		parts, ok := clause.Slice()
 		if !ok || len(parts) == 0 || parts[0].Kind != scheme.KSymbol {
-			return "", nil, fmt.Errorf("a define-module clause is (doc \"...\") or (export name ...)")
+			return "", nil, grant.Grant{}, fmt.Errorf("a define-module clause is (doc \"...\"), (export name ...) or (requires (net ...))")
 		}
 		switch parts[0].S {
 		case "doc":
 			if sawDoc {
-				return "", nil, fmt.Errorf("doc is given twice")
+				return "", nil, grant.Grant{}, fmt.Errorf("doc is given twice")
 			}
 			if len(parts) != 2 || parts[1].Kind != scheme.KString {
-				return "", nil, fmt.Errorf("doc takes one string")
+				return "", nil, grant.Grant{}, fmt.Errorf("doc takes one string")
 			}
 			doc = Tidy(parts[1].S)
 			sawDoc = true
 		case "export":
 			if sawExport {
-				return "", nil, fmt.Errorf("export is given twice")
+				return "", nil, grant.Grant{}, fmt.Errorf("export is given twice")
 			}
 			for _, n := range parts[1:] {
 				if n.Kind != scheme.KSymbol {
-					return "", nil, fmt.Errorf("export names are symbols")
+					return "", nil, grant.Grant{}, fmt.Errorf("export names are symbols")
 				}
 				for _, have := range exports {
 					if have == n.S {
-						return "", nil, fmt.Errorf("%s is exported twice", n.S)
+						return "", nil, grant.Grant{}, fmt.Errorf("%s is exported twice", n.S)
 					}
 				}
 				exports = append(exports, n.S)
 			}
 			sawExport = true
+		case "requires":
+			if sawRequires {
+				return "", nil, grant.Grant{}, fmt.Errorf("requires is given twice")
+			}
+			sawRequires = true
+			if asked, err = grant.Parse(parts[1:]); err != nil {
+				return "", nil, grant.Grant{}, err
+			}
 		default:
-			return "", nil, fmt.Errorf("%q is not a define-module clause; use doc or export", parts[0].S)
+			return "", nil, grant.Grant{}, fmt.Errorf("%q is not a define-module clause; use doc, export or requires", parts[0].S)
 		}
 	}
-	return doc, exports, nil
+	return doc, exports, asked, nil
 }
 
 func parseRequire(form scheme.Value) (string, []importOp, error) {

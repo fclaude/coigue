@@ -25,7 +25,9 @@ import (
 	"time"
 
 	"github.com/fclaude/brote/scheme"
+	"github.com/fclaude/brote/std"
 
+	"github.com/fclaude/coigue/internal/grant"
 	"github.com/fclaude/coigue/internal/guard"
 	"github.com/fclaude/coigue/internal/key"
 	"github.com/fclaude/coigue/internal/theme"
@@ -89,6 +91,11 @@ type Options struct {
 	// ConfigDir/modules and from nowhere else. Empty means require cannot
 	// find a module.
 	ConfigDir string
+	// Grants decides what network a module gets. It is called while a module
+	// loads, with the module's name and what its header asks for, and returns
+	// what the module may have, or an empty grant and the reason. nil gives
+	// every module what it asks, which is right for modules the person wrote.
+	Grants func(module string, asked grant.Grant) (granted grant.Grant, why string)
 	// Watch lets the user interrupt a run; nil means no one can.
 	Watch Watcher
 	// Deadline bounds each run; 0 means DefaultDeadline.
@@ -105,6 +112,7 @@ type Command struct {
 	Name, Doc string
 	Clash     string
 	proc      scheme.Value
+	module    string // who defined it; its grants apply while it runs
 }
 
 var commandName = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
@@ -129,6 +137,8 @@ type Runtime struct {
 	timers          []*timerReq
 	windows         []*WindowReq
 	tracker         tracker
+	std             *std.Runtime
+	nets            atomic.Pointer[map[string]netEntry]
 	themes          *theme.Set
 	busy            atomic.Bool
 
@@ -178,7 +188,8 @@ func newRuntime(opts Options, extra ...*scheme.Prim) *Runtime {
 			panic(err)
 		}
 	}
-	r.interp.SetGate(gate{})
+	r.installStd()
+	r.interp.SetGate(gate{r: r})
 	// No program can add a primitive (register-tool) once this is called.
 	r.interp.Freeze()
 	r.pristine = r.interp.Global().Snapshot()
@@ -255,6 +266,7 @@ var ErrBusy = errors.New("the extension interpreter is already running")
 func (r *Runtime) Load(ctx context.Context, source string) error {
 	return r.invoke(ctx, initSession(), func(ctx context.Context) error {
 		err := r.loadRoot(ctx, source)
+		r.publishNets()
 		// Resolve even when the file failed, so commands defined before the
 		// error stay reachable. A failure of the file wins over a key clash
 		// found while resolving; the clashing key is left unbound either way.
@@ -278,6 +290,7 @@ func (r *Runtime) Run(ctx context.Context, name string, args []string, s *Sessio
 	}
 	s.kind = kindCommand
 	s.label = name
+	s.module = cmd.module
 	if cmd.Clash != "" {
 		return &RunError{Stop: Failed, Err: errors.New(cmd.Clash)}
 	}

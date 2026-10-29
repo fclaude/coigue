@@ -67,6 +67,9 @@ type Session struct {
 	mappers  map[*textSnap]*cachedMapper
 	// label names the command in a handler's failure message.
 	label string
+	// module is the module whose code the invocation runs, the one whose
+	// grants apply to it and to every task it starts.
+	module string
 	// owner is the goroutine that started the invocation, the only one whose
 	// host operations are honoured.
 	owner uint64

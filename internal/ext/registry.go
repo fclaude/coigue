@@ -70,7 +70,7 @@ func (r *Runtime) resolve() error {
 			seen = append(seen, c.name)
 		}
 		groups[c.name] = append(groups[c.name], c)
-		q := &Command{Name: c.owner + "/" + c.name, Doc: c.doc, proc: c.proc}
+		q := &Command{Name: c.owner + "/" + c.name, Doc: c.doc, proc: c.proc, module: c.owner}
 		r.commands[q.Name] = q
 		r.qualified = append(r.qualified, *q)
 	}
@@ -87,12 +87,12 @@ func (r *Runtime) resolve() error {
 		}
 		switch {
 		case fromInit != nil:
-			r.addShort(fromInit.name, fromInit.doc, fromInit.proc, "")
+			r.addShort(fromInit.name, fromInit.doc, fromInit.proc, "", InitModule)
 			for _, m := range mods {
 				r.note(m.owner, fmt.Sprintf("command %s is displaced by init.scm; :%s/%s still runs it", m.name, m.owner, m.name))
 			}
 		case len(mods) == 1:
-			r.addShort(mods[0].name, mods[0].doc, mods[0].proc, "")
+			r.addShort(mods[0].name, mods[0].doc, mods[0].proc, "", mods[0].owner)
 		case len(mods) > 1:
 			names := make([]string, len(mods))
 			for i, m := range mods {
@@ -100,7 +100,7 @@ func (r *Runtime) resolve() error {
 			}
 			sort.Strings(names)
 			msg := name + " is ambiguous: " + strings.Join(names, ", ")
-			r.addShort(name, msg, scheme.Value{}, msg)
+			r.addShort(name, msg, scheme.Value{}, msg, "")
 			for _, m := range mods {
 				r.note(m.owner, fmt.Sprintf("command %s is ambiguous; :%s/%s runs this one", m.name, m.owner, m.name))
 			}
@@ -164,8 +164,8 @@ func (r *Runtime) resolve() error {
 	return nil
 }
 
-func (r *Runtime) addShort(name, doc string, proc scheme.Value, clash string) {
-	c := &Command{Name: name, Doc: doc, proc: proc, Clash: clash}
+func (r *Runtime) addShort(name, doc string, proc scheme.Value, clash, module string) {
+	c := &Command{Name: name, Doc: doc, proc: proc, Clash: clash, module: module}
 	r.commands[name] = c
 	r.order = append(r.order, name)
 }
