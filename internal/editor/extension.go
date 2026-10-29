@@ -1,6 +1,7 @@
 package editor
 
 import (
+	"context"
 	"errors"
 	"path/filepath"
 	"strconv"
@@ -111,6 +112,7 @@ func (e *Editor) reloadInit() {
 	var chosen *theme.Theme
 	stage := ext.New(e.extensionOptions(&themes, func(t theme.Theme) { chosen = &t }, e.checkExtensionCommand))
 	if err := stage.Load(e.ctx, source); err != nil {
+		endRuntime(stage, false)
 		e.Message = "init.scm: " + ext.Tidy(err.Error()) + "; nothing changed"
 		return
 	}
@@ -122,6 +124,7 @@ func (e *Editor) commitReload(stage *ext.Runtime, themes theme.Set, chosen *them
 	e.installExtensionCommands(stage)
 	e.listConfigCommands()
 	previous := e.Themes.Name(e.Theme)
+	endRuntime(e.extensions, false)
 	e.extensions = stage
 	e.Themes = themes
 	note := ""
@@ -408,6 +411,7 @@ func (e *Editor) pollEvents() {
 	if e.extensions == nil {
 		return
 	}
+	e.reportTaskFailures()
 	handlers, timers := e.extensions.Waiting()
 	if handlers == 0 && timers == 0 {
 		return
@@ -445,4 +449,41 @@ func (e *Editor) syncMarks() {
 	if e.extensions != nil && e.extensions.HasMarks() {
 		e.extensions.SyncMarks(e.Buffer.Lines(), e.Buffer.Revision(), e.Generation)
 	}
+}
+
+// reportTaskFailures puts the failure of a background task nobody was waiting
+// for in the status line. A task an on-done handler watches reports through
+// its handler instead.
+func (e *Editor) reportTaskFailures() {
+	failures := e.extensions.TakeFailures()
+	if len(failures) == 0 {
+		return
+	}
+	text := "background task failed: " + ext.Tidy(failures[len(failures)-1].Error())
+	if n := len(failures); n > 1 {
+		text += " (and " + strconv.Itoa(n-1) + " more)"
+	}
+	e.Message = text
+}
+
+// shutdownTimeout bounds how long ending a runtime's background tasks may take.
+const shutdownTimeout = 2 * time.Second
+
+// endRuntime ends the background tasks and timers of a runtime the editor no
+// longer uses, so nothing started by old code outlives it. A reload does not
+// wait for them: they are cancelled at once and finish on their own.
+func endRuntime(rt *ext.Runtime, wait bool) {
+	if rt == nil {
+		return
+	}
+	end := func() {
+		ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		defer cancel()
+		_ = rt.Shutdown(ctx)
+	}
+	if wait {
+		end()
+		return
+	}
+	go end()
 }

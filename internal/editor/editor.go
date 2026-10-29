@@ -226,6 +226,7 @@ func (e *Editor) Close() {
 		e.Explorer = nil
 	}
 	e.LSP.Close()
+	endRuntime(e.extensions, true)
 }
 
 func (e *Editor) dropPicker() {

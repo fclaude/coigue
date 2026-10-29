@@ -201,7 +201,7 @@ How it behaves:
 
 Brote's tasks (`spawn`, `pmap`, `race`, `with-timeout`, channels, atoms) are available. They are
 parallelism **inside one command**: a command may spawn tasks and wait for them, and any still
-running when the command ends are stopped. A task shares the program's data, so a variable several
+running when the command ends are stopped. For work that outlives the command see *Background work*. A task shares the program's data, so a variable several
 tasks write needs `make-atom` and `swap!` (the language server warns about the common mistakes).
 
 A task cannot read or edit the buffer. Doing so fails with `not inside an extension command: a task
@@ -214,6 +214,49 @@ in the command:
   (let ((lines (map (lambda (i) (buffer-text (+ i 1))) (iota (line-count)))))
     (pmap (lambda (l) (string-length l)) lines)))
 ```
+
+### Background work
+
+`spawn` ends with the command that started it. `spawn-detached` does not: the task belongs to the editor,
+keeps running after the command returns, and `on-done` runs a handler when it finishes. The editor stays
+usable while it runs.
+
+```scheme
+(define-command "stats"
+  (lambda ()
+    ;; Read what the task needs now, in the command: a task cannot touch the buffer.
+    (let ((lines (map (lambda (i) (buffer-text (+ i 1))) (iota (line-count)))))
+      (message "Counting...")
+      (on-done (spawn-detached (lambda () (apply + (pmap string-length lines))))
+               (lambda (task)
+                 (message (string-append (number->string (task-wait task)) " characters")))))))
+```
+
+The command returns at once with `Counting...`. When the task finishes, the handler runs as **a command of
+its own**: a fresh copy of the buffer, its own undo step, its own deadline. `(task-wait task)` in it gives the
+task's value, or raises the task's error, so `guard` works as everywhere else:
+
+```scheme
+(lambda (task)
+  (guard (e (#t (message "Could not count")))
+    (message (number->string (task-wait task)))))
+```
+
+* **A task has no deadline of its own.** The 5 second deadline is for commands and handlers. Bound the
+  work inside it with `(with-timeout 10 (lambda () ...))`, the way a command that calls out would.
+* **Tasks end when they are done, when `task-cancel!` cancels them, on `:reload`, and when the editor
+  quits.** At most 32 are alive at once. A cancelled task does not run its handler.
+* **A failure** reaches the handler through `task-wait`. A task with no `on-done` that fails shows
+  `background task failed: ...` in the status line instead, so it is never silent. One that has a handler is
+  not reported twice.
+* **A task cannot read or edit the buffer**, as for `spawn`: it fails with the message above. Pass it
+  what it needs and apply what it returns in the handler. Use a mark (*Marks*) to find the place again.
+* **A handler runs when the editor is idle** (Normal mode, nothing pending, no window open), like every
+  handler. The task can finish earlier; the handler waits.
+* **Another command can wait for the task** with `task-wait` on a handle it kept, up to its own deadline.
+  Use `on-done` instead of waiting.
+* `(after-detached seconds)` is Brote's timer that outlives the command, as `timer` is. Use either with
+  `on-channel`.
 
 ## Windows
 
@@ -794,8 +837,9 @@ moves the cursor is applied too, but records no undo step.
 ## Threading and reentrancy
 
 * One interpreter per editor, created the first time `init.scm` is loaded. Commands, handlers and
-  loads run one at a time on the editor goroutine; tasks a command starts run in parallel inside it
-  and end with it. `:reload` makes a second interpreter and uses it
+  loads run one at a time on the editor goroutine; tasks a command starts with `spawn` run in parallel
+  inside it and end with it, and `spawn-detached` tasks run on their own goroutines until they finish.
+  `:reload` and quitting end them. `:reload` makes a second interpreter and uses it
   from the same goroutine, and the editor keeps the new one only if the file loaded.
 * Scheme is evaluated on the editor goroutine: the goroutine that calls `Editor.Key`, which in
   the `coigue` command is the main goroutine running the event loop. Only `Editor.Key` (running a
@@ -870,8 +914,8 @@ moves the cursor is applied too, but records no undo step.
 ## Not here
 
 Key sequences, bindings in Insert mode or in the command line, running Scheme from an event other than
-the start of the editor, a command you typed, a key you bound, a timer or a channel value, work that
-continues after a command ends, reading or writing other files, LSP data, running a command from Scheme, a
+the start of the editor, a command you typed, a key you bound, a timer, a channel value or a finished
+background task, reading or writing other files, the network, LSP data, running a command from Scheme, a
 `:eval` command, defining modes. Modules have no version solver, no nested names (`author/name`), no private repositories,
 no re-exports, and `require` is not available while a command runs. `:module-add` copies files and
 records where they came from; it does not resolve what a module requires. Each of those needs its own
@@ -954,5 +998,8 @@ Names are Go tests unless a file is given. `ext` is `internal/ext/ext_test.go`, 
 | `word-range` gives the word's line and inclusive columns, and `#f` off a word | `TestWordRangeIsTheWordUnderTheCursor` (ext) |
 | `replace-at-mark` replaces the word wherever it has moved, refuses when it was edited away, deletes, spans lines, needs something to replace, and works on a mark made in the same command | `TestReplaceAtMarkReplacesTheWordWhereverItHasMoved`, `TestReplaceAtMarkRefusesWhenTheWordWasEditedAway`, `TestReplaceAtMarkCanDeleteAndCanSpanLines`, `TestReplaceAtMarkNeedsSomethingToReplace`, `TestReplaceAtMarkWorksOnTheTextOfAMarkMadeInTheSameCommand` (ext) |
 | A prompt can replace the word under the cursor; the right word is replaced after the text above changed; a word edited away, or typed into at its start, is left alone and says so | `TestAPromptCanReplaceTheWordUnderTheCursor`, `TestTheWordIsReplacedInTheRightPlaceAfterTheTextAboveChanged`, `TestAWordEditedAwayIsLeftAloneAndSaysSo`, `TestTypingAtTheStartOfTheWordIsRefusedNotMisreplaced`, `TestTheDocumentedReplaceExampleRuns` (editor) |
+| A task outlives its command and `on-done` delivers it; a failed task reaches a handler that can guard it; a failure nobody watches reaches the host; a later command can await a kept task; a cancelled task runs no handler; `Shutdown` ends one that never finishes; a background task cannot touch the buffer; `on-done` checks its arguments | `TestADetachedTaskOutlivesItsCommandAndOnDoneDeliversIt`, `TestAFailedTaskIsReportedToItsHandlerWhichCanGuardIt`, `TestAHandlerThatDoesNotGuardFailsLikeAnyCommand`, `TestAFailureNobodyWatchesGoesToTheHost`, `TestALaterCommandCanAwaitATaskAnEarlierOneStarted`, `TestACancelledTaskDoesNotRunItsHandler`, `TestShutdownEndsATaskThatNeverFinishes`, `TestABackgroundTaskCannotTouchTheBufferAndSaysWhy`, `TestOnDoneChecksItsArguments` (ext) |
+| A background task delivers while the editor stays usable and its handler is one undo step; an unwatched failure shows in the status line; `:reload`, a failed reload and quitting end tasks | `TestABackgroundTaskDeliversToItsHandlerWhileTheEditorStaysUsable`, `TestAFailureNobodyWatchesAppearsInTheStatusLine`, `TestReloadEndsTheOldCodesBackgroundTasks`, `TestAFailedReloadEndsWhatTheStagedCodeStarted`, `TestClosingTheEditorEndsBackgroundTasks` (editor) |
+| The examples in *Background work* run | `TestTheDocumentedBackgroundExamplesRun` (editor) |
 | Everything above in a real terminal, with a temporary `HOME` and `XDG_CONFIG_HOME` | `tests/pty_extension.py` |
 | `docs/examples/sample.scm` loads and does what its comments say | `TestSampleInit` (editor) |

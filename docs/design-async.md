@@ -290,7 +290,9 @@ Each step stands alone and ships.
    characters inside a changed block) so that no edit operation of the buffer had to know about
    them. `(buffer-changed-since? mark)` became `(mark-disturbed? mark)`.
 4. **Background tasks**: `spawn-detached` from Brote, `on-done`, the busy rule, the explicit errors,
-   lifetime and limits, and the operation table.
+   lifetime and limits, and the operation table. **Built** on Brote v0.6.0 (`Background` grant,
+   `WithTaskFailed`, `Shutdown`, Go handles for tasks and channels): `on-done`, status-line reports of
+   unwatched failures, tasks ended on `:reload` and quit. Not yet built: the module context for the gate.
 5. **Grants**: `requires`, the review page, the lock, the gate.
 6. **Docked panes**, then sub-buffers if wanted.
 
