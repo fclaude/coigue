@@ -1,7 +1,6 @@
 package ext
 
 import (
-	"context"
 	"fmt"
 	"strings"
 	"unicode/utf8"
@@ -46,21 +45,21 @@ type WindowReq struct {
 	// Initial is the starting text of a prompt.
 	Initial string
 
-	values  []scheme.Value // what a list sends for each item
-	channel scheme.Value
+	values []scheme.Value // what a list sends for each item
+	ch     scheme.Channel
 }
 
 func (r *Runtime) newWindow(c *scheme.Call, s *Session, req *WindowReq) (scheme.Value, error) {
 	if len(r.windows)+len(s.windows) >= MaxWindows {
 		return scheme.Value{}, fmt.Errorf("at most %d windows can be waiting", MaxWindows)
 	}
-	ch, err := c.In.Apply(c.Ctx, r.pristine["make-channel"], []scheme.Value{scheme.Int(1)})
+	ch, err := scheme.NewChannel(r.interp, 1)
 	if err != nil {
 		return scheme.Value{}, err
 	}
-	req.channel = ch
+	req.ch = ch
 	s.windows = append(s.windows, req)
-	return ch, nil
+	return ch.Value(), nil
 }
 
 func titleArg(c *scheme.Call) (string, error) {
@@ -167,26 +166,24 @@ func (r *Runtime) WindowsWaiting() int { return len(r.windows) }
 
 // Answer sends what the person chose or typed on the window's channel and
 // closes it. index is the chosen item of a list; text is what a prompt got.
-func (r *Runtime) Answer(ctx context.Context, req *WindowReq, index int, text string) {
+func (r *Runtime) Answer(req *WindowReq, index int, text string) {
 	var v scheme.Value
 	switch req.Kind {
 	case ListWindow:
 		if index < 0 || index >= len(req.values) {
-			r.Dismiss(ctx, req)
+			r.Dismiss(req)
 			return
 		}
 		v = req.values[index]
 	case PromptWindow:
 		v = scheme.Str(text)
 	}
-	r.call(ctx, "channel-send!", req.channel, v)
-	r.call(ctx, "channel-close!", req.channel)
+	_, _ = req.ch.TrySend(v)
+	req.ch.Close()
 }
 
 // Dismiss closes the window's channel with nothing sent.
-func (r *Runtime) Dismiss(ctx context.Context, req *WindowReq) {
-	r.call(ctx, "channel-close!", req.channel)
-}
+func (r *Runtime) Dismiss(req *WindowReq) { req.ch.Close() }
 
 // DropWindows forgets the windows that have not been shown.
 func (r *Runtime) DropWindows() { r.windows = nil }

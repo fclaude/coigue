@@ -412,11 +412,11 @@ func (e *Editor) pollEvents() {
 	if handlers == 0 && timers == 0 {
 		return
 	}
-	e.extensions.FireTimers(e.ctx, time.Now())
+	e.extensions.FireTimers(time.Now())
 	if !e.idleForEvents() {
 		return
 	}
-	for _, ev := range e.extensions.PollEvents(e.ctx, maxEventsPerTick) {
+	for _, ev := range e.extensions.PollEvents(maxEventsPerTick) {
 		label := "on-channel"
 		if origin := ev.Origin(); origin != "" {
 			label = "on-channel from :" + origin

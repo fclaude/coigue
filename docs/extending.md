@@ -130,6 +130,7 @@ interpreter is refused (see *Trust*).
 | `(message text)` | Sets the status line shown when the command finishes successfully; the last call wins. Control characters become spaces and the text is cut at 500 characters. | in a command |
 | `(on-channel channel handler)` | Runs `handler` with each value that arrives on `channel`, as a command of its own (see *Events and timers*). `channel` is a Brote channel from `make-channel`, and should be buffered. At most 64 channels can have a handler. | in a command |
 | `(timer seconds)` | A channel that receives `#t` once, `seconds` from now (0.01 to 604,800). At most 64 timers wait at once. | in a command |
+| `(on-done task handler)` | Runs `handler` with `task` when it finishes, as a command of its own (see *Background work*). `task` is one made by `spawn-detached`. Inside the handler `(task-wait task)` gives the value or raises the error. At most 64 tasks can have a handler. | in a command |
 | `(show-list title items)` | Shows a window listing `items` and returns a channel (see *Windows*). An item is a string, or a pair `(label . value)`. | in a command |
 | `(show-text title lines)` | Shows a read-only window and returns a channel that is closed when it is dismissed. `lines` is a string with newlines or a list of strings. | in a command |
 | `(prompt title [initial])` | Asks for a line of text and returns a channel (see *Windows*). | in a command |

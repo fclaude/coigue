@@ -123,6 +123,9 @@ type Runtime struct {
 	pendingBindings []pendingBinding
 	starts          []starter
 	handlers        []*handlerReg
+	dones           []*doneReg
+	recent          []scheme.Task
+	failed          failures
 	timers          []*timerReq
 	windows         []*WindowReq
 	tracker         tracker
@@ -145,13 +148,17 @@ func New(opts Options) *Runtime { return newRuntime(opts) }
 
 func newRuntime(opts Options, extra ...*scheme.Prim) *Runtime {
 	r := &Runtime{
-		interp:      scheme.New(scheme.WithOutput(io.Discard), scheme.WithTasks(scheme.TaskLimits{MaxTasks: MaxTasks, MaxDepth: TaskDepth})),
 		opts:        opts,
 		deadline:    opts.Deadline,
 		memoryLimit: opts.MemoryLimit,
 		commands:    map[string]*Command{},
 		themes:      opts.Themes,
 	}
+	r.interp = scheme.New(
+		scheme.WithOutput(io.Discard),
+		scheme.WithTasks(scheme.TaskLimits{MaxTasks: MaxTasks, MaxDepth: TaskDepth, Background: true}),
+		scheme.WithTaskFailed(r.failed.add),
+	)
 	if r.themes == nil {
 		r.themes = &theme.Set{}
 	}

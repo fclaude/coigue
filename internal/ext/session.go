@@ -57,6 +57,7 @@ type Session struct {
 	// handlers and timers are what the command registered; the editor adopts
 	// them only if the command succeeded, as it does the text.
 	handlers []*handlerReg
+	dones    []*doneReg
 	timers   []*timerReq
 	windows  []*WindowReq
 	// Marks made in this command and the text they were made on.

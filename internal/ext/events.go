@@ -5,52 +5,50 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sync"
 	"time"
 
 	"github.com/fclaude/brote/scheme"
 )
 
-// Events turn a Brote channel into editor commands. A command registers a
-// channel with on-channel, and for each value that arrives the editor runs the
-// handler as a command of its own, with a fresh copy of the buffer. timer makes
-// a channel that receives once after a delay. The host never waits on a
-// channel: Brote reports a wait that nothing else can end as a deadlock, so
-// the editor takes values with channel-try-recv, between keys.
+// Events turn Brote channels and tasks into editor commands. A command
+// registers a channel with on-channel, or a task with on-done, and when
+// something arrives the editor runs the handler as a command of its own, with
+// a fresh copy of the buffer. timer makes a channel that receives once after a
+// delay. The host never waits on any of it: it looks between keys, through the
+// Go handles Brote gives a host (scheme.Channel and scheme.Task), which never
+// take part in Brote's deadlock detection.
 
 // handlerReg is one on-channel.
 type handlerReg struct {
-	channel, handler scheme.Value
-	origin           string // the command that registered it, for messages
+	ch      scheme.Channel
+	handler scheme.Value
+	origin  string // the command that registered it, for messages
+}
+
+// doneReg is one on-done.
+type doneReg struct {
+	task    scheme.Task
+	handler scheme.Value
+	origin  string
 }
 
 // timerReq is one timer: a channel to send #t on, and when.
 type timerReq struct {
-	channel scheme.Value
-	due     time.Time
+	ch  scheme.Channel
+	due time.Time
 }
 
-// Event is one value ready for its handler.
+// Event is one thing ready for its handler: a value that arrived on a
+// channel, or a task that finished.
 type Event struct {
-	reg   *handlerReg
-	value scheme.Value
+	handler scheme.Value
+	arg     scheme.Value
+	origin  string
 }
 
 // Origin names the command that registered the handler, or "".
-func (e Event) Origin() string { return e.reg.origin }
-
-// none is what channel-try-recv gives back when nothing was ready. It is a
-// native object, so no program can send one.
-type none struct{}
-
-func (*none) Kind() string   { return "none" }
-func (*none) String() string { return "#<none>" }
-
-var (
-	noneObject = &none{}
-	noneValue  = scheme.ObjectValue(noneObject)
-)
-
-func isNone(v scheme.Value) bool { return scheme.ObjectOf(v) == scheme.Object(noneObject) }
+func (e Event) Origin() string { return e.origin }
 
 // minTimer and maxTimer bound a timer's delay, in seconds.
 const (
@@ -59,9 +57,9 @@ const (
 )
 
 func (r *Runtime) onChannel(c *scheme.Call, s *Session) (scheme.Value, error) {
-	ch := c.Args[0]
-	if o := scheme.ObjectOf(ch); o == nil || o.Kind() != "channel" {
-		return scheme.Value{}, fmt.Errorf("argument 1 must be a channel made by make-channel; got %s", scheme.Write(ch))
+	ch, ok := scheme.AsChannel(c.Args[0])
+	if !ok {
+		return scheme.Value{}, fmt.Errorf("argument 1 must be a channel made by make-channel; got %s", scheme.Write(c.Args[0]))
 	}
 	handler, err := c.Proc(1)
 	if err != nil {
@@ -71,11 +69,15 @@ func (r *Runtime) onChannel(c *scheme.Call, s *Session) (scheme.Value, error) {
 		return scheme.Value{}, fmt.Errorf("at most %d channels can have a handler", MaxHandlers)
 	}
 	for _, h := range append(append([]*handlerReg{}, r.handlers...), s.handlers...) {
-		if scheme.ObjectOf(h.channel) == scheme.ObjectOf(ch) {
+		if h.ch == ch {
 			return scheme.Value{}, errors.New("that channel already has a handler")
 		}
 	}
-	s.handlers = append(s.handlers, &handlerReg{channel: ch, handler: handler, origin: s.label})
+	// The channel is deliberately not marked HostFed. The editor takes values
+	// between keys, never while a command runs, so a command that waits on this
+	// channel for the editor to fill it is deadlocked, and Brote should say so
+	// at once instead of the command running into its deadline.
+	s.handlers = append(s.handlers, &handlerReg{ch: ch, handler: handler, origin: s.label})
 	return scheme.Void, nil
 }
 
@@ -94,94 +96,190 @@ func (r *Runtime) timer(c *scheme.Call, s *Session) (scheme.Value, error) {
 	if len(r.timers)+len(s.timers) >= MaxTimers {
 		return scheme.Value{}, fmt.Errorf("at most %d timers can be waiting", MaxTimers)
 	}
-	ch, err := c.In.Apply(c.Ctx, r.pristine["make-channel"], []scheme.Value{scheme.Int(1)})
+	ch, err := scheme.NewChannel(r.interp, 1)
 	if err != nil {
 		return scheme.Value{}, err
 	}
-	s.timers = append(s.timers, &timerReq{channel: ch, due: time.Now().Add(time.Duration(secs * float64(time.Second)))})
-	return ch, nil
+	s.timers = append(s.timers, &timerReq{ch: ch, due: time.Now().Add(time.Duration(secs * float64(time.Second)))})
+	return ch.Value(), nil
 }
 
-// Adopt takes the handlers and timers a successful command registered. A
-// command that failed registers nothing, like it changes no text.
+func (r *Runtime) onDone(c *scheme.Call, s *Session) (scheme.Value, error) {
+	task, ok := scheme.AsTask(c.Args[0])
+	if !ok {
+		return scheme.Value{}, fmt.Errorf("argument 1 must be a task made by spawn-detached; got %s", scheme.Write(c.Args[0]))
+	}
+	handler, err := c.Proc(1)
+	if err != nil {
+		return scheme.Value{}, err
+	}
+	if len(r.dones)+len(s.dones) >= MaxHandlers {
+		return scheme.Value{}, fmt.Errorf("at most %d tasks can have a handler", MaxHandlers)
+	}
+	for _, d := range append(append([]*doneReg{}, r.dones...), s.dones...) {
+		if d.task == task {
+			return scheme.Value{}, errors.New("that task already has a handler")
+		}
+	}
+	s.dones = append(s.dones, &doneReg{task: task, handler: handler, origin: s.label})
+	return scheme.Void, nil
+}
+
+// Adopt takes the registrations a successful command made. A command that
+// failed registers nothing, like it changes no text.
 func (r *Runtime) Adopt(s *Session) {
 	r.adoptMarks(s)
 	r.handlers = append(r.handlers, s.handlers...)
+	r.dones = append(r.dones, s.dones...)
 	r.timers = append(r.timers, s.timers...)
 	r.windows = append(r.windows, s.windows...)
-	s.handlers, s.timers, s.windows = nil, nil, nil
+	s.handlers, s.dones, s.timers, s.windows = nil, nil, nil, nil
 }
 
-// Waiting reports how many channels have a handler and how many timers have
-// not fired.
-func (r *Runtime) Waiting() (handlers, timers int) { return len(r.handlers), len(r.timers) }
+// Waiting reports how many channels and tasks have a handler and how many
+// timers have not fired.
+func (r *Runtime) Waiting() (handlers, timers int) {
+	return len(r.handlers) + len(r.dones), len(r.timers)
+}
 
 // FireTimers sends #t on the channel of every timer that is due.
-func (r *Runtime) FireTimers(ctx context.Context, now time.Time) {
+func (r *Runtime) FireTimers(now time.Time) {
 	kept := r.timers[:0]
 	for _, t := range r.timers {
 		if now.Before(t.due) {
 			kept = append(kept, t)
 			continue
 		}
-		r.call(ctx, "channel-send!", t.channel, scheme.True)
+		_, _ = t.ch.TrySend(scheme.True)
 	}
 	r.timers = kept
 }
 
-// call applies one of Brote's own channel procedures outside any command.
-func (r *Runtime) call(ctx context.Context, name string, args ...scheme.Value) (scheme.Value, error) {
-	ctx, cancel := context.WithTimeout(ctx, time.Second)
-	defer cancel()
-	return r.interp.Apply(ctx, r.pristine[name], args)
-}
-
-// PollEvents takes up to max values from the channels that have a handler. A
-// channel that is closed and empty loses its handler. It never waits.
-func (r *Runtime) PollEvents(ctx context.Context, max int) []Event {
+// PollEvents takes up to max things that are ready for their handlers: values
+// from channels that have one, and tasks that finished. A channel that is
+// closed and empty, and a task that finished, lose their handler. It never
+// waits.
+func (r *Runtime) PollEvents(max int) []Event {
 	var events []Event
-	kept := r.handlers[:0]
+	keptCh := r.handlers[:0]
 	for _, h := range r.handlers {
 		alive := true
 		for len(events) < max {
-			v, err := r.call(ctx, "channel-try-recv", h.channel, noneValue)
-			if err != nil {
-				alive = false
-				break
-			}
-			if !isNone(v) {
-				events = append(events, Event{reg: h, value: v})
+			v, ok, closed := h.ch.TryRecv()
+			if ok {
+				events = append(events, Event{handler: h.handler, arg: v, origin: h.origin})
 				continue
 			}
-			// Empty. If it was closed, a value sent just before the close may have
-			// arrived since the receive above, so take once more before leaving.
-			closed, err := r.call(ctx, "channel-closed?", h.channel)
-			if err != nil || !closed.IsTrue() {
-				alive = err == nil
-				break
-			}
-			v, err = r.call(ctx, "channel-try-recv", h.channel, noneValue)
-			if err == nil && !isNone(v) {
-				events = append(events, Event{reg: h, value: v})
-				continue
-			}
-			alive = false
+			alive = !closed
 			break
 		}
 		if alive {
-			kept = append(kept, h)
+			keptCh = append(keptCh, h)
 		}
 	}
-	r.handlers = kept
+	r.handlers = keptCh
+
+	keptDone := r.dones[:0]
+	for _, d := range r.dones {
+		select {
+		case <-d.task.Done():
+			if len(events) >= max {
+				keptDone = append(keptDone, d)
+				continue
+			}
+			r.remember(d.task)
+			// A task that was cancelled (by task-cancel!, :reload or quitting)
+			// has nothing to report; a failed one is reported to its handler,
+			// whose task-wait raises the error.
+			if _, err := d.task.Result(); errors.Is(err, context.Canceled) {
+				continue
+			}
+			events = append(events, Event{handler: d.handler, arg: d.task.Value(), origin: d.origin})
+		default:
+			keptDone = append(keptDone, d)
+		}
+	}
+	r.dones = keptDone
 	return events
 }
 
-// RunEvent runs the handler of ev on its value, working on s like Run does.
+// RunEvent runs the handler of ev on its argument, working on s like Run does.
 func (r *Runtime) RunEvent(ctx context.Context, ev Event, s *Session) error {
 	s.kind = kindCommand
-	s.label = ev.reg.origin
+	s.label = ev.origin
 	return r.invoke(ctx, s, func(ctx context.Context) error {
-		_, err := r.interp.Apply(ctx, ev.reg.handler, []scheme.Value{ev.value})
+		_, err := r.interp.Apply(ctx, ev.handler, []scheme.Value{ev.arg})
 		return err
 	})
 }
+
+// taskFailure is a detached task that failed with nobody waiting for it.
+type taskFailure struct {
+	task scheme.Task
+	err  error
+}
+
+// failures collects what scheme.WithTaskFailed reports. The hook runs on the
+// failed task's own goroutine, so it only records; the editor reads the list
+// between keys.
+type failures struct {
+	mu   sync.Mutex
+	list []taskFailure
+}
+
+func (f *failures) add(t scheme.Task, err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.list) < 64 { // a failure storm must not grow without bound
+		f.list = append(f.list, taskFailure{task: t, err: err})
+	}
+}
+
+// TakeFailures returns the errors of background tasks that failed with nobody
+// waiting for them, oldest first. A task that has an on-done handler is not
+// among them: the handler is told, and its task-wait raises the error.
+func (r *Runtime) TakeFailures() []error {
+	r.failed.mu.Lock()
+	list := r.failed.list
+	r.failed.list = nil
+	r.failed.mu.Unlock()
+	var out []error
+	for _, f := range list {
+		if r.watched(f.task) {
+			continue
+		}
+		out = append(out, f.err)
+	}
+	return out
+}
+
+// remember notes a task whose handler has just been taken, so a failure the
+// hook reports a moment later is still known to have been handled.
+func (r *Runtime) remember(t scheme.Task) {
+	const most = 64
+	r.recent = append(r.recent, t)
+	if len(r.recent) > most {
+		r.recent = r.recent[len(r.recent)-most:]
+	}
+}
+
+// watched reports whether a task has an on-done handler, or had one that has
+// just been run.
+func (r *Runtime) watched(t scheme.Task) bool {
+	for _, d := range r.dones {
+		if d.task == t {
+			return true
+		}
+	}
+	for _, d := range r.recent {
+		if d == t {
+			return true
+		}
+	}
+	return false
+}
+
+// Shutdown ends every background task and timer and waits for them, as long
+// as ctx allows. Call it when the runtime is replaced (:reload) or the editor
+// closes, so nothing started by old code outlives it.
+func (r *Runtime) Shutdown(ctx context.Context) error { return r.interp.Shutdown(ctx) }

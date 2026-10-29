@@ -26,7 +26,7 @@ func run(t *testing.T, r *Runtime, name string, args ...string) *Session {
 	return s
 }
 
-func poll(r *Runtime, max int) []Event { return r.PollEvents(context.Background(), max) }
+func poll(r *Runtime, max int) []Event { return r.PollEvents(max) }
 
 func deliver(t *testing.T, r *Runtime, ev Event) *Session {
 	t.Helper()
@@ -114,11 +114,11 @@ func TestTimerSendsOnceWhenDue(t *testing.T) {
 	if h, tm := r.Waiting(); h != 1 || tm != 1 {
 		t.Fatalf("handlers %d timers %d", h, tm)
 	}
-	r.FireTimers(context.Background(), time.Now())
+	r.FireTimers(time.Now())
 	if n := len(poll(r, 10)); n != 0 {
 		t.Fatalf("the timer fired early: %d events", n)
 	}
-	r.FireTimers(context.Background(), time.Now().Add(time.Second))
+	r.FireTimers(time.Now().Add(time.Second))
 	events := poll(r, 10)
 	if len(events) != 1 || deliver(t, r, events[0]).Buffer.Text() != "ding" {
 		t.Fatalf("events %v", events)
@@ -126,7 +126,7 @@ func TestTimerSendsOnceWhenDue(t *testing.T) {
 	if _, tm := r.Waiting(); tm != 0 {
 		t.Fatalf("timers left: %d", tm)
 	}
-	r.FireTimers(context.Background(), time.Now().Add(time.Hour))
+	r.FireTimers(time.Now().Add(time.Hour))
 	if n := len(poll(r, 10)); n != 0 {
 		t.Fatalf("a timer fired twice: %d", n)
 	}

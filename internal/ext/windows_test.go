@@ -33,7 +33,7 @@ func TestAListWindowAnswersOnItsChannel(t *testing.T) {
 	if _, more := r.TakeWindow(); more {
 		t.Fatal("one command asked for one window")
 	}
-	r.Answer(context.Background(), req, 1, "")
+	r.Answer(req, 1, "")
 	events := poll(r, 5)
 	if len(events) != 1 || deliver(t, r, events[0]).Buffer.Text() != "bee" {
 		t.Fatalf("a pair sends its value, not its label: %v", events)
@@ -47,7 +47,7 @@ func TestAListSendsAStringItemAsItIs(t *testing.T) {
 	r := loaded(t, Options{}, windowProgram)
 	run(t, r, "pick")
 	req, _ := r.TakeWindow()
-	r.Answer(context.Background(), req, 2, "")
+	r.Answer(req, 2, "")
 	events := poll(r, 5)
 	if len(events) != 1 || deliver(t, r, events[0]).Buffer.Text() != "gamma" {
 		t.Fatalf("events %v", events)
@@ -62,7 +62,7 @@ func TestACancelledWindowClosesItsChannelWithNothingSent(t *testing.T) {
 		if !ok {
 			t.Fatalf("%s: no window", name)
 		}
-		r.Dismiss(context.Background(), req)
+		r.Dismiss(req)
 	}
 	if events := poll(r, 5); len(events) != 0 {
 		t.Fatalf("a cancelled window sent %d values", len(events))
@@ -79,7 +79,7 @@ func TestAPromptStartsWithTheGivenTextAndSendsWhatWasTyped(t *testing.T) {
 	if req.Kind != PromptWindow || req.Initial != "start" || req.Title != "Name" {
 		t.Fatalf("request %+v", req)
 	}
-	r.Answer(context.Background(), req, -1, "world")
+	r.Answer(req, -1, "world")
 	events := poll(r, 5)
 	if len(events) != 1 || deliver(t, r, events[0]).Buffer.Text() != "got world" {
 		t.Fatalf("events %v", events)

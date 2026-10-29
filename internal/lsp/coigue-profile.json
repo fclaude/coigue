@@ -95,6 +95,15 @@
       "variadic": false
     },
     {
+      "doc": "Run the procedure HANDLER with TASK when it finishes, as a command of its own with a fresh copy of the buffer. TASK is one made by spawn-detached, which keeps running after this command ends. Inside HANDLER, (task-wait task) gives the task's value or raises its error, so guard works as usual. A task that is cancelled (task-cancel!, :reload, quitting) does not run its handler. A handler runs when the editor is in Normal mode with nothing pending; until then it waits. :reload drops it and ends the task.",
+      "name": "on-done",
+      "parameters": [
+        "task",
+        "handler"
+      ],
+      "variadic": false
+    },
+    {
       "doc": "A channel that receives #t once, SECONDS from now (0.01 to 604800), kept by the editor. Brote's own (after secs) ends with the command that made it, so use this one to wait across commands: (on-channel (timer 60) handler). :reload drops it.",
       "name": "timer",
       "parameters": [

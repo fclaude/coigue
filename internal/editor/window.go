@@ -241,14 +241,14 @@ func (e *Editor) takeExtensionWindow() {
 	switch req.Kind {
 	case ext.ListWindow:
 		w.Kind = WindowList
-		w.accept = func(index int, _ string) { rt.Answer(e.ctx, req, index, "") }
+		w.accept = func(index int, _ string) { rt.Answer(req, index, "") }
 	case ext.PromptWindow:
 		w.Kind = WindowPrompt
 		w.Query = modsrc.Printable(req.Initial)
-		w.accept = func(_ int, text string) { rt.Answer(e.ctx, req, -1, text) }
+		w.accept = func(_ int, text string) { rt.Answer(req, -1, text) }
 	default:
 		w.Kind = WindowText
 	}
-	w.cancel = func() { rt.Dismiss(e.ctx, req) }
+	w.cancel = func() { rt.Dismiss(req) }
 	e.Window = w
 }

@@ -20,7 +20,8 @@ func sessionFor(c *scheme.Call, want kind) (*Session, error) {
 		if want == kindInit {
 			return nil, errNotInInit
 		}
-		if s != nil && s.live.Load() && s.kind == want {
+		if want == kindCommand && s != nil && s.kind == kindCommand {
+			// A task of this command, or a detached one that outlived it.
 			return nil, errInTask
 		}
 		return nil, errNotInCommand
@@ -200,6 +201,12 @@ func (r *Runtime) hostOperations() []*scheme.Prim {
 				{Name: "handler", Type: "any", Doc: "procedure taking the received value"},
 			},
 			r.onChannel),
+		inCommand("on-done", "Run the procedure HANDLER with TASK when it finishes, as a command of its own with a fresh copy of the buffer. TASK is one made by spawn-detached, which keeps running after this command ends. Inside HANDLER, (task-wait task) gives the task's value or raises its error, so guard works as usual. A task that is cancelled (task-cancel!, :reload, quitting) does not run its handler. A handler runs when the editor is in Normal mode with nothing pending; until then it waits. :reload drops it and ends the task.",
+			[]scheme.Param{
+				{Name: "task", Type: "any", Doc: "a task made by spawn-detached"},
+				{Name: "handler", Type: "any", Doc: "procedure taking the finished task"},
+			},
+			r.onDone),
 		inCommand("timer", "A channel that receives #t once, SECONDS from now (0.01 to 604800), kept by the editor. Brote's own (after secs) ends with the command that made it, so use this one to wait across commands: (on-channel (timer 60) handler). :reload drops it.",
 			[]scheme.Param{{Name: "seconds", Type: "number", Doc: "the delay"}},
 			r.timer),
