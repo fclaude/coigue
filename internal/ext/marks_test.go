@@ -218,3 +218,141 @@ func TestMarksCostNothingUntilOneExists(t *testing.T) {
 		t.Fatal("a snapshot of the text is kept with no marks to serve")
 	}
 }
+
+const wordProgram = `
+(define saved #f)
+(define word "")
+(define-command "range"
+  (lambda ()
+    (let ((r (word-range)))
+      (message (if r
+                   (string-append (number->string (car r)) ":" (number->string (cadr r)) "-" (number->string (caddr r)))
+                   "none")))))
+(define-command "mark-word"
+  (lambda ()
+    (let ((r (word-range)))
+      (set! word (word-at-cursor))
+      (set! saved (mark-at (car r) (cadr r))))))
+(define-command "swap" (lambda (text) (replace-at-mark saved word text)))
+(define-command "replace-text" (lambda (expected text) (replace-at-mark saved expected text)))
+`
+
+func TestWordRangeIsTheWordUnderTheCursor(t *testing.T) {
+	r := loaded(t, Options{}, wordProgram)
+	cases := []struct {
+		text     string
+		row, col int
+		want     string
+	}{
+		{"one two three", 0, 4, "1:5-7"},
+		{"one two three", 0, 5, "1:5-7"},
+		{"one two three", 0, 6, "1:5-7"},
+		{"one two three", 0, 0, "1:1-3"},
+		{"one two three", 0, 12, "1:9-13"},
+		{"one two three", 0, 3, "none"}, // on the space
+		{"say héllo_1, ok", 0, 6, "1:5-11"},
+		{"a\nb c", 1, 2, "2:3-3"},
+		{"(x)", 0, 0, "none"},
+		{"", 0, 0, "none"},
+	}
+	for _, c := range cases {
+		s := session(c.text, c.row, c.col, nil, false)
+		if err := r.Run(context.Background(), "range", nil, s); err != nil || s.Message() != c.want {
+			t.Errorf("word-range in %q at %d,%d = %q (%v); want %q", c.text, c.row, c.col, s.Message(), err, c.want)
+		}
+	}
+}
+
+func markWord(t *testing.T, r *Runtime, text string, row, col int) {
+	t.Helper()
+	s := session(text, row, col, nil, false)
+	if err := r.Run(context.Background(), "mark-word", nil, s); err != nil {
+		t.Fatal(err)
+	}
+	r.Adopt(s)
+	live(r, text)
+}
+
+func replaceOn(t *testing.T, r *Runtime, text, name string, args ...string) (*Session, error) {
+	t.Helper()
+	s := session(text, 0, 0, nil, false)
+	err := r.Run(context.Background(), name, args, s)
+	return s, err
+}
+
+func TestReplaceAtMarkReplacesTheWordWhereverItHasMoved(t *testing.T) {
+	r := loaded(t, Options{}, wordProgram)
+	text := "one two three"
+	live(r, text)
+	markWord(t, r, text, 0, 5)
+	typed := "new line\none two three" // the person typed a line above
+	live(r, typed)
+	s, err := replaceOn(t, r, typed, "swap", "2")
+	if err != nil || s.Buffer.Text() != "new line\none 2 three" {
+		t.Fatalf("got %q, %v", s.Buffer.Text(), err)
+	}
+	if !s.Edited() {
+		t.Fatal("the edit was not recorded")
+	}
+}
+
+func TestReplaceAtMarkRefusesWhenTheWordWasEditedAway(t *testing.T) {
+	r := loaded(t, Options{}, wordProgram)
+	text := "one two three"
+	live(r, text)
+	markWord(t, r, text, 0, 5)
+	edited := "one tw three"
+	live(r, edited)
+	s, err := replaceOn(t, r, edited, "swap", "2")
+	if err == nil || !strings.Contains(err.Error(), `the text at the mark is "tw "`) || !strings.Contains(err.Error(), `not "two"`) {
+		t.Fatalf("got %v", err)
+	}
+	if s.Buffer.Text() != edited {
+		t.Fatalf("the text changed: %q", s.Buffer.Text())
+	}
+}
+
+func TestReplaceAtMarkCanDeleteAndCanSpanLines(t *testing.T) {
+	r := loaded(t, Options{}, wordProgram)
+	text := "keep this\nand that"
+	live(r, text)
+	markWord(t, r, text, 0, 5)
+	s, err := replaceOn(t, r, text, "swap", "")
+	if err != nil || s.Buffer.Text() != "keep \nand that" {
+		t.Fatalf("delete: %q %v", s.Buffer.Text(), err)
+	}
+	s, err = replaceOn(t, r, text, "replace-text", "this\nand", "X")
+	if err != nil || s.Buffer.Text() != "keep X that" {
+		t.Fatalf("across lines: %q %v", s.Buffer.Text(), err)
+	}
+}
+
+func TestReplaceAtMarkNeedsSomethingToReplace(t *testing.T) {
+	r := loaded(t, Options{}, wordProgram)
+	text := "ab"
+	live(r, text)
+	markWord(t, r, text, 0, 0)
+	for name, tc := range map[string]struct {
+		expected, want string
+	}{
+		"empty":        {"", "cannot be empty"},
+		"past the end": {"abcd", `is "ab", not "abcd"`},
+	} {
+		_, err := replaceOn(t, r, text, "replace-text", tc.expected, "x")
+		if err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%s: got %v; want %q", name, err, tc.want)
+		}
+	}
+}
+
+func TestReplaceAtMarkWorksOnTheTextOfAMarkMadeInTheSameCommand(t *testing.T) {
+	r := loaded(t, Options{}, wordProgram+`
+(define-command "same" (lambda ()
+  (let ((m (mark-at 1 5)))
+    (insert-at 1 1 ">> ")
+    (replace-at-mark m "two" "2"))))`)
+	s := session("one two", 0, 0, nil, false)
+	if err := r.Run(context.Background(), "same", nil, s); err != nil || s.Buffer.Text() != ">> one 2" {
+		t.Fatalf("got %q, %v", s.Buffer.Text(), err)
+	}
+}

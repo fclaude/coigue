@@ -85,6 +85,15 @@ func readOperations() []*scheme.Prim {
 			func(_ *scheme.Call, s *Session) (scheme.Value, error) {
 				return scheme.Str(string(s.Buffer.WordAt())), nil
 			}),
+		inCommand("word-range", "Where the word under the cursor is, as the list (LINE START-COLUMN END-COLUMN), 1-based and inclusive at both ends like selection-range, or #f when the cursor is not on a letter, digit or underscore. (string-length (word-at-cursor)) is END-COLUMN - START-COLUMN + 1.", nil,
+			func(_ *scheme.Call, s *Session) (scheme.Value, error) {
+				start, end, ok := s.Buffer.WordBounds()
+				if !ok {
+					return scheme.False, nil
+				}
+				return scheme.List(
+					scheme.Int(int64(s.Buffer.Row+1)), scheme.Int(int64(start+1)), scheme.Int(int64(end))), nil
+			}),
 		inCommand("find", "The first place TEXT occurs at or after the position (LINE COLUMN), as the list (LINE COLUMN), or #f. The search is literal, case-sensitive and does not wrap; LINE and COLUMN default to the start of the buffer, and TEXT must be on one line.",
 			[]scheme.Param{
 				{Name: "text", Type: "string", Doc: "what to look for, not empty"},

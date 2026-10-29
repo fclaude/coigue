@@ -119,6 +119,7 @@ interpreter is refused (see *Trust*).
 | `(mode)` | The mode the command was started from: `"normal"`, `"visual"` (`v`) or `"visual-line"` (`V`). A binding reports the mode it fired in, and the start-up procedure reports `"normal"`. | in a command |
 | `(selection-range)` | The selection as the list `(start-line start-column end-line end-column)`, 1-based and inclusive at both ends, in document order whichever way the selection was made. A `V` selection runs from column 1 of its first line to the last character of its last. `#f` when there is no selection or an edit has ended it. | in a command |
 | `(word-at-cursor)` | The word under the cursor: the letters, digits and underscores around it on its line. `""` when the cursor is on anything else. | in a command |
+| `(word-range)` | Where that word is, as the list `(line start-column end-column)`, 1-based and inclusive at both ends like `selection-range`, or `#f` when the cursor is not on a letter, digit or underscore. | in a command |
 | `(find text [line [column]])` | The first place `text` occurs at or after `line` and `column` (both default to the start of the buffer), as the list `(line column)`, or `#f`. The search is literal, case-sensitive and does not wrap. `text` is not empty, has no newline and is at most 65,536 characters; a `column` can be one past the end of its line. | in a command |
 | `(replace-selection text)` | Replaces the selection with `text` (see above). Error if there is no selection or an edit already happened. Cursor on the first character of `text`. | in a command |
 | `(insert-text text)` | Inserts `text` before the cursor character, whether or not there is a selection. The cursor ends on the first character of `text`. A later `selection-text` or `replace-selection` fails. | in a command |
@@ -136,6 +137,7 @@ interpreter is refused (see *Trust*).
 | `(mark-line mark)`, `(mark-column mark)` | The 1-based line and column of a mark now. | in a command |
 | `(mark-disturbed? mark)` | `#t` if the text the mark was on has been replaced since it was made, so it stands only for the nearest place. | in a command |
 | `(insert-at-mark mark text)` | Inserts `text` at a mark, as `insert-at` does at a line and column. | in a command |
+| `(replace-at-mark mark expected text)` | Replaces `expected`, which must be exactly what is at the mark now, with `text` (empty deletes it). If something else is there it is an error that says what, and nothing changes. | in a command |
 | `(goto-mark mark)` | Moves the cursor to a mark, as `set-cursor` does. | in a command |
 
 "In a command" means: while the editor is running a `:name` command, a bound key or the start-up
@@ -277,6 +279,21 @@ While the five seconds pass you can type above the cursor, delete lines, undo: w
 * **When its text is replaced** the mark falls to the start of the change, or to the end of the text
   if nothing follows, and `mark-disturbed?` says `#t`. A module that would rather do nothing than
   insert in a nearby place asks first: `(if (not (mark-disturbed? here)) (insert-at-mark here note))`.
+* **Replacing text at a mark.** `replace-at-mark` takes the text you expect to find, not a length. If
+  the person has edited it away, the call fails with `the text at the mark is "tw ", not "two"` and
+  changes nothing, so a late answer can never overwrite the wrong characters. Typing exactly at the
+  start of the word counts as editing it (the typed text goes after the mark), so that too is
+  refused, not misapplied.
+
+  ```scheme
+  (define-command "shout"
+    (lambda ()
+      (let ((range (word-range)) (word (word-at-cursor)))
+        (when (not (equal? word ""))
+          (let ((here (mark-at (car range) (cadr range))))
+            (on-channel (prompt "Replace with" word)
+                        (lambda (new) (replace-at-mark here word new))))))))
+  ```
 * **Undo and redo** move marks like any other change, because the text before and after is what is
   compared.
 * **Inside a command** a mark is resolved against the command's own copy of the buffer, so after an
@@ -933,5 +950,8 @@ Names are Go tests unless a file is given. `ext` is `internal/ext/ext_test.go`, 
 | A position moves with the text: lines left alone keep their place, edits before and after in a line shift it, replaced text falls to the start of the change, splits and joins follow the characters, a huge change is one block | `TestMapper`, `TestMapperStaysInsideTheNewText`, `TestMapperOfAHugeChangeIsOneBlockNotASlowAlignment` (marks) |
 | A mark follows typing above it, on its line and through undo; replaced text disturbs it; two marks stay right while a command edits; a failed command makes none; another file kills them; `goto-mark`; the cap and collection; argument checks; nothing is kept until one exists | `TestAMarkFollowsTheTextWhenLinesAreAddedAbove`, `TestAMarkSurvivesTypingOnItsOwnLineAndUndo`, `TestAMarkInReplacedTextIsDisturbedAndFallsToTheStart`, `TestTwoMarksStayRightWhileTheCommandEdits`, `TestAMarkMadeByACommandThatFailedIsNotUsable`, `TestMarksAreDeadWhenAnotherFileIsOpen`, `TestGotoMarkMovesTheCursor`, `TestAtMostTwoHundredFiftySixMarksAreAliveButFreedOnesAreReused`, `TestMarkOperationsCheckTheirArguments`, `TestMarksCostNothingUntilOneExists` (ext) |
 | A mark stays right while the person types above it in the editor, and through undo | `TestAMarkFollowsTheTextWhileThePersonTypesAboveIt`, `TestAMarkKeepsUpThroughUndoOfTheTyping` (editor) |
+| `word-range` gives the word's line and inclusive columns, and `#f` off a word | `TestWordRangeIsTheWordUnderTheCursor` (ext) |
+| `replace-at-mark` replaces the word wherever it has moved, refuses when it was edited away, deletes, spans lines, needs something to replace, and works on a mark made in the same command | `TestReplaceAtMarkReplacesTheWordWhereverItHasMoved`, `TestReplaceAtMarkRefusesWhenTheWordWasEditedAway`, `TestReplaceAtMarkCanDeleteAndCanSpanLines`, `TestReplaceAtMarkNeedsSomethingToReplace`, `TestReplaceAtMarkWorksOnTheTextOfAMarkMadeInTheSameCommand` (ext) |
+| A prompt can replace the word under the cursor; the right word is replaced after the text above changed; a word edited away, or typed into at its start, is left alone and says so | `TestAPromptCanReplaceTheWordUnderTheCursor`, `TestTheWordIsReplacedInTheRightPlaceAfterTheTextAboveChanged`, `TestAWordEditedAwayIsLeftAloneAndSaysSo`, `TestTypingAtTheStartOfTheWordIsRefusedNotMisreplaced`, `TestTheDocumentedReplaceExampleRuns` (editor) |
 | Everything above in a real terminal, with a temporary `HOME` and `XDG_CONFIG_HOME` | `tests/pty_extension.py` |
 | `docs/examples/sample.scm` loads and does what its comments say | `TestSampleInit` (editor) |

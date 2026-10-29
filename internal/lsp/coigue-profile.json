@@ -180,6 +180,12 @@
       "variadic": false
     },
     {
+      "doc": "Where the word under the cursor is, as the list (LINE START-COLUMN END-COLUMN), 1-based and inclusive at both ends like selection-range, or #f when the cursor is not on a letter, digit or underscore. (string-length (word-at-cursor)) is END-COLUMN - START-COLUMN + 1.",
+      "name": "word-range",
+      "parameters": [],
+      "variadic": false
+    },
+    {
       "doc": "The first place TEXT occurs at or after the position (LINE COLUMN), as the list (LINE COLUMN), or #f. The search is literal, case-sensitive and does not wrap; LINE and COLUMN default to the start of the buffer, and TEXT must be on one line.",
       "name": "find",
       "parameters": [
@@ -227,6 +233,16 @@
       "name": "insert-at-mark",
       "parameters": [
         "mark",
+        "text"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "Replace the text EXPECTED, which must be exactly what is at a mark now, with TEXT. If the text there is something else, for example because the word was edited since the mark was made, it is an error that says what is there and nothing changes. TEXT may be empty, which deletes EXPECTED. The cursor ends on the first character of TEXT. Ends the selection.",
+      "name": "replace-at-mark",
+      "parameters": [
+        "mark",
+        "expected",
         "text"
       ],
       "variadic": false

@@ -285,6 +285,50 @@ func markOps(r *Runtime) []*scheme.Prim {
 				s.inserted += len(runes)
 				return scheme.Void, nil
 			}),
+		inCommand("replace-at-mark", "Replace the text EXPECTED, which must be exactly what is at a mark now, with TEXT. If the text there is something else, for example because the word was edited since the mark was made, it is an error that says what is there and nothing changes. TEXT may be empty, which deletes EXPECTED. The cursor ends on the first character of TEXT. Ends the selection.",
+			[]scheme.Param{
+				{Name: "mark", Type: "any", Doc: "a mark from mark-at"},
+				{Name: "expected", Type: "string", Doc: "the text that should be at the mark, not empty"},
+				{Name: "text", Type: "string", Doc: "what to put there"},
+			},
+			func(c *scheme.Call, s *Session) (scheme.Value, error) {
+				m, err := markArg(c, 0)
+				if err != nil {
+					return scheme.Value{}, err
+				}
+				expected, err := c.String(1)
+				if err != nil {
+					return scheme.Value{}, err
+				}
+				text, err := c.String(2)
+				if err != nil {
+					return scheme.Value{}, err
+				}
+				want, err := s.checkText(expected)
+				if err != nil {
+					return scheme.Value{}, err
+				}
+				if len(want) == 0 {
+					return scheme.Value{}, errors.New("expected is the text to replace, so it cannot be empty; use insert-at-mark to add text")
+				}
+				runes, err := s.checkText(text)
+				if err != nil {
+					return scheme.Value{}, err
+				}
+				p, _, err := s.resolve(m)
+				if err != nil {
+					return scheme.Value{}, err
+				}
+				start, _ := s.Buffer.LineSpan(p.Row, p.Row)
+				start += p.Col
+				if got := s.Buffer.Span(start, start+len(want)); string(got) != string(want) {
+					return scheme.Value{}, fmt.Errorf("the text at the mark is %s, not %s", shown(got), shown(want))
+				}
+				s.Buffer.ReplaceSpan(start, start+len(want), runes)
+				s.edited = true
+				s.inserted += len(runes)
+				return scheme.Void, nil
+			}),
 		inCommand("goto-mark", "Move the cursor to a mark, as set-cursor does. It does not end the selection.",
 			[]scheme.Param{{Name: "mark", Type: "any", Doc: "a mark from mark-at"}},
 			func(c *scheme.Call, s *Session) (scheme.Value, error) {
@@ -302,4 +346,13 @@ func markOps(r *Runtime) []*scheme.Prim {
 				return scheme.Void, nil
 			}),
 	}
+}
+
+// shown quotes a few characters of text for an error message.
+func shown(text []rune) string {
+	const most = 40
+	if len(text) > most {
+		return fmt.Sprintf("%q...", string(text[:most]))
+	}
+	return fmt.Sprintf("%q", string(text))
 }
