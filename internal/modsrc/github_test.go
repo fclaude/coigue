@@ -151,7 +151,7 @@ func TestFetchStopsADownloadThatIsTooLarge(t *testing.T) {
 		for i := range chunk {
 			chunk[i] = byte(i * 7919) // not compressible, and not gzip either
 		}
-		for i := 0; i < MaxDownload>>20+2; i++ {
+		for range MaxDownload>>20 + 2 {
 			if _, err := w.Write(chunk); err != nil {
 				return
 			}

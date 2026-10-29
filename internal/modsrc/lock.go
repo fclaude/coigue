@@ -28,6 +28,7 @@ var sumRE = regexp.MustCompile(`^[0-9a-f]{64}$`)
 type Entry struct {
 	Module string // the module's name, the file modules/Module.scm
 	Source string // owner/repo
+	Ref    string // the tag, branch or commit asked for; empty is the default branch
 	Commit string // the full commit hash the file was read at
 	SHA256 string // the hash of the file as installed
 }
@@ -70,6 +71,13 @@ func (l *Lock) Remove(module string) bool {
 	return false
 }
 
+// From is the repository and ref the entry was installed from.
+func (e Entry) From() Source {
+	src, _ := ParseSource(e.Source)
+	src.Ref = e.Ref
+	return src
+}
+
 func (e Entry) check() error {
 	if err := ext.CheckModuleName(e.Module); err != nil {
 		return err
@@ -77,6 +85,11 @@ func (e Entry) check() error {
 	src, err := ParseSource(e.Source)
 	if err != nil || src.Ref != "" {
 		return fmt.Errorf("%s: source %q must be owner/repo", e.Module, e.Source)
+	}
+	if e.Ref != "" {
+		if err := checkRef(e.Ref); err != nil {
+			return fmt.Errorf("%s: %w", e.Module, err)
+		}
 	}
 	if !commitRE.MatchString(e.Commit) {
 		return fmt.Errorf("%s: commit must be 40 hexadecimal digits", e.Module)
@@ -94,7 +107,11 @@ func (l *Lock) String() string {
 	b.WriteString(lockHeader)
 	b.WriteString("(modules")
 	for _, e := range l.Entries {
-		fmt.Fprintf(&b, "\n  (%s (source %q) (commit %q) (sha256 %q))", e.Module, e.Source, e.Commit, e.SHA256)
+		fmt.Fprintf(&b, "\n  (%s (source %q)", e.Module, e.Source)
+		if e.Ref != "" {
+			fmt.Fprintf(&b, " (ref %q)", e.Ref)
+		}
+		fmt.Fprintf(&b, " (commit %q) (sha256 %q))", e.Commit, e.SHA256)
 	}
 	b.WriteString(")\n")
 	return b.String()
@@ -136,19 +153,19 @@ func ParseLock(src string) (*Lock, error) {
 func parseEntry(v scheme.Value) (Entry, error) {
 	parts, ok := v.Slice()
 	if !ok || len(parts) == 0 || parts[0].Kind != scheme.KSymbol {
-		return Entry{}, errors.New("an entry is (name (source \"owner/repo\") (commit \"...\") (sha256 \"...\"))")
+		return Entry{}, errors.New("an entry is (name (source \"owner/repo\") [(ref \"...\")] (commit \"...\") (sha256 \"...\"))")
 	}
 	e := Entry{Module: parts[0].S}
-	set := map[string]*string{"source": &e.Source, "commit": &e.Commit, "sha256": &e.SHA256}
+	set := map[string]*string{"source": &e.Source, "ref": &e.Ref, "commit": &e.Commit, "sha256": &e.SHA256}
 	got := map[string]bool{}
 	for _, field := range parts[1:] {
 		kv, ok := field.Slice()
 		if !ok || len(kv) != 2 || kv[0].Kind != scheme.KSymbol || kv[1].Kind != scheme.KString {
-			return Entry{}, fmt.Errorf("%s: a field is (source \"...\"), (commit \"...\") or (sha256 \"...\")", e.Module)
+			return Entry{}, fmt.Errorf("%s: a field is (source \"...\"), (ref \"...\"), (commit \"...\") or (sha256 \"...\")", e.Module)
 		}
 		dst, known := set[kv[0].S]
 		if !known {
-			return Entry{}, fmt.Errorf("%s: %q is not a field; use source, commit or sha256", e.Module, kv[0].S)
+			return Entry{}, fmt.Errorf("%s: %q is not a field; use source, ref, commit or sha256", e.Module, kv[0].S)
 		}
 		if got[kv[0].S] {
 			return Entry{}, fmt.Errorf("%s: %s is given twice", e.Module, kv[0].S)
@@ -157,7 +174,7 @@ func parseEntry(v scheme.Value) (Entry, error) {
 		*dst = kv[1].S
 	}
 	for name := range set {
-		if !got[name] {
+		if !got[name] && name != "ref" {
 			return Entry{}, fmt.Errorf("%s: %s is missing", e.Module, name)
 		}
 	}
