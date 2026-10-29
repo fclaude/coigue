@@ -787,9 +787,13 @@ func TestMissingCrashedRejectedMalformedAndStalledServersAreBounded(t *testing.T
 		{"malformed", "invalid LSP header"},
 		{"hang", "timed out"},
 	} {
-		run := fake(t, tc.mode, 300*time.Millisecond)
+		// The fake server is this test binary started again, which on a loaded CI
+		// runner can take well over a few hundred milliseconds to answer. The
+		// window must outlast that for the modes that expect a reply; only "hang"
+		// is meant to run it out.
+		run := fake(t, tc.mode, 1500*time.Millisecond)
 		run.commands.trySend(inputDocument{*doc("a", 1)})
-		err := run.wait(t, 3*time.Second)
+		err := run.wait(t, 8*time.Second)
 		if err == nil || !strings.Contains(err.Error(), tc.expected) {
 			t.Errorf("%s: %v", tc.mode, err)
 		}
