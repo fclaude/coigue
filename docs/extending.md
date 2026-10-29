@@ -706,7 +706,7 @@ decision about trust and threading first.
 
 ## Building
 
-Coigüe depends on `github.com/fclaude/brote`, at `v0.4.0` (`go.sum` records its hashes). It is a public module, so a
+Coigüe depends on `github.com/fclaude/brote`, at `v0.5.0` (`go.sum` records its hashes). It is a public module, so a
 plain `go build ./cmd/coigue` downloads it. Brote is MIT licensed; its notice is in
 `THIRD_PARTY_NOTICES.md`, which `scripts/licenses.py` generates.
 The `:module` commands use only the Go standard library for HTTPS, so they add no dependency.
