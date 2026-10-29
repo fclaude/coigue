@@ -296,11 +296,11 @@ func TestRunOfAnUnknownCommand(t *testing.T) {
 func TestOperationsRefuseOutsideInvocation(t *testing.T) {
 	r := loaded(t, Options{}, `
 (define (leak) (replace-selection "x"))
-(define (read) (selection-text))
+(define (peek) (selection-text))
 (define-command "leak" leak)`)
 	// A procedure retained from init, applied by something that is not an
 	// invocation the editor started: no session in the context.
-	for _, name := range []string{"leak", "read"} {
+	for _, name := range []string{"leak", "peek"} {
 		proc, ok := r.root.defs.Lookup(name)
 		if !ok {
 			t.Fatalf("%s not defined in init.scm", name)

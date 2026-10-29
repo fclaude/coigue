@@ -113,10 +113,10 @@ func TestAnExportedProcedureKeepsItsPrivateNames(t *testing.T) {
 
 func TestAnImportIsACopy(t *testing.T) {
 	dir := writeModules(t, map[string]string{
-		"box.scm": `(define-module box (export n bump read))
+		"box.scm": `(define-module box (export n bump peek))
 (define n 1)
 (define (bump) (set! n (+ n 1)) n)
-(define (read) n)
+(define (peek) n)
 `,
 	})
 	r := loaded(t, Options{ConfigDir: dir}, `
@@ -125,7 +125,7 @@ func TestAnImportIsACopy(t *testing.T) {
   (define seen n)
   (define after (bump))
   (set! n 9)
-  (message (format "~a ~a ~a ~a" seen after n (read)))))
+  (message (format "~a ~a ~a ~a" seen after n (peek)))))
 `)
 	s := session("x", 0, 0, nil, false)
 	if err := r.Run(context.Background(), "show", nil, s); err != nil || s.Message() != "1 2 9 2" {
