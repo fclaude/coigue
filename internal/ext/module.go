@@ -77,6 +77,10 @@ func moduleErr(name string, err error) error {
 	return &moduleError{name: name, err: err}
 }
 
+// CheckModuleName reports why name cannot name a module file, for code that
+// writes modules/NAME.scm without loading it.
+func CheckModuleName(name string) error { return checkModuleName(name) }
+
 func checkModuleName(name string) error {
 	switch name {
 	case InitModule, "coigue":
