@@ -5,6 +5,8 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/fclaude/coigue/internal/grant"
 )
 
 // Printable makes text safe to show a person who is deciding whether to run
@@ -157,6 +159,9 @@ func Review(plans []*Plan) []string {
 				add("  unchanged     %s (only the lock moves to this commit)", c.Module)
 			default:
 				add("  %-13s %s (%d bytes, sha256 %s)", c.Kind, c.Module, len(c.New), Sum(c.New))
+				for _, line := range grantLines(c) {
+					add("%s", line)
+				}
 			}
 		}
 		for _, n := range p.Notes {
@@ -187,6 +192,24 @@ func Review(plans []*Plan) []string {
 				out = append(out, Printable(line))
 			}
 		}
+	}
+	return out
+}
+
+// grantLines say what a change does to a module's network access, in words,
+// since a person may weigh that more than the code.
+func grantLines(c Change) []string {
+	var out []string
+	switch {
+	case c.Grant.None() && c.Was.None():
+		return nil
+	case c.Grant.None():
+		return []string{"                NETWORK: it no longer asks for network access"}
+	}
+	out = append(out, "                NETWORK: "+c.Grant.Describe())
+	out = append(out, "                It can read your text while its commands run, so it could send text to these hosts.")
+	if widened := grant.Widen(c.Was, c.Grant); len(widened) > 0 && !c.Was.None() {
+		out = append(out, "                NETWORK ACCESS GROWS ("+strings.Join(widened, "; ")+"): approving this page approves it")
 	}
 	return out
 }

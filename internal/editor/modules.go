@@ -213,6 +213,9 @@ func moduleListCommand(e *Editor, _ string, _ []string) bool {
 		line := fmt.Sprintf("%-20s %-9s", st.Module, st.State)
 		if st.State != modsrc.StateLocal {
 			line += " " + st.Entry.From().String() + " " + st.Entry.Commit[:7]
+			if !st.Entry.Net.None() {
+				line += "  " + st.Entry.Net.Describe()
+			}
 		}
 		lines = append(lines, modsrc.Printable(line))
 	}

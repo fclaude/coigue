@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -114,7 +115,7 @@ func TestAddInstallsFilesAndRecordsTheLock(t *testing.T) {
 	}
 	e, ok := lock.Find("beta")
 	want := Entry{Module: "beta", Source: "o/r", Ref: "v1", Commit: commitA, SHA256: mod("beta", "2").Sum()}
-	if !ok || e != want {
+	if !ok || !reflect.DeepEqual(e, want) {
 		t.Fatalf("entry = %+v; want %+v", e, want)
 	}
 	list, err := s.List()

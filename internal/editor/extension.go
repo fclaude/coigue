@@ -12,6 +12,7 @@ import (
 	"github.com/fclaude/coigue/internal/fsx"
 	"github.com/fclaude/coigue/internal/help"
 	"github.com/fclaude/coigue/internal/key"
+	"github.com/fclaude/coigue/internal/modsrc"
 	"github.com/fclaude/coigue/internal/theme"
 )
 
@@ -67,6 +68,7 @@ func (e *Editor) extensionOptions(themes *theme.Set, setTheme func(theme.Theme),
 		SetTheme:  setTheme,
 		Bind:      bindable,
 		ConfigDir: filepath.Dir(e.initPath),
+		Grants:    modsrc.Grants(filepath.Dir(e.initPath)),
 		Deadline:  e.extDeadline,
 		Watch: func(interrupt func()) func() {
 			if e.interrupter == nil {

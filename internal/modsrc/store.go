@@ -14,6 +14,7 @@ import (
 
 	"github.com/fclaude/brote/scheme"
 	"github.com/fclaude/coigue/internal/ext"
+	"github.com/fclaude/coigue/internal/grant"
 )
 
 // Fetcher is what a Store needs from GitHub. Client is one.
@@ -136,6 +137,9 @@ type Change struct {
 	// Blocked is why this cannot be applied. A plan with a blocked change
 	// applies none of its changes.
 	Blocked string
+	// Grant is the network the new file asks for, and Was what the person
+	// approved for the file it replaces. Applying the plan approves Grant.
+	Grant, Was grant.Grant
 
 	prior string // hash of the file when the plan was made, "" if absent
 }
@@ -245,11 +249,18 @@ func (s Store) change(src Source, f File, lock *Lock) (Change, error) {
 		c.Blocked = err.Error()
 		return c, nil
 	}
+	asked, err := grant.FromModule(string(f.Data))
+	if err != nil {
+		c.Blocked = fmt.Sprintf("%s.scm: %v", f.Module, err)
+		return c, nil
+	}
+	c.Grant = asked
 	d, err := s.read(f.Module)
 	if err != nil {
 		return Change{}, err
 	}
 	entry, locked := lock.Find(f.Module)
+	c.Was = entry.Net
 	switch {
 	case !d.exists && !locked:
 		c.Kind = Add
@@ -459,7 +470,7 @@ func (s Store) Apply(p *Plan) error {
 			done = append(done, undo{module: c.Module, old: c.Old, had: c.prior != ""})
 		}
 		lock.Set(Entry{Module: c.Module, Source: p.Source.Slug(), Ref: p.Source.Ref,
-			Commit: p.Commit, SHA256: Sum(c.New)})
+			Commit: p.Commit, SHA256: Sum(c.New), Net: c.Grant})
 	}
 	if err := WriteLock(s.Dir, lock); err != nil {
 		rollback()

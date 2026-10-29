@@ -352,3 +352,46 @@ func TestModuleCommandsCompleteOnlyOnceThereIsAnInitFile(t *testing.T) {
 		}
 	}
 }
+
+func netModuleFile(name, hosts string) modsrc.File {
+	return modsrc.File{Module: name, Data: []byte("(define-module " + name + " (export hello) (requires (net (allow " + hosts + ") (methods get))))\n(define (hello) \"hi\")\n")}
+}
+
+func TestTheReviewShowsTheNetworkAModuleAsksForAndTheLockLimitsIt(t *testing.T) {
+	repo := &stubRepo{commit: commitOne, files: []modsrc.File{netModuleFile("words", `"api.datamuse.com"`)}}
+	e, dir := moduleEditor(t, repo)
+
+	command(e, "module-add fclaude/tools@v1")
+	finishJob(t, e)
+	text := reviewText(e)
+	for _, want := range []string{"NETWORK: can reach api.datamuse.com (GET)", "could send text to these hosts"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the review lacks %q:\n%s", want, text)
+		}
+	}
+	send(e, "y")
+	if lock := read(t, filepath.Join(dir, modsrc.LockName)); !strings.Contains(lock, `(net (allow "api.datamuse.com") (methods get))`) {
+		t.Fatalf("lock = %s", lock)
+	}
+
+	noteOf := func() string {
+		for _, m := range e.extensions.Modules() {
+			if m.Name == "words" {
+				return strings.Join(m.Notes, "; ")
+			}
+		}
+		return "<module not loaded>"
+	}
+	write(t, e.initPath, "(require words)\n")
+	command(e, "reload")
+	if got := noteOf(); got != "" {
+		t.Fatalf("what was approved produced a note: %q", got)
+	}
+
+	// An edit on disk that asks for another host is not honoured.
+	write(t, filepath.Join(dir, "modules", "words.scm"), string(netModuleFile("words", `"api.datamuse.com" "evil.example.com"`).Data))
+	command(e, "reload")
+	if got := noteOf(); !strings.Contains(got, "which was not granted") || !strings.Contains(got, "modules.lock approved can reach api.datamuse.com (GET)") {
+		t.Fatalf("an unapproved ask was not refused: %q", got)
+	}
+}

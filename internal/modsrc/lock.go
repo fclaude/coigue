@@ -13,6 +13,7 @@ import (
 
 	"github.com/fclaude/brote/scheme"
 	"github.com/fclaude/coigue/internal/ext"
+	"github.com/fclaude/coigue/internal/grant"
 )
 
 // LockName is the lockfile's name, next to init.scm.
@@ -31,6 +32,9 @@ type Entry struct {
 	Ref    string // the tag, branch or commit asked for; empty is the default branch
 	Commit string // the full commit hash the file was read at
 	SHA256 string // the hash of the file as installed
+	// Net is the network the person approved when the module was installed or
+	// last updated. The module gets what its header asks for only up to this.
+	Net grant.Grant
 }
 
 // Lock is the set of installed modules, sorted by name.
@@ -111,7 +115,11 @@ func (l *Lock) String() string {
 		if e.Ref != "" {
 			fmt.Fprintf(&b, " (ref %q)", e.Ref)
 		}
-		fmt.Fprintf(&b, " (commit %q) (sha256 %q))", e.Commit, e.SHA256)
+		fmt.Fprintf(&b, " (commit %q) (sha256 %q)", e.Commit, e.SHA256)
+		if s := e.Net.String(); s != "" {
+			b.WriteString(" " + s)
+		}
+		b.WriteString(")")
 	}
 	b.WriteString(")\n")
 	return b.String()
@@ -159,13 +167,25 @@ func parseEntry(v scheme.Value) (Entry, error) {
 	set := map[string]*string{"source": &e.Source, "ref": &e.Ref, "commit": &e.Commit, "sha256": &e.SHA256}
 	got := map[string]bool{}
 	for _, field := range parts[1:] {
+		if kv, ok := field.Slice(); ok && len(kv) > 0 && kv[0].Kind == scheme.KSymbol && kv[0].S == "net" {
+			if got["net"] {
+				return Entry{}, fmt.Errorf("%s: net is given twice", e.Module)
+			}
+			got["net"] = true
+			net, err := grant.ParseNet(field)
+			if err != nil {
+				return Entry{}, fmt.Errorf("%s: %w", e.Module, err)
+			}
+			e.Net = net
+			continue
+		}
 		kv, ok := field.Slice()
 		if !ok || len(kv) != 2 || kv[0].Kind != scheme.KSymbol || kv[1].Kind != scheme.KString {
-			return Entry{}, fmt.Errorf("%s: a field is (source \"...\"), (ref \"...\"), (commit \"...\") or (sha256 \"...\")", e.Module)
+			return Entry{}, fmt.Errorf("%s: a field is (source \"...\"), (ref \"...\"), (commit \"...\"), (sha256 \"...\") or (net ...)", e.Module)
 		}
 		dst, known := set[kv[0].S]
 		if !known {
-			return Entry{}, fmt.Errorf("%s: %q is not a field; use source, ref, commit or sha256", e.Module, kv[0].S)
+			return Entry{}, fmt.Errorf("%s: %q is not a field; use source, ref, commit, sha256 or net", e.Module, kv[0].S)
 		}
 		if got[kv[0].S] {
 			return Entry{}, fmt.Errorf("%s: %s is given twice", e.Module, kv[0].S)
