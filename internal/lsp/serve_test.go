@@ -30,7 +30,8 @@ func processGone(pid int) bool {
 
 const pidServer = `
 import os, sys, time
-open(sys.argv[1], 'w').write(str(os.getpid()))
+with open(sys.argv[1] + '.tmp', 'w') as f: f.write(str(os.getpid()))
+os.replace(sys.argv[1] + '.tmp', sys.argv[1])
 mode = sys.argv[2]
 if mode == 'garbage':
     sys.stdout.write('garbage\r\n\r\n'); sys.stdout.flush(); time.sleep(60)
@@ -41,26 +42,53 @@ else:
     time.sleep(60)
 `
 
-func startPidServer(t *testing.T, mode string, startup time.Duration, ctx context.Context) (pidFile string, in *commands, done chan error) {
+func startPidServer(t *testing.T, mode string, startup time.Duration, ctx context.Context) (pid int, in *commands, done chan error) {
 	t.Helper()
 	dir := t.TempDir()
 	script := filepath.Join(dir, "server.py")
 	if err := os.WriteFile(script, []byte(pidServer), 0o666); err != nil {
 		t.Fatal(err)
 	}
-	pidFile = filepath.Join(dir, "pid")
+	pidFile := filepath.Join(dir, "pid")
+	ctx, cancel := context.WithCancel(ctx)
+	child, err := spawn(ctx, "python3", []string{"-u", script, pidFile, mode}, dir)
+	if err != nil {
+		cancel()
+		t.Fatal(err)
+	}
+	started := false
+	defer func() {
+		if !started {
+			cancel()
+			child.close()
+		}
+	}()
+	// Wait until the child has actually started before starting the protocol
+	// deadline. A slow interpreter must not race the test's timeout.
+	pid = readPid(t, pidFile)
+	if pid != child.cmd.Process.Pid {
+		t.Fatalf("server reported pid %d, spawned %d", pid, child.cmd.Process.Pid)
+	}
 	commands, inbox := mailbox()
 	events := make(chan output, 64)
 	done = make(chan error, 1)
+	finished := make(chan struct{})
 	go func() {
-		done <- serve(ctx, "python3", []string{"-u", script, pidFile, mode}, dir, "0.1.0", inbox, events, startup)
+		defer close(finished)
+		done <- serveChild(ctx, child, "python3", dir, "0.1.0", inbox, events, startup)
 	}()
-	return pidFile, commands, done
+	started = true
+	t.Cleanup(func() {
+		cancel()
+		<-finished
+	})
+	return pid, commands, done
 }
 
 func readPid(t *testing.T, pidFile string) int {
 	t.Helper()
-	for i := 0; i < 300; i++ {
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
 		if data, err := os.ReadFile(pidFile); err == nil && len(data) > 0 {
 			pid, err := strconv.Atoi(string(data))
 			if err != nil {
@@ -82,19 +110,13 @@ func TestServeKillsAndReapsTheChildOnEveryExit(t *testing.T) {
 		wantErr    string
 	}{
 		{"malformed output", "garbage", time.Second, false, "invalid LSP header"},
-		// The limit starts when the child is launched, and python3 can take
-		// longer than a short limit to reach its first line on a loaded
-		// runner; it would then be killed before it wrote the file readPid
-		// waits for.
-		{"initialization timeout", "silent", 2 * time.Second, false, "timed out"},
+		{"initialization timeout", "silent", 200 * time.Millisecond, false, "timed out"},
 		{"stop before initialization", "silent", 5 * time.Second, true, ""},
 		{"server exits", "exit", time.Second, false, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			pidFile, commands, done := startPidServer(t, tc.mode, tc.startup, context.Background())
-			pid := readPid(t, pidFile)
+			pid, commands, done := startPidServer(t, tc.mode, tc.startup, context.Background())
 			if tc.stop {
-				time.Sleep(100 * time.Millisecond)
 				commands.trySend(inputStop{})
 			}
 			select {
@@ -119,8 +141,7 @@ func TestServeKillsAndReapsTheChildOnEveryExit(t *testing.T) {
 
 func TestContextCancellationStopsServeAndKillsTheChild(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
-	pidFile, _, done := startPidServer(t, "silent", time.Minute, ctx)
-	pid := readPid(t, pidFile)
+	pid, _, done := startPidServer(t, "silent", time.Minute, ctx)
 	cancel()
 	select {
 	case err := <-done:

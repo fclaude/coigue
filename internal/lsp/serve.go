@@ -240,6 +240,11 @@ func serve(ctx context.Context, program string, args []string, root, version str
 	if err != nil {
 		return fmt.Errorf("unavailable (%s)", spawnErrorText(program, err))
 	}
+	return serveChild(ctx, child, program, root, version, in, events, startup)
+}
+
+// serveChild owns the spawned process until it has been killed and reaped.
+func serveChild(ctx context.Context, child *process, program, root, version string, in *inbox, events chan<- output, startup time.Duration) error {
 	defer child.close()
 	writer := newOutbox(channelCapacity)
 	incoming := make(chan incomingMessage, channelCapacity)
