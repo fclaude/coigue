@@ -124,6 +124,7 @@ type Runtime struct {
 	starts          []starter
 	handlers        []*handlerReg
 	timers          []*timerReq
+	windows         []*WindowReq
 	themes          *theme.Set
 	busy            atomic.Bool
 

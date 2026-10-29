@@ -203,6 +203,24 @@ func (r *Runtime) hostOperations() []*scheme.Prim {
 		inCommand("timer", "A channel that receives #t once, SECONDS from now (0.01 to 604800), kept by the editor. Brote's own (after secs) ends with the command that made it, so use this one to wait across commands: (on-channel (timer 60) handler). :reload drops it.",
 			[]scheme.Param{{Name: "seconds", Type: "number", Doc: "the delay"}},
 			r.timer),
+		inCommand("show-list", "Show a window listing ITEMS to choose from, and return a channel. Typing narrows the list, Enter chooses, Esc cancels. An item is a string, or a pair (label . value) to show the label and send the value. The channel receives the choice and is then closed; a cancelled window closes it with nothing sent. Use it with on-channel.",
+			[]scheme.Param{
+				{Name: "title", Type: "string", Doc: "the heading"},
+				{Name: "items", Type: "list", Doc: "strings or (label . value) pairs, at most 1000"},
+			},
+			r.showList),
+		inCommand("show-text", "Show a read-only window with LINES, a string or a list of strings, and return a channel that is closed when it is dismissed with Enter, q or Esc. Long lines wrap.",
+			[]scheme.Param{
+				{Name: "title", Type: "string", Doc: "the heading"},
+				{Name: "lines", Type: "any", Doc: "a string with newlines, or a list of strings, at most 10000 lines"},
+			},
+			r.showText),
+		inCommand("prompt", "Ask for a line of text and return a channel. Enter sends the text, Ctrl-U clears it, Esc cancels. The channel is closed after the answer; a cancelled prompt closes it with nothing sent.",
+			[]scheme.Param{
+				{Name: "title", Type: "string", Doc: "what is being asked"},
+				{Name: "initial", Type: "string", Doc: "the starting text", Optional: true},
+			},
+			r.prompt),
 		{
 			Name: "bind-key",
 			Meta: scheme.Meta{

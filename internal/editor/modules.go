@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/fclaude/coigue/internal/ext"
-	"github.com/fclaude/coigue/internal/key"
 	"github.com/fclaude/coigue/internal/modsrc"
 )
 
@@ -34,42 +33,6 @@ type moduleResult struct {
 type moduleJob struct {
 	done   chan moduleResult
 	cancel context.CancelFunc
-}
-
-// ModuleReview is the page that shows what a :module-add or :module-update
-// would do, with the code, and waits for y or n. A page with no plans is only
-// shown (:module-list).
-type ModuleReview struct {
-	Title  string
-	Lines  []string
-	Scroll int
-
-	plans  []*modsrc.Plan
-	update bool
-}
-
-// ReadOnly reports whether the page only shows something and has no plan to
-// answer.
-func (r *ModuleReview) ReadOnly() bool { return len(r.plans) == 0 }
-
-// CanApply reports whether y does anything: there is a plan and none of its
-// changes is blocked.
-func (r *ModuleReview) CanApply() bool {
-	if r.ReadOnly() {
-		return false
-	}
-	for _, p := range r.plans {
-		if len(p.Blocked()) > 0 {
-			return false
-		}
-	}
-	return true
-}
-
-// Fit keeps the scroll position inside the page. The view calls it with the
-// number of rows the lines take at its width, once they are wrapped.
-func (r *ModuleReview) Fit(total, rows int) {
-	r.Scroll = max(min(r.Scroll, total-max(rows, 1)), 0)
 }
 
 func (e *Editor) moduleStore() (modsrc.Store, bool) {
@@ -127,7 +90,7 @@ func (e *Editor) pollModules() {
 		if res.update {
 			title = "Update modules from GitHub"
 		}
-		e.ModuleReview = &ModuleReview{Title: title, Lines: modsrc.Review(res.plans), plans: res.plans, update: res.update}
+		e.openWindow(e.reviewWindow(title, modsrc.Review(res.plans), res.plans, res.update))
 		e.Message = ""
 	}
 }
@@ -253,49 +216,37 @@ func moduleListCommand(e *Editor, _ string, _ []string) bool {
 		}
 		lines = append(lines, modsrc.Printable(line))
 	}
-	e.ModuleReview = &ModuleReview{Title: "Modules", Lines: lines}
+	e.openWindow(&Window{Kind: WindowText, Title: "Modules", Lines: lines})
 	return false
 }
 
-// moduleReviewKey handles every key while the page is open: nothing reaches
-// the buffer, a menu or a command until it is answered.
-func (e *Editor) moduleReviewKey(k key.Key, pageRows int) {
-	r := e.ModuleReview
-	if ctrlAltSuper(k.Mods) {
-		return
-	}
-	rows := max(pageRows, 1)
-	switch {
-	case k.Code == key.Esc || k.Code == 'n' || k.Code == 'q':
-		e.ModuleReview = nil
-		if !r.ReadOnly() {
-			e.Message = "Cancelled; nothing was changed"
-		}
-	case k.Code == 'y' && r.CanApply():
-		e.ModuleReview = nil
-		e.applyModulePlans(r)
-	case k.Code == key.Up || k.Code == 'k':
-		r.Scroll = max(r.Scroll-1, 0)
-	case k.Code == key.Down || k.Code == 'j':
-		r.Scroll++
-	case k.Code == key.PageUp:
-		r.Scroll = max(r.Scroll-rows, 0)
-	case k.Code == key.PageDown:
-		r.Scroll += rows
-	case k.Code == key.Home:
-		r.Scroll = 0
-	case k.Code == key.End:
-		r.Scroll = 1 << 30
+// reviewWindow is the page that shows what a :module-add or :module-update
+// would do, with the code, and waits for y or n.
+func (e *Editor) reviewWindow(title string, lines []string, plans []*modsrc.Plan, update bool) *Window {
+	return &Window{
+		Kind:  WindowConfirm,
+		Title: title,
+		Lines: lines,
+		canAccept: func() bool {
+			for _, p := range plans {
+				if len(p.Blocked()) > 0 {
+					return false
+				}
+			}
+			return true
+		},
+		accept: func(int, string) { e.applyModulePlans(plans, update) },
+		cancel: func() { e.Message = "Cancelled; nothing was changed" },
 	}
 }
 
-func (e *Editor) applyModulePlans(r *ModuleReview) {
+func (e *Editor) applyModulePlans(plans []*modsrc.Plan, update bool) {
 	store, ok := e.moduleStore()
 	if !ok {
 		return
 	}
 	var changed []string
-	for _, p := range r.plans {
+	for _, p := range plans {
 		if err := store.Apply(p); err != nil {
 			msg := ext.Tidy(err.Error())
 			if len(changed) > 0 {
@@ -309,7 +260,7 @@ func (e *Editor) applyModulePlans(r *ModuleReview) {
 		}
 	}
 	list := strings.Join(changed, ", ")
-	if r.update {
+	if update {
 		e.Message = "Updated " + list + "; :reload runs the new code"
 		return
 	}

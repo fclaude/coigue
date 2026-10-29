@@ -374,24 +374,47 @@ func wrapLines(lines []string, width int) []string {
 	return out
 }
 
-func (v *View) drawModuleReview(e *editor.Editor, out io.Writer) error {
-	r := e.ModuleReview
+// drawWindow draws a modal window. A text is wrapped to the screen so no
+// character of it is hidden; a list and a prompt follow the file picker's
+// layout, with the thing being typed on the last row.
+func (v *View) drawWindow(e *editor.Editor, out io.Writer) error {
+	w := e.Window
 	rows := max(v.rows-2, 0)
-	text := wrapLines(r.Lines, v.cols)
-	r.Fit(len(text), rows)
-	lines := []string{r.Title}
-	for i := r.Scroll; i < len(text) && i < r.Scroll+rows; i++ {
-		lines = append(lines, text[i])
+	var lines []string
+	prompt := w.Footer()
+	switch w.Kind {
+	case editor.WindowList:
+		matches := w.Matches()
+		top := max(w.Selected-max(rows-1, 0), 0)
+		lines = append(lines, w.Title+" "+strconv.Itoa(len(matches))+"/"+strconv.Itoa(len(w.Lines))+" | Enter choose, Esc cancel")
+		for i := top; i < top+rows; i++ {
+			switch {
+			case i < len(matches):
+				marker := " "
+				if i == w.Selected {
+					marker = ">"
+				}
+				lines = append(lines, marker+" "+w.Lines[matches[i]])
+			case i == top:
+				lines = append(lines, "No matches")
+			default:
+				lines = append(lines, "")
+			}
+		}
+		prompt = "Filter: " + w.Query
+	case editor.WindowPrompt:
+		lines = append(lines, w.Title+" | Enter send, Ctrl-U clear, Esc cancel")
+		prompt = "Input: " + w.Query
+	default:
+		text := wrapLines(w.Lines, v.cols)
+		w.Fit(len(text), rows)
+		lines = append(lines, w.Title)
+		for i := w.Scroll; i < len(text) && i < w.Scroll+rows; i++ {
+			lines = append(lines, text[i])
+		}
 	}
 	lines = resize(lines, max(v.rows-1, 0))
-	footer := "Esc close | Up/Down scroll | Page Up/Down"
-	switch {
-	case r.CanApply():
-		footer = "y apply | n/Esc cancel | Up/Down scroll | Page Up/Down"
-	case !r.ReadOnly():
-		footer = "Cannot apply: Esc close | Up/Down scroll | Page Up/Down"
-	}
-	lines = append(lines, footer)
+	lines = append(lines, prompt)
 	return v.drawBrowserLines(lines, e, out)
 }
 
@@ -526,7 +549,7 @@ func (v *View) drawBrowserLines(lines []string, e *editor.Editor, out io.Writer)
 	for y, line := range lines {
 		// Keep the end of a long query visible while typing.
 		left := 0
-		if y == h-1 && startsWithAny(line, "/", ":", "Open:", "Action:", "Filter:", "Search:", "New ", "Rename/move") {
+		if y == h-1 && startsWithAny(line, "/", ":", "Open:", "Action:", "Filter:", "Search:", "Input:", "New ", "Rename/move") {
 			left = max(textCells(line)+1-w, 0)
 		}
 		visible := clipped([]rune(line), left, w)
@@ -598,8 +621,8 @@ func (v *View) DrawTo(e *editor.Editor, w, h int, out io.Writer) error {
 		v.viewportRevision = e.ViewportRevision
 	}
 	switch {
-	case e.ModuleReview != nil:
-		return v.drawModuleReview(e, out)
+	case e.Window != nil:
+		return v.drawWindow(e, out)
 	case e.Help != nil:
 		return v.drawHelp(e, out)
 	case e.Menu != nil:

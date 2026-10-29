@@ -107,7 +107,8 @@ func (r *Runtime) timer(c *scheme.Call, s *Session) (scheme.Value, error) {
 func (r *Runtime) Adopt(s *Session) {
 	r.handlers = append(r.handlers, s.handlers...)
 	r.timers = append(r.timers, s.timers...)
-	s.handlers, s.timers = nil, nil
+	r.windows = append(r.windows, s.windows...)
+	s.handlers, s.timers, s.windows = nil, nil, nil
 }
 
 // Waiting reports how many channels have a handler and how many timers have

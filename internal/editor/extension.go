@@ -118,6 +118,7 @@ func (e *Editor) reloadInit() {
 }
 
 func (e *Editor) commitReload(stage *ext.Runtime, themes theme.Set, chosen *theme.Theme) {
+	e.queuedWindows = nil
 	e.installExtensionCommands(stage)
 	e.listConfigCommands()
 	previous := e.Themes.Name(e.Theme)
@@ -218,6 +219,7 @@ func (e *Editor) runExtension(label string, selection *ext.Selection, run func(*
 	}
 	if e.extensions != nil {
 		e.extensions.Adopt(session)
+		defer e.showNextWindow()
 	}
 	if session.Edited() {
 		e.Buffer.Edit(func() { e.Buffer.Adopt(scratch) })
@@ -432,5 +434,5 @@ func (e *Editor) idleForEvents() bool {
 	return e.Mode == ModeNormal && e.pending == 0 && e.count == 0 && e.operatorCount == 0 &&
 		e.selectionAnchor == nil && e.commandVisual == 0 && !e.IsWelcome() &&
 		e.Help == nil && e.Menu == nil && e.Locations == nil && e.Picker == nil &&
-		e.Explorer == nil && e.SwitchPrompt == "" && e.FilesystemPrompt == nil && e.ModuleReview == nil
+		e.Explorer == nil && e.SwitchPrompt == "" && e.FilesystemPrompt == nil && e.Window == nil
 }

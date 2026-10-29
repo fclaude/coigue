@@ -72,10 +72,10 @@ func finishJob(t *testing.T, e *Editor) {
 }
 
 func reviewText(e *Editor) string {
-	if e.ModuleReview == nil {
+	if e.Window == nil {
 		return "<no review>"
 	}
-	return strings.Join(e.ModuleReview.Lines, "\n")
+	return strings.Join(e.Window.Lines, "\n")
 }
 
 func TestModuleAddShowsTheCodeThenInstallsOnYAndTheLoaderUsesIt(t *testing.T) {
@@ -87,7 +87,7 @@ func TestModuleAddShowsTheCodeThenInstallsOnYAndTheLoaderUsesIt(t *testing.T) {
 		t.Fatalf("job %v, message %q", e.moduleJob, e.Message)
 	}
 	finishJob(t, e)
-	if e.ModuleReview == nil || !e.ModuleReview.CanApply() {
+	if e.Window == nil || !e.Window.CanAccept() {
 		t.Fatalf("no review to answer: %q", e.Message)
 	}
 	text := reviewText(e)
@@ -104,13 +104,13 @@ func TestModuleAddShowsTheCodeThenInstallsOnYAndTheLoaderUsesIt(t *testing.T) {
 	before := e.Buffer.Text()
 	send(e, "i:x")
 	press(e, key.F(1))
-	if e.Mode != ModeNormal || e.Buffer.Text() != before || e.Help != nil || e.ModuleReview == nil {
-		t.Fatalf("a key got through: mode %v help %v review %v", e.Mode, e.Help, e.ModuleReview)
+	if e.Mode != ModeNormal || e.Buffer.Text() != before || e.Help != nil || e.Window == nil {
+		t.Fatalf("a key got through: mode %v help %v review %v", e.Mode, e.Help, e.Window)
 	}
 
 	send(e, "y")
-	if e.ModuleReview != nil || e.Message != "Installed alpha; require alpha in init.scm, then :reload" {
-		t.Fatalf("review %v, message %q", e.ModuleReview, e.Message)
+	if e.Window != nil || e.Message != "Installed alpha; require alpha in init.scm, then :reload" {
+		t.Fatalf("review %v, message %q", e.Window, e.Message)
 	}
 	if got := read(t, filepath.Join(dir, "modules", "alpha.scm")); got != string(repo.files[0].Data) {
 		t.Fatalf("alpha.scm = %q", got)
@@ -139,8 +139,8 @@ func TestModuleAddCancelWritesNothing(t *testing.T) {
 		command(e, "module-add o/r")
 		finishJob(t, e)
 		e.Key(answer, 22)
-		if e.ModuleReview != nil || e.Message != "Cancelled; nothing was changed" {
-			t.Errorf("review %v, message %q", e.ModuleReview, e.Message)
+		if e.Window != nil || e.Message != "Cancelled; nothing was changed" {
+			t.Errorf("review %v, message %q", e.Window, e.Message)
 		}
 		if _, err := os.Stat(filepath.Join(dir, "modules")); err == nil {
 			t.Error("modules/ was created")
@@ -161,11 +161,11 @@ func TestAReviewWithABlockedChangeCannotBeApplied(t *testing.T) {
 	write(t, mine, "(define-module alpha)\n;; mine\n")
 	command(e, "module-add o/r")
 	finishJob(t, e)
-	if e.ModuleReview == nil || e.ModuleReview.CanApply() || !strings.Contains(reviewText(e), "CANNOT APPLY  alpha") {
+	if e.Window == nil || e.Window.CanAccept() || !strings.Contains(reviewText(e), "CANNOT APPLY  alpha") {
 		t.Fatalf("review: %s", reviewText(e))
 	}
 	send(e, "y")
-	if e.ModuleReview == nil {
+	if e.Window == nil {
 		t.Fatal("y closed a review that cannot be applied")
 	}
 	press(e, key.Esc)
@@ -178,8 +178,8 @@ func TestModuleListIsAPageWithNothingToAnswer(t *testing.T) {
 	repo := &stubRepo{commit: commitOne, files: []modsrc.File{moduleFile("alpha", "")}}
 	e, dir := moduleEditor(t, repo)
 	command(e, "module-list")
-	if e.ModuleReview != nil || !strings.HasPrefix(e.Message, "No modules in ") {
-		t.Fatalf("empty: review %v message %q", e.ModuleReview, e.Message)
+	if e.Window != nil || !strings.HasPrefix(e.Message, "No modules in ") {
+		t.Fatalf("empty: review %v message %q", e.Window, e.Message)
 	}
 	command(e, "module-add o/r")
 	finishJob(t, e)
@@ -187,18 +187,18 @@ func TestModuleListIsAPageWithNothingToAnswer(t *testing.T) {
 	write(t, filepath.Join(dir, "modules", "mine.scm"), "x")
 	command(e, "module-list")
 	text := reviewText(e)
-	if e.ModuleReview == nil || !e.ModuleReview.ReadOnly() || e.ModuleReview.CanApply() ||
+	if e.Window == nil || e.Window.Kind != WindowText ||
 		!strings.Contains(text, "alpha") || !strings.Contains(text, "ok") || !strings.Contains(text, "o/r "+commitOne[:7]) ||
 		!strings.Contains(text, "mine") || !strings.Contains(text, "local") {
 		t.Fatalf("list:\n%s", text)
 	}
 	send(e, "y") // nothing to apply
-	if e.ModuleReview == nil {
+	if e.Window == nil {
 		t.Fatal("y closed a page with nothing to apply")
 	}
 	press(e, key.Esc)
-	if e.ModuleReview != nil || e.Message != "" && strings.Contains(e.Message, "Cancelled") {
-		t.Fatalf("review %v, message %q", e.ModuleReview, e.Message)
+	if e.Window != nil || e.Message != "" && strings.Contains(e.Message, "Cancelled") {
+		t.Fatalf("review %v, message %q", e.Window, e.Message)
 	}
 }
 
@@ -211,8 +211,8 @@ func TestModuleUpdateShowsADiffAndAppliesIt(t *testing.T) {
 
 	command(e, "module-update")
 	finishJob(t, e)
-	if e.ModuleReview != nil || e.Message != "Installed modules are up to date" {
-		t.Fatalf("review %v, message %q", e.ModuleReview, e.Message)
+	if e.Window != nil || e.Message != "Installed modules are up to date" {
+		t.Fatalf("review %v, message %q", e.Window, e.Message)
 	}
 
 	repo.commit = commitTwo
@@ -220,7 +220,7 @@ func TestModuleUpdateShowsADiffAndAppliesIt(t *testing.T) {
 	command(e, "module-update")
 	finishJob(t, e)
 	text := reviewText(e)
-	if e.ModuleReview == nil || !strings.Contains(e.ModuleReview.Title, "Update") ||
+	if e.Window == nil || !strings.Contains(e.Window.Title, "Update") ||
 		!strings.Contains(text, "- (define (hello) 1)") || !strings.Contains(text, "+ (define (hello) 2)") {
 		t.Fatalf("review:\n%s", text)
 	}
@@ -293,7 +293,7 @@ func TestOneModuleJobAtATime(t *testing.T) {
 	}
 	close(repo.gate)
 	finishJob(t, e)
-	if e.ModuleReview == nil {
+	if e.Window == nil {
 		t.Fatalf("the first job's page is missing: %q", e.Message)
 	}
 }
@@ -302,8 +302,8 @@ func TestAnUnreachableRepositoryIsAMessageNotAPage(t *testing.T) {
 	e, _ := moduleEditor(t, failing{})
 	command(e, "module-add o/r")
 	finishJob(t, e)
-	if e.ModuleReview != nil || !strings.Contains(e.Message, "not found on GitHub") {
-		t.Fatalf("review %v, message %q", e.ModuleReview, e.Message)
+	if e.Window != nil || !strings.Contains(e.Message, "not found on GitHub") {
+		t.Fatalf("review %v, message %q", e.Window, e.Message)
 	}
 }
 
@@ -318,7 +318,7 @@ func (failing) Fetch(context.Context, modsrc.Source, string) ([]modsrc.File, err
 }
 
 func TestModuleReviewScrollsAndStaysInside(t *testing.T) {
-	r := &ModuleReview{Lines: make([]string, 50)}
+	r := &Window{Lines: make([]string, 50)}
 	r.Scroll = 1 << 30
 	r.Fit(50, 10)
 	if r.Scroll != 40 {

@@ -284,7 +284,8 @@ Each step stands alone and ships.
    need no background tasks: a command can open a channel, a timer can fire it, and the handler
    runs as a command. **Built**, together with Brote's tasks inside a command and the explicit error
    for a task that touches the buffer.
-2. **Modal windows** returning channels. Port the review page onto them.
+2. **Modal windows** returning channels. **Built**: `show-list`, `show-text` and `prompt`, and the
+   module review page is now one of them (a confirmation window).
 3. **Marks.**
 4. **Background tasks**: `spawn-detached` from Brote, `on-done`, the busy rule, the explicit errors,
    lifetime and limits, and the operation table.

@@ -58,6 +58,7 @@ type Session struct {
 	// them only if the command succeeded, as it does the text.
 	handlers []*handlerReg
 	timers   []*timerReq
+	windows  []*WindowReq
 	// label names the command in a handler's failure message.
 	label string
 	// owner is the goroutine that started the invocation, the only one whose

@@ -129,6 +129,9 @@ interpreter is refused (see *Trust*).
 | `(message text)` | Sets the status line shown when the command finishes successfully; the last call wins. Control characters become spaces and the text is cut at 500 characters. | in a command |
 | `(on-channel channel handler)` | Runs `handler` with each value that arrives on `channel`, as a command of its own (see *Events and timers*). `channel` is a Brote channel from `make-channel`, and should be buffered. At most 64 channels can have a handler. | in a command |
 | `(timer seconds)` | A channel that receives `#t` once, `seconds` from now (0.01 to 604,800). At most 64 timers wait at once. | in a command |
+| `(show-list title items)` | Shows a window listing `items` and returns a channel (see *Windows*). An item is a string, or a pair `(label . value)`. | in a command |
+| `(show-text title lines)` | Shows a read-only window and returns a channel that is closed when it is dismissed. `lines` is a string with newlines or a list of strings. | in a command |
+| `(prompt title [initial])` | Asks for a line of text and returns a channel (see *Windows*). | in a command |
 
 "In a command" means: while the editor is running a `:name` command, a bound key or the start-up
 procedure. Called any other way (while `init.scm` loads, or by anything that is not an invocation the
@@ -203,6 +206,45 @@ in the command:
   (let ((lines (map (lambda (i) (buffer-text (+ i 1))) (iota (line-count)))))
     (pmap (lambda (l) (string-length l)) lines)))
 ```
+
+## Windows
+
+A command can put a window on the screen. Each of `show-list`, `show-text` and `prompt` returns a
+channel, and the answer comes back on it, so a window is used exactly like a timer: hand the channel to
+`on-channel`.
+
+```scheme
+(define-command "pick-word"
+  (lambda ()
+    (on-channel (show-list "Insert which?" (list "alpha" "beta" (cons "gamma (greek)" "gamma")))
+                (lambda (choice) (insert-text choice)))))
+
+(define-command "rename"
+  (lambda ()
+    (on-channel (prompt "Rename to" (word-at-cursor))
+                (lambda (name) (message (string-append "renaming to " name))))))
+```
+
+| | Shows | Keys | Sends on the channel |
+| --- | --- | --- | --- |
+| `show-list` | a list; the one chosen is marked `>` | typing narrows it (case does not matter), Up, Down, Page Up, Page Down, Home, End; Enter chooses; Esc cancels | the string chosen, or the *value* of a pair |
+| `show-text` | text, wrapped to the screen | Up, Down (or `j`, `k`), Page Up, Page Down, Home, End; Enter, `q` or Esc closes | nothing; the channel is closed |
+| `prompt` | a line of text, starting with `initial` | typing, Backspace, Ctrl-U clears; Enter sends; Esc cancels | the text typed |
+
+* **The channel is closed after the answer**, and a cancelled window closes it with nothing sent, so
+  a handler on a cancelled window never runs and is forgotten.
+* **A window is modal.** It gets every key. Nothing reaches the text behind it, no command runs and
+  `F1` does nothing until it is answered.
+* **Windows come one at a time.** A command that asks for several shows the first and the rest follow
+  in order as each is answered. At most 8 wait. `:reload` forgets the ones not yet shown.
+* **A command that fails opens no window**, as it registers nothing else.
+* **Limits.** A list has at most 1000 items of at most 500 characters, a text at most 10,000 lines of at
+  most 2000, a title 200. Past a limit the call is an error and nothing is shown.
+* **What is shown is made safe.** Control characters, right-to-left overrides, zero-width characters
+  and bytes that are not UTF-8 appear as `<U+202E>` and `<0xFF>`, so a window cannot hide or repaint
+  text. Long lines wrap; none is cut off.
+* **The answer is a value, not a position.** It arrives as a handler command, on a fresh copy of the
+  buffer, as in *Events and timers*; the text may have changed since the window opened.
 
 ## Editing beyond the selection
 
@@ -843,5 +885,8 @@ Names are Go tests unless a file is given. `ext` is `internal/ext/ext_test.go`, 
 | Tasks work inside a command, end with it, and cannot touch the buffer | `TestTaskProceduresAreAvailable`, `TestTasksEndWithTheirCommand`, `TestATaskCannotTouchTheBuffer` (ext) |
 | A handler runs as its own undo step, only when the editor is idle, leaves a quiet status line alone, reports a failure and stays registered; `:reload` drops handlers and timers | `TestATimerHandlerRunsAsACommandAfterTheDelay`, `TestAHandlerWaitsUntilTheEditorIsIdle`, `TestAHandlerThatFailsSaysSoAndStaysRegistered`, `TestAHandlerWithNothingToSayLeavesTheStatusLineAlone`, `TestReloadDropsHandlersAndTimers`, `TestAFailedCommandLeavesNoTimerBehind` (editor) |
 | The examples in *Events and timers* run | `TestDocumentedExamplesRun` (editor) |
+| A window answers on its channel (a list sends a string or the value of a pair, a prompt the text), a cancelled one sends nothing, a text window takes a string or a list, arguments are checked, a failed command opens none, and at most 8 wait | `TestAListWindowAnswersOnItsChannel`, `TestAListSendsAStringItemAsItIs`, `TestACancelledWindowClosesItsChannelWithNothingSent`, `TestAPromptStartsWithTheGivenTextAndSendsWhatWasTyped`, `TestATextWindowTakesLinesAsAStringOrAList`, `TestWindowArgumentsAreChecked`, `TestAFailedCommandOpensNoWindow`, `TestWindowsWaitingAreCapped` (ext) |
+| A window filters, chooses and cancels; a prompt edits its line; a text window is dismissed by Enter, q or Esc; windows come one at a time; every key is the window's; window text cannot hide or repaint; selection stays in range; `:reload` forgets queued windows | `TestAListWindowFiltersAndChoosesAndTheHandlerRuns`, `TestEscCancelsAWindowWithoutRunningItsHandler`, `TestAPromptEditsItsLineAndSendsIt`, `TestATextWindowIsDismissedByEnterQOrEsc`, `TestWindowsAreShownOneAtATimeInOrder`, `TestAWindowGetsEveryKeyAndTheBufferIsUntouched`, `TestWindowTextCannotHideOrRepaint`, `TestWindowKeysStayInRange`, `TestReloadForgetsQueuedWindows` (editor) |
+| A list, a prompt and a confirmation are drawn with their selection, filter, count and keys | `TestListWindowShowsTheSelectionTheFilterAndTheCount`, `TestPromptWindowShowsWhatIsTypedOnTheLastRow`, `TestConfirmWindowNamesWhatYAndNDo` (render) |
 | Everything above in a real terminal, with a temporary `HOME` and `XDG_CONFIG_HOME` | `tests/pty_extension.py` |
 | `docs/examples/sample.scm` loads and does what its comments say | `TestSampleInit` (editor) |
