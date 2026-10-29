@@ -24,9 +24,10 @@ const windowInit = `
   (lambda ()
     (on-channel (show-text "First" "a") (lambda (_) (insert-text "1")))
     (on-channel (show-text "Second" "b") (lambda (_) (insert-text "2")))))
-(define-command "evil"
-  (lambda () (show-text "Evil ‮ title" (list "a‮b" "ok"))))
 `
+
+// evilInit shows text with a right-to-left override in the title and a line.
+const evilInit = "(define-command \"evil\" (lambda () (show-text \"Evil \u202e title\" (list \"a\u202eb\" \"ok\"))))\n"
 
 func TestAListWindowFiltersAndChoosesAndTheHandlerRuns(t *testing.T) {
 	e := extensionEditor(t, "", windowInit)
@@ -125,7 +126,7 @@ func TestAWindowGetsEveryKeyAndTheBufferIsUntouched(t *testing.T) {
 }
 
 func TestWindowTextCannotHideOrRepaint(t *testing.T) {
-	e := extensionEditor(t, "", windowInit)
+	e := extensionEditor(t, "", windowInit+evilInit)
 	command(e, "evil")
 	w := e.Window
 	all := w.Title + "\n" + strings.Join(w.Lines, "\n")

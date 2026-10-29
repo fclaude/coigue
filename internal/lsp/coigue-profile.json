@@ -86,6 +86,50 @@
       "variadic": false
     },
     {
+      "doc": "Run the procedure HANDLER with each value that arrives on CHANNEL, as a command of its own with a fresh copy of the buffer, until the channel is closed. CHANNEL should be buffered (make-channel n), because a send on an unbuffered one waits for a receiver and the editor never waits. A handler runs when the editor is in Normal mode with nothing pending; until then values stay in the channel. :reload drops it.",
+      "name": "on-channel",
+      "parameters": [
+        "channel",
+        "handler"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "A channel that receives #t once, SECONDS from now (0.01 to 604800), kept by the editor. Brote's own (after secs) ends with the command that made it, so use this one to wait across commands: (on-channel (timer 60) handler). :reload drops it.",
+      "name": "timer",
+      "parameters": [
+        "seconds"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "Show a window listing ITEMS to choose from, and return a channel. Typing narrows the list, Enter chooses, Esc cancels. An item is a string, or a pair (label . value) to show the label and send the value. The channel receives the choice and is then closed; a cancelled window closes it with nothing sent. Use it with on-channel.",
+      "name": "show-list",
+      "parameters": [
+        "title",
+        "items"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "Show a read-only window with LINES, a string or a list of strings, and return a channel that is closed when it is dismissed with Enter, q or Esc. Long lines wrap.",
+      "name": "show-text",
+      "parameters": [
+        "title",
+        "lines"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "Ask for a line of text and return a channel. Enter sends the text, Ctrl-U clears it, Esc cancels. The channel is closed after the answer; a cancelled prompt closes it with nothing sent.",
+      "name": "prompt",
+      "parameters": [
+        "title",
+        "[initial]"
+      ],
+      "variadic": false
+    },
+    {
       "doc": "Bind a key in MODE to the procedure PROC, which runs as a command does, with no arguments. KEY is one character such as \"x\", Ctrl and a lowercase letter such as \"\u003cC-x\u003e\", or Alt and a character such as \"\u003cA-x\u003e\". A key the editor already uses needs OVERRIDE to be #t. Only while init.scm loads.",
       "name": "bind-key",
       "parameters": [
@@ -142,6 +186,56 @@
         "text",
         "[line]",
         "[column]"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "A mark at LINE and COLUMN, 1-based, that stays with the text around it as the buffer changes, so a handler that runs later can still find the place. At most 256 are alive at once; marks nothing refers to any more are freed. Text typed exactly at a mark goes after it.",
+      "name": "mark-at",
+      "parameters": [
+        "line",
+        "column"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "The 1-based line a mark is on now.",
+      "name": "mark-line",
+      "parameters": [
+        "mark"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "The 1-based column a mark is on now.",
+      "name": "mark-column",
+      "parameters": [
+        "mark"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "True if the text the mark was on has been replaced since it was made, so it only stands for the nearest place. A mark that only moved with its text is not disturbed.",
+      "name": "mark-disturbed?",
+      "parameters": [
+        "mark"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "Insert TEXT at a mark, as insert-at does at a line and column. The cursor ends on the first character of TEXT. Ends the selection.",
+      "name": "insert-at-mark",
+      "parameters": [
+        "mark",
+        "text"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "Move the cursor to a mark, as set-cursor does. It does not end the selection.",
+      "name": "goto-mark",
+      "parameters": [
+        "mark"
       ],
       "variadic": false
     },
