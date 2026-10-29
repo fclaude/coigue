@@ -350,6 +350,51 @@ func (v *View) drawHelp(e *editor.Editor, out io.Writer) error {
 	return v.drawBrowserLines(lines, e, out)
 }
 
+// wrapLines breaks each line into pieces at most width cells wide, without
+// dropping a character, so a page meant to be read in full never hides the end
+// of a long line.
+func wrapLines(lines []string, width int) []string {
+	width = max(width, 1)
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		var piece strings.Builder
+		cells := 0
+		for _, c := range line {
+			_, w := cell(c)
+			if cells > 0 && cells+w > width {
+				out = append(out, piece.String())
+				piece.Reset()
+				cells = 0
+			}
+			piece.WriteRune(c)
+			cells += w
+		}
+		out = append(out, piece.String())
+	}
+	return out
+}
+
+func (v *View) drawModuleReview(e *editor.Editor, out io.Writer) error {
+	r := e.ModuleReview
+	rows := max(v.rows-2, 0)
+	text := wrapLines(r.Lines, v.cols)
+	r.Fit(len(text), rows)
+	lines := []string{r.Title}
+	for i := r.Scroll; i < len(text) && i < r.Scroll+rows; i++ {
+		lines = append(lines, text[i])
+	}
+	lines = resize(lines, max(v.rows-1, 0))
+	footer := "Esc close | Up/Down scroll | Page Up/Down"
+	switch {
+	case r.CanApply():
+		footer = "y apply | n/Esc cancel | Up/Down scroll | Page Up/Down"
+	case !r.ReadOnly():
+		footer = "Cannot apply: Esc close | Up/Down scroll | Page Up/Down"
+	}
+	lines = append(lines, footer)
+	return v.drawBrowserLines(lines, e, out)
+}
+
 func (v *View) drawPicker(e *editor.Editor, out io.Writer) error {
 	p := e.Picker
 	h := v.rows
@@ -553,6 +598,8 @@ func (v *View) DrawTo(e *editor.Editor, w, h int, out io.Writer) error {
 		v.viewportRevision = e.ViewportRevision
 	}
 	switch {
+	case e.ModuleReview != nil:
+		return v.drawModuleReview(e, out)
 	case e.Help != nil:
 		return v.drawHelp(e, out)
 	case e.Menu != nil:

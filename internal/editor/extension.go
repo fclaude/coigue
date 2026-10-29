@@ -44,7 +44,7 @@ func (e *Editor) LoadInit(path string) {
 	case !found:
 		return
 	}
-	e.commands.list("reload")
+	e.listConfigCommands()
 	if e.extensions == nil {
 		e.extensions = ext.New(e.extensionOptions(&e.Themes, func(t theme.Theme) { e.Theme = t }, e.checkExtensionCommand))
 	}
@@ -72,6 +72,14 @@ func (e *Editor) extensionOptions(themes *theme.Set, setTheme func(theme.Theme),
 			}
 			return e.interrupter(interrupt)
 		},
+	}
+}
+
+// listConfigCommands puts the commands that work on the configuration into
+// Tab completion, once there is an init file.
+func (e *Editor) listConfigCommands() {
+	for _, name := range []string{"reload", "module-add", "module-list", "module-remove", "module-sync", "module-update"} {
+		e.commands.list(name)
 	}
 }
 
@@ -110,7 +118,7 @@ func (e *Editor) reloadInit() {
 
 func (e *Editor) commitReload(stage *ext.Runtime, themes theme.Set, chosen *theme.Theme) {
 	e.installExtensionCommands(stage)
-	e.commands.list("reload")
+	e.listConfigCommands()
 	previous := e.Themes.Name(e.Theme)
 	e.extensions = stage
 	e.Themes = themes

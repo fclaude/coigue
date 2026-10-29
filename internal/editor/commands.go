@@ -21,10 +21,11 @@ type commandSpec struct {
 	run  func(e *Editor, name string, args []string) (quit bool)
 	// extension marks a command init.scm defined, which :reload replaces.
 	extension bool
-	// unlisted keeps the command out of Tab completion. :reload is until an
-	// init file has been found, so an editor without one completes exactly
-	// the commands it always did; the command itself works from the start,
-	// for the person who is writing their first init.scm.
+	// unlisted keeps the command out of Tab completion. :reload and the
+	// :module commands are until an init file has been found, so an editor
+	// without one completes exactly the commands it always did; the commands
+	// themselves work from the start, for the person who is writing their
+	// first init.scm.
 	unlisted bool
 }
 
@@ -107,6 +108,11 @@ func defaultCommands() *commandTable {
 			e.Message = ""
 			return false
 		}},
+		{name: "module-add", args: true, run: moduleAddCommand, unlisted: true},
+		{name: "module-list", run: moduleListCommand, unlisted: true},
+		{name: "module-remove", args: true, run: moduleRemoveCommand, unlisted: true},
+		{name: "module-sync", run: moduleSyncCommand, unlisted: true},
+		{name: "module-update", args: true, run: moduleUpdateCommand, unlisted: true},
 		{name: "open", run: func(e *Editor, _ string, _ []string) bool { e.openPicker(); return false }},
 		{name: "project-search", run: activateCommand(actions.ProjectSearch)},
 		{name: "q", run: quitCommand},

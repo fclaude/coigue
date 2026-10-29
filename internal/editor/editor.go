@@ -19,6 +19,7 @@ import (
 	"github.com/fclaude/coigue/internal/help"
 	"github.com/fclaude/coigue/internal/key"
 	"github.com/fclaude/coigue/internal/lsp"
+	"github.com/fclaude/coigue/internal/modsrc"
 	"github.com/fclaude/coigue/internal/navigation"
 	"github.com/fclaude/coigue/internal/picker"
 	"github.com/fclaude/coigue/internal/search"
@@ -180,6 +181,12 @@ type Editor struct {
 	// SwitchPrompt holds the path of a pending save/discard/cancel choice, else "".
 	SwitchPrompt     string
 	FilesystemPrompt *FilesystemPrompt
+	// ModuleReview is the page of a :module-add or :module-update waiting for
+	// an answer, or the :module-list page; see modules.go.
+	ModuleReview *ModuleReview
+	moduleJob    *moduleJob
+	// moduleFetcher is how modules are fetched; nil means GitHub. Tests set it.
+	moduleFetcher modsrc.Fetcher
 }
 
 // New creates an editor on an opened file. ctx bounds every background job
@@ -239,6 +246,10 @@ func ctrlAltSuper(m key.Mods) bool { return m.Intersects(key.Ctrl | key.Alt | ke
 // Key handles one key press. pageRows is the page size of the terminal at the
 // moment the key arrived. It reports whether the editor should quit.
 func (e *Editor) Key(k key.Key, pageRows int) bool {
+	if e.ModuleReview != nil {
+		e.moduleReviewKey(k, pageRows)
+		return false
+	}
 	// Help must not split an Insert session, consume pending keys, or touch
 	// the suspended prompt/browser. Intercept before edit bookkeeping.
 	if n, ok := k.Code.FunctionKey(); ok && n >= 2 && n <= 4 {
@@ -437,6 +448,7 @@ func (e *Editor) syncLSP() {
 // results, scans for the picker and explorer, and delayed searches.
 func (e *Editor) Tick(pageRows int) {
 	e.pollLSP()
+	e.pollModules()
 	if e.Picker != nil {
 		e.Picker.Poll()
 	}
