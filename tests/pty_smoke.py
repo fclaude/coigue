@@ -32,6 +32,11 @@ def session(path, steps, command=None, cwd=None, width=80, env_overrides=None):
     try:
         drain()
         if command is None:
+            # A slow host may not have entered raw mode yet; keys sent earlier
+            # would be echoed by the tty and lost.
+            deadline = time.monotonic() + 10
+            while b'\x1b[?1049h' not in output and time.monotonic() < deadline:
+                drain()
             assert proc.poll() is None
         for keys in steps:
             expected = None
