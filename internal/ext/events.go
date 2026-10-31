@@ -284,6 +284,10 @@ func (r *Runtime) watched(t scheme.Task) bool {
 }
 
 // Shutdown ends every background task and timer and waits for them, as long
-// as ctx allows. Call it when the runtime is replaced (:reload) or the editor
-// closes, so nothing started by old code outlives it.
-func (r *Runtime) Shutdown(ctx context.Context) error { return r.interp.Shutdown(ctx) }
+// as ctx allows, then closes what the code started through Brote's modules: its
+// servers and directory watches. Call it when the runtime is replaced (:reload)
+// or the editor closes, so nothing started by old code outlives it.
+func (r *Runtime) Shutdown(ctx context.Context) error {
+	err := r.interp.Shutdown(ctx)
+	return errors.Join(err, r.std.Close())
+}

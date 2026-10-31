@@ -3,6 +3,7 @@ package ext
 import (
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/fclaude/coigue/internal/grant"
 )
@@ -318,6 +320,79 @@ func TestAServeBindsServesAndStops(t *testing.T) {
 	run(t, r, "web/down")
 	if got := fetched(t, r, "web/fetch", "http://"+addr+"/"); !strings.HasPrefix(got, "err:") {
 		t.Fatalf("a stopped server still answers: %q", got)
+	}
+}
+
+// freePort returns a loopback address nothing listens on, for a header to name.
+func freePort(t *testing.T) (addr, port string) {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, port, _ = net.SplitHostPort(ln.Addr().String())
+	ln.Close()
+	return "127.0.0.1:" + port, port
+}
+
+// A server a command started must not outlive its runtime: a reload builds a
+// new runtime whose module serves on the same port, and the editor closing
+// leaves nothing listening.
+func TestShutdownStopsTheServersOfTheRuntime(t *testing.T) {
+	addr, port := freePort(t)
+	r := netRuntime(t, Options{}, map[string]string{
+		"web.scm": `(define-module web (requires (net (allow "` + addr + `"))))
+(define-command "up" (lambda () (serve "127.0.0.1:` + port + `" (list (cons "/" (lambda (req) "up"))))))
+`,
+	}, `(require web)`)
+	run(t, r, "web/up")
+	if ln, err := net.Listen("tcp", addr); err == nil {
+		ln.Close()
+		t.Fatal("the server is not listening before the shutdown")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := r.Shutdown(ctx); err != nil {
+		t.Fatalf("Shutdown: %v", err)
+	}
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		t.Fatalf("the server outlived the runtime: %v", err)
+	}
+	ln.Close()
+}
+
+// A handler runs for the module that called serve, so it reaches only the hosts
+// that module is granted: a request it makes to another host is refused and
+// the other server never sees it.
+func TestAHandlerKeepsTheGrantOfItsModule(t *testing.T) {
+	addr, port := freePort(t)
+	var hits atomic.Int32
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		fmt.Fprint(w, "reached")
+	}))
+	t.Cleanup(other.Close)
+	u, _ := url.Parse(other.URL)
+	r := netRuntime(t, Options{}, map[string]string{
+		"web.scm": `(define-module web (requires (net (allow "` + addr + `"))))
+(define (relay req) (cdr (assoc "body" (http-get "` + other.URL + `/"))))
+(define-command "up" (lambda () (serve "127.0.0.1:` + port + `" (list (cons "/" relay)))))
+`,
+	}, `(require web)`)
+	run(t, r, "web/up")
+	t.Cleanup(func() { _ = r.Shutdown(context.Background()) })
+	resp, err := http.Get("http://" + addr + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode == http.StatusOK || strings.Contains(string(body), "reached") {
+		t.Fatalf("the handler reached %s outside its module's grant: %d %q", u.Host, resp.StatusCode, body)
+	}
+	if hits.Load() != 0 {
+		t.Fatalf("the other server saw %d requests", hits.Load())
 	}
 }
 
