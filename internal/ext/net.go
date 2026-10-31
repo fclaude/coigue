@@ -22,12 +22,13 @@ import (
 // loopback, private and link-local addresses; the file system, and the
 // processes the extensions start. The editor trusts its extensions, so the
 // private-address refusal Brote applies by default is lifted here, and the
-// file-system and process modules are offered to every module and to init.scm;
-// the grants of the modules decide which hosts each one reaches.
+// file-system, process and digest modules are offered to every module and to
+// init.scm; the grants of the modules decide which hosts each one reaches.
 const installedPolicy = `(policy (encoding)
   (net (allow *) (methods get head post put patch delete options) (max-body 2MB) (timeout 20s) (private #t))
   (fs (read *) (write *))
-  (exec (allow *) (env (allow *))))`
+  (exec (allow *) (env (allow *)))
+  (digest (keys *)))`
 
 // netEntry is what the network check and the gate know about one module.
 type netEntry struct {

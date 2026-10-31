@@ -1,7 +1,12 @@
 package ext
 
 import (
+	"bytes"
 	"context"
+	"crypto/ed25519"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -541,6 +546,44 @@ func TestExecAndFSAreOffered(t *testing.T) {
 	if s := run(t, r2, "disk/run"); s.Buffer.Text() != "from the module\n" {
 		t.Fatalf("disk/run: %q", s.Buffer.Text())
 	}
+}
+
+// The digest module is offered with every key allowed: a module and init.scm
+// hash, sign and verify, and the expected digests are computed here, not in
+// Scheme, so the test does not grade one implementation with itself.
+func TestDigestSignsVerifies(t *testing.T) {
+	seed := bytes.Repeat([]byte{0}, 31)
+	seed = append(seed, 7) // a fixed, non-zero seed
+	priv := ed25519.NewKeyFromSeed(seed)
+	pub := hex.EncodeToString(priv.Public().(ed25519.PublicKey))
+	msg := "the editor trusts its extensions"
+	sig := hex.EncodeToString(ed25519.Sign(priv, []byte(msg)))
+	mac := hmacSHA256("the key", msg)
+	prog := fmt.Sprintf(`
+(define-command "mac" (lambda () (insert-text (hmac-sha256 "the key" %q))))
+(define-command "sign" (lambda () (insert-text (ed25519-sign %q %q))))
+(define-command "verify" (lambda () (insert-text (if (ed25519-verify %q %q %q) "yes" "no"))))
+(define-command "tamper" (lambda () (insert-text (if (ed25519-verify %q "a different message" %q) "yes" "no"))))
+`, msg, hex.EncodeToString(priv), msg, pub, msg, sig, pub, sig)
+	r := loaded(t, Options{}, prog)
+	if s := run(t, r, "mac"); s.Buffer.Text() != mac {
+		t.Fatalf("hmac-sha256: %q, want %q", s.Buffer.Text(), mac)
+	}
+	if s := run(t, r, "sign"); s.Buffer.Text() != sig {
+		t.Fatalf("ed25519-sign: %q, want %q", s.Buffer.Text(), sig)
+	}
+	if s := run(t, r, "verify"); s.Buffer.Text() != "yes" {
+		t.Fatalf("ed25519-verify of a good signature: %q", s.Buffer.Text())
+	}
+	if s := run(t, r, "tamper"); s.Buffer.Text() != "no" {
+		t.Fatalf("ed25519-verify of a tampered message: %q", s.Buffer.Text())
+	}
+}
+
+func hmacSHA256(key, message string) string {
+	h := hmac.New(sha256.New, []byte(key))
+	h.Write([]byte(message))
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 // The guarded loop does its work inside the guard body, and the loop itself is

@@ -357,6 +357,22 @@ for:
 This is the trust posture: what it buys is shell-startup-file convenience, and what it gives up is
 isolation. A module that would not be trusted is not installed, and that remains the review.
 
+## Digests and signatures
+
+The editor offers Brote's digest module to every module and to `init.scm` as well, with no grant to ask
+for, installed with every key allowed:
+
+* **Hashing.** `sha256`, `sha512`, `sha1`, `md5` and `hmac-sha256 KEY MESSAGE` return the digest as
+  lower-case hex.
+* **Signing and verifying.** `ed25519-sign PRIVATE-KEY MESSAGE` and `ecdsa-sign PRIVATE-KEY MESSAGE`
+  return the hex signature (deterministic: the same key and message sign the same); `ed25519-verify
+  PUBLIC-KEY MESSAGE SIGNATURE` and `ecdsa-verify ...` return `#t` or `#f` — a signature that does not
+  verify is `#f`, not an error. Because the editor installs the digest module with every key allowed,
+  a module may verify under any public key it is handed.
+
+Verifying a signature is a claim about who signed it. That claim belongs to the person who reviews the
+extension, as does everything else it can do now.
+
 ## Windows
 
 A command can put a window on the screen. Each of `show-list`, `show-text` and `prompt` returns a
@@ -1023,11 +1039,12 @@ moves the cursor is applied too, but records no undo step.
   Each file must be a regular file of at most 1 MiB.
 * The program you write is as trusted as your shell's start-up files, and it has what such a file has:
   the host interface above, the file system, the processes it starts (see *The file system and
-  processes*), and the network its grant names (see *The network*). Brote's `load` builtin, which reads
-  any file the process can read outside the module structure, is declared a host operation and **a gate
-  refuses `load`, and every `Host`, `Egress` or `Irreversible` primitive the installed policy has not
-  granted to a module**. `(load "x.scm")` fails with `load: denied: ...` and the file is not read. The
-  set of primitives is frozen after registration, so `register-tool` cannot add one.
+  processes*), digests and signatures (see *Digests and signatures*), and the network its grant names
+  (see *The network*). Brote's `load` builtin, which reads any file the process can read outside the
+  module structure, is declared a host operation and **a gate refuses `load`, and every `Host`, `Egress`
+  or `Irreversible` primitive the installed policy has not granted to a module**. `(load "x.scm")` fails
+  with `load: denied: ...` and the file is not read. The set of primitives is frozen after registration,
+  so `register-tool` cannot add one.
 * The command line is unchanged: `coigue [FILE]`, `--help`, `--version`. No flag was added, so
   there is nothing that would let a command line (and so a project script) pick a different file.
 
@@ -1114,6 +1131,7 @@ Names are Go tests unless a file is given. `ext` is `internal/ext/ext_test.go`, 
 | A module with a grant reaches its hosts from a task; a command cannot wait on a request; no grant, no network, and the error says what to add; `init.scm` has none | `TestAModuleWithAGrantFetchesInATask`, `TestACommandCannotWaitOnTheNetwork`, `TestAModuleWithoutAGrantIsToldWhatToAdd`, `TestInitScmHasNoNetworkAndIsToldWhere` (ext) |
 | A granted module serves on the loopback port it names, from a command, answers a task's fetch, and `server-stop!` ends it | `TestAServeBindsServesAndStops` (ext) |
 | The file system and the processes an extension starts are offered: a module and `init.scm` read and write files, list a directory, and run a command | `TestExecAndFSAreOffered` (ext) |
+| Digests and signatures are offered: `hmac-sha256` matches, `ed25519-sign` matches and verifies, and a tampered message does not | `TestDigestSignsVerifies` (ext) |
 | Each module is held to its own grant on one interpreter, at every redirect hop, for every method, and a handler's task keeps its module | `TestEachModuleKeepsItsOwnGrantOnOneInterpreter`, `TestARedirectToAHostOutsideTheGrantIsRefused`, `TestOnlyTheGrantedMethodsAreSent`, `TestATaskStartedByAHandlerKeepsTheModule` (ext) |
 | The editor's wide policy does not widen a module's grant, which still bounds it; a refused grant leaves a note and a reason; Brote's introspection is refused; the example in *The network* runs | `TestTheEditorsWidePolicyDoesNotWidenAModulesGrant`, `TestAGrantTheEditorRefusesLeavesTheModuleWithoutNetworkAndSaysWhy`, `TestBroteIntrospectionIsRefusedWithAnExplanation`, `TestTheDocumentedRhymeExampleRuns` (ext) |
 | The lock records the approved network, the review page says it in words and marks growth, and at load a module gets at most what was approved | `TestInstallingRecordsTheGrantThePersonApproved`, `TestAnUpdateThatAsksForMoreIsMarked`, `TestGrantsFollowWhatWasApproved`, `TestAModuleThatWasInstalledWithoutAGrantCannotGrowOneOnDisk`, `TestAnUnreadableLockfileGrantsNothing` (modsrc); `TestTheReviewShowsTheNetworkAModuleAsksForAndTheLockLimitsIt` (editor) |

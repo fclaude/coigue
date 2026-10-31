@@ -339,6 +339,44 @@
       "variadic": false
     },
     {
+      "doc": "The ECDSA P-256 signature of a message's SHA-256 under a private key, as DER hex: the deterministic signature of RFC 6979, the same for the same key and message. The key is a 32-byte scalar, as hex.",
+      "name": "ecdsa-sign",
+      "parameters": [
+        "private-key",
+        "message"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "Whether a message's ECDSA P-256 signature (DER hex) verifies under a public key (a compressed point, hex). The key must be one the policy granted with (digest (keys …)); a signature that does not verify is #f, a key the policy does not grant is an error.",
+      "name": "ecdsa-verify",
+      "parameters": [
+        "public-key",
+        "message",
+        "signature"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "The Ed25519 signature of a message under a private key, as lower-case hex. The key is 64 bytes (a full private key) or 32 bytes (a seed), as hex.",
+      "name": "ed25519-sign",
+      "parameters": [
+        "private-key",
+        "message"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "Whether a message's Ed25519 signature verifies under a public key (32 bytes, hex). The key must be one the policy granted with (digest (keys …)); a signature that does not verify is #f, a key the policy does not grant is an error.",
+      "name": "ed25519-verify",
+      "parameters": [
+        "public-key",
+        "message",
+        "signature"
+      ],
+      "variadic": false
+    },
+    {
       "doc": "Add a string to the end of a file, creating it if needed.",
       "name": "fs-append-text",
       "parameters": [
@@ -455,6 +493,15 @@
       "variadic": false
     },
     {
+      "doc": "The HMAC-SHA-256 of a message under a key, as lower-case hex.",
+      "name": "hmac-sha256",
+      "parameters": [
+        "key",
+        "message"
+      ],
+      "variadic": false
+    },
+    {
       "doc": "Send an HTTP request and return the response as an association list with \"status\" (integer), \"headers\" (an alist with lower-case names), \"body\" (a string) and \"url\" (the final URL after redirects). Headers are an alist such as '((\"accept\" . \"text/plain\")). A status of 400 or more is a result, not an error; a refused host, method, redirect, a body past the host's limit or a timeout is an error.",
       "name": "http-request",
       "parameters": [
@@ -468,6 +515,14 @@
     {
       "doc": "Parse INI text into a list of (section entries...) pairs in order of first appearance: [section] headers, key=value lines, ; or # comment lines, and a valueless key whose value is \"\". Keys before any header are in the \"\" section. Whitespace around names and values is stripped and a duplicate key keeps its last value.",
       "name": "ini-parse",
+      "parameters": [
+        "text"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "The MD5 digest of a string's UTF-8 bytes, as lower-case hex. Broken for security; for checksums and compatibility.",
+      "name": "md5",
       "parameters": [
         "text"
       ],
@@ -512,6 +567,30 @@
       "name": "server?",
       "parameters": [
         "x"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "The SHA-1 digest of a string's UTF-8 bytes, as lower-case hex. Broken for security; for checksums and compatibility.",
+      "name": "sha1",
+      "parameters": [
+        "text"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "The SHA-256 digest of a string's UTF-8 bytes, as lower-case hex.",
+      "name": "sha256",
+      "parameters": [
+        "text"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "The SHA-512 digest of a string's UTF-8 bytes, as lower-case hex.",
+      "name": "sha512",
+      "parameters": [
+        "text"
       ],
       "variadic": false
     },
