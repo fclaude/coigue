@@ -334,6 +334,29 @@ loopback port it names in its header.
 
 The editor's only other network use is `:module-add` and its relatives, which talk to GitHub.
 
+## The file system and processes
+
+The editor trusts the extensions it runs, so Brote's file-system and process
+modules are offered to every module and to `init.scm`, with no grant to ask
+for:
+
+* **The file system.** `fs-read-text`, `fs-write-text`, `fs-append-text`, `fs-list`, `fs-exists?`,
+  `fs-stat`, `fs-mkdir`, `fs-rename` and `fs-remove` work on any file the process can reach. There is
+  no allow list of paths and no base directory: the paths are the paths the extension is given. See
+  Brote's *extended library* for what each does.
+* **The processes it starts.** `proc-run` takes a list of strings, the command first; it is started
+  directly, never through a shell. It waits for the command and returns an association list with
+  `"exit-code"` (an integer; a nonzero one is a result, not an error), `"stdout"` and `"stderr"`.
+  Any command the process can start is allowed, and the program sees the process's environment
+  variables.
+* **Watching a directory.** `fs-watch DIR [SECONDS]` polls the directory (every second by default)
+  and returns a watch; `fs-watch-changes WATCH` drains the names that appeared, changed or were
+  removed since the last call; `fs-watch-stop!` ends it. A watch runs until stopped or the editor
+  quits, and the draining call may be made from a timer (see *Events and timers*).
+
+This is the trust posture: what it buys is shell-startup-file convenience, and what it gives up is
+isolation. A module that would not be trusted is not installed, and that remains the review.
+
 ## Windows
 
 A command can put a window on the screen. Each of `show-list`, `show-text` and `prompt` returns a
@@ -998,16 +1021,13 @@ moves the cursor is applied too, but records no undo step.
   the status line as `init.scm: ...` and **does not stop start-up**. Commands defined before the error
   stay defined. (`:reload` is stricter: a file that fails changes nothing.)
   Each file must be a regular file of at most 1 MiB.
-* The program you write is as trusted as your shell's start-up files, but it is limited to the
-  host interface above. In particular, Brote's `load` builtin, which reads any file the process can
-  read, is declared a host operation and **a gate refuses `load`, and every `Host`, `Egress` or
-  `Irreversible` primitive the installed policy has not granted to a module**. `(load "x.scm")` fails with
-  `load: denied: ...` and the file is not read. The set of primitives is frozen after registration, so
-  `register-tool` cannot add one. No operation gives access to processes, the file system, environment
-  variables, credentials or the clipboard. The network is the one exception: Brote's `http-request` and its
-  helpers are `Host` and `Egress` primitives, and the gate lets them through only for a module that was
-  granted hosts, and only to those hosts — `http-request` and its helpers only from a background task, and
-  `serve` and its companions also from a command (see *The network*).
+* The program you write is as trusted as your shell's start-up files, and it has what such a file has:
+  the host interface above, the file system, the processes it starts (see *The file system and
+  processes*), and the network its grant names (see *The network*). Brote's `load` builtin, which reads
+  any file the process can read outside the module structure, is declared a host operation and **a gate
+  refuses `load`, and every `Host`, `Egress` or `Irreversible` primitive the installed policy has not
+  granted to a module**. `(load "x.scm")` fails with `load: denied: ...` and the file is not read. The
+  set of primitives is frozen after registration, so `register-tool` cannot add one.
 * The command line is unchanged: `coigue [FILE]`, `--help`, `--version`. No flag was added, so
   there is nothing that would let a command line (and so a project script) pick a different file.
 
@@ -1015,7 +1035,7 @@ moves the cursor is applied too, but records no undo step.
 
 Key sequences, bindings in Insert mode or in the command line, running Scheme from an event other than
 the start of the editor, a command you typed, a key you bound, a timer, a channel value or a finished
-background task, reading or writing other files, a network grant for `init.scm` or for anything but named
+background task, a network grant for `init.scm` or for anything but named
 hosts, LSP data, running a command from Scheme, a
 `:eval` command, defining modes. Modules have no version solver, no nested names (`author/name`), no private repositories,
 no re-exports, and `require` is not available while a command runs. `:module-add` copies files and
@@ -1093,6 +1113,7 @@ Names are Go tests unless a file is given. `ext` is `internal/ext/ext_test.go`, 
 | A header's `requires` is read closely: only `net`, named hosts, no wildcards, no limits of its own; a grant is within or wider than another | `TestARequestIsReadFromTheHeader`, `TestRequestsThatAreNotOffered`, `TestWithinAndWidening`, `TestThePolicyJudgesRequests` (`internal/grant`) |
 | A module with a grant reaches its hosts from a task; a command cannot wait on a request; no grant, no network, and the error says what to add; `init.scm` has none | `TestAModuleWithAGrantFetchesInATask`, `TestACommandCannotWaitOnTheNetwork`, `TestAModuleWithoutAGrantIsToldWhatToAdd`, `TestInitScmHasNoNetworkAndIsToldWhere` (ext) |
 | A granted module serves on the loopback port it names, from a command, answers a task's fetch, and `server-stop!` ends it | `TestAServeBindsServesAndStops` (ext) |
+| The file system and the processes an extension starts are offered: a module and `init.scm` read and write files, list a directory, and run a command | `TestExecAndFSAreOffered` (ext) |
 | Each module is held to its own grant on one interpreter, at every redirect hop, for every method, and a handler's task keeps its module | `TestEachModuleKeepsItsOwnGrantOnOneInterpreter`, `TestARedirectToAHostOutsideTheGrantIsRefused`, `TestOnlyTheGrantedMethodsAreSent`, `TestATaskStartedByAHandlerKeepsTheModule` (ext) |
 | The editor's wide policy does not widen a module's grant, which still bounds it; a refused grant leaves a note and a reason; Brote's introspection is refused; the example in *The network* runs | `TestTheEditorsWidePolicyDoesNotWidenAModulesGrant`, `TestAGrantTheEditorRefusesLeavesTheModuleWithoutNetworkAndSaysWhy`, `TestBroteIntrospectionIsRefusedWithAnExplanation`, `TestTheDocumentedRhymeExampleRuns` (ext) |
 | The lock records the approved network, the review page says it in words and marks growth, and at load a module gets at most what was approved | `TestInstallingRecordsTheGrantThePersonApproved`, `TestAnUpdateThatAsksForMoreIsMarked`, `TestGrantsFollowWhatWasApproved`, `TestAModuleThatWasInstalledWithoutAGrantCannotGrowOneOnDisk`, `TestAnUnreadableLockfileGrantsNothing` (modsrc); `TestTheReviewShowsTheNetworkAModuleAsksForAndTheLockLimitsIt` (editor) |

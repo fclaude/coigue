@@ -339,6 +339,106 @@
       "variadic": false
     },
     {
+      "doc": "Add a string to the end of a file, creating it if needed.",
+      "name": "fs-append-text",
+      "parameters": [
+        "path",
+        "text"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "True when the path names a file or directory, #f when it does not. A path outside the granted directories is an error, not #f.",
+      "name": "fs-exists?",
+      "parameters": [
+        "path"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "The names in a directory, sorted, as a list of strings (not the directory's own path, and not . or ..). Use fs-stat to tell files from directories.",
+      "name": "fs-list",
+      "parameters": [
+        "path"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "Make a directory and any missing parents inside the granted tree. A directory that exists is fine.",
+      "name": "fs-mkdir",
+      "parameters": [
+        "path"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "The contents of a file as a string. Bytes that are not valid UTF-8 become U+FFFD. A file larger than the host's limit is an error.",
+      "name": "fs-read-text",
+      "parameters": [
+        "path"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "Delete a file or an empty directory. A missing path is an error. There is no recursive delete.",
+      "name": "fs-remove",
+      "parameters": [
+        "path"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "Move a file or directory to a new path inside the same granted tree, replacing a file already there.",
+      "name": "fs-rename",
+      "parameters": [
+        "path",
+        "to"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "What a file or directory is, as an association list: \"size\" (bytes), \"dir\" (#t for a directory), \"mode\" (permission bits as text such as \"0644\") and \"mtime\" (seconds since 1970, a float). A missing file is an error; see fs-exists?.",
+      "name": "fs-stat",
+      "parameters": [
+        "path"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "Watch a granted directory for changes, polled every interval seconds (default 1): returns a watch. fs-watch-changes drains the names that appeared, changed (size or modification time) or were removed, and fs-watch-stop! ends the watch. The watch runs until stopped or the host closes the runtime, not only until the evaluation that started it ends.",
+      "name": "fs-watch",
+      "parameters": [
+        "path",
+        "[interval]"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "The names in a watched directory that appeared, changed or were removed since the last call, sorted, as a list of strings; drains the queue.",
+      "name": "fs-watch-changes",
+      "parameters": [
+        "watch"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "Stop a watch: its goroutine ends. Stopping a stopped watch does nothing.",
+      "name": "fs-watch-stop!",
+      "parameters": [
+        "watch"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "Write a string to a file, creating it or replacing what it held. The directory must exist and be granted for writing.",
+      "name": "fs-write-text",
+      "parameters": [
+        "path",
+        "text"
+      ],
+      "variadic": false
+    },
+    {
       "doc": "The string that hexadecimal text stands for. An error if it is not hexadecimal or its bytes are not UTF-8 text.",
       "name": "hex-decode",
       "parameters": [
@@ -370,6 +470,15 @@
       "name": "ini-parse",
       "parameters": [
         "text"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "Run a program and wait for it. The argument is a list of strings, the command first; it is started directly, never through a shell, so no argument is interpreted. Returns an association list with \"exit-code\" (integer; -1 if a signal ended it), \"stdout\" and \"stderr\" (strings). A nonzero exit is a result, not an error; a command the host did not grant, one that cannot start, a timeout, or output past the host's limit is an error. Options is an alist: \"stdin\" (a string to feed it) and \"timeout\" (seconds, at most the host's limit). The program sees only the environment variables the host granted.",
+      "name": "proc-run",
+      "parameters": [
+        "argv",
+        "[options]"
       ],
       "variadic": false
     },
@@ -419,6 +528,14 @@
       "name": "url-encode",
       "parameters": [
         "text"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "True for watches.",
+      "name": "watch?",
+      "parameters": [
+        "x"
       ],
       "variadic": false
     },

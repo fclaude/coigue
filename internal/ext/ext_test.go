@@ -3,6 +3,7 @@ package ext
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -493,6 +494,52 @@ func TestGateRefusesLoadAndEverythingThatTouchesTheSystem(t *testing.T) {
 		if p.Meta.Origin == "scheme" {
 			t.Errorf("%s was registered by a program", p.Name)
 		}
+	}
+}
+
+// The file system and the processes an extension starts are offered to every
+// module and to init.scm: the editor trusts its extensions, and the policy
+// grants the whole file system and every command.
+func TestExecAndFSAreOffered(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "note.txt")
+	prog := fmt.Sprintf(`
+(define-command "write" (lambda () (fs-write-text %q "from the extension")))
+(define-command "read" (lambda () (insert-text (fs-read-text %q))))
+(define-command "list" (lambda () (insert-text (string-join (fs-list %q) ","))))
+(define-command "run" (lambda () (insert-text (cdr (assoc "stdout" (proc-run (list "echo" "hi")))))))
+`, file, file, dir)
+	r := loaded(t, Options{}, prog)
+	run(t, r, "write")
+	if got, err := os.ReadFile(file); err != nil || string(got) != "from the extension" {
+		t.Fatalf("fs-write-text left the file as %q (%v)", got, err)
+	}
+	if s := run(t, r, "read"); s.Buffer.Text() != "from the extension" {
+		t.Fatalf("fs-read-text: %q", s.Buffer.Text())
+	}
+	if s := run(t, r, "list"); s.Buffer.Text() != "note.txt" {
+		t.Fatalf("fs-list: %q", s.Buffer.Text())
+	}
+	if s := run(t, r, "run"); s.Buffer.Text() != "hi\n" {
+		t.Fatalf("proc-run: %q", s.Buffer.Text())
+	}
+	// The same from a module, qualified.
+	dir2 := t.TempDir()
+	file2 := filepath.Join(dir2, "note.txt")
+	r2 := loaded(t, Options{ConfigDir: writeModules(t, map[string]string{
+		"disk.scm": `(define-module disk)` + fmt.Sprintf(`
+(define-command "read" (lambda () (insert-text (fs-read-text %q))))
+(define-command "run" (lambda () (insert-text (cdr (assoc "stdout" (proc-run (list "echo" "from the module")))))))
+`, file2),
+	})}, `(require disk)`)
+	if err := os.WriteFile(file2, []byte("from a test"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if s := run(t, r2, "disk/read"); s.Buffer.Text() != "from a test" {
+		t.Fatalf("disk/read: %q", s.Buffer.Text())
+	}
+	if s := run(t, r2, "disk/run"); s.Buffer.Text() != "from the module\n" {
+		t.Fatalf("disk/run: %q", s.Buffer.Text())
 	}
 }
 
