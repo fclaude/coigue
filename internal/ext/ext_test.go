@@ -483,11 +483,21 @@ func TestGateRefusesLoadAndEverythingThatTouchesTheSystem(t *testing.T) {
 	for _, p := range New(Options{}).hostOperations() {
 		allowed[p.Name] = true
 	}
-	// System-touching prims must be load (which the gate refuses) or belong to
-	// a module the installed policy grants: the gate admits those, deciding
-	// net per module (net_test.go) and admitting exec, fs and digest outright
-	// under the trust posture, and refuses the rest. Anything else is new:
-	// review it before it slips through.
+	// System-touching prims must be load (which the gate refuses) or one of
+	// the prims below, which the installed policy grants: the gate decides net
+	// per module (net_test.go) and admits exec and fs outright under the trust
+	// posture. The prims are named, not just their modules: a new destructive
+	// prim in a module that is already offered is new, and is reviewed before
+	// it slips through.
+	reviewed := map[string]bool{"load": true}
+	for _, name := range []string{
+		"http-request", "serve",
+		"proc-run",
+		"fs-append-text", "fs-exists?", "fs-list", "fs-mkdir", "fs-read-text",
+		"fs-remove", "fs-rename", "fs-stat", "fs-watch", "fs-write-text",
+	} {
+		reviewed[name] = true
+	}
 	r = New(Options{})
 	offered := map[string]bool{}
 	for _, m := range r.std.Granted() {
@@ -495,7 +505,7 @@ func TestGateRefusesLoadAndEverythingThatTouchesTheSystem(t *testing.T) {
 	}
 	for _, p := range r.interp.Prims() {
 		if p.Meta.Host || p.Meta.Egress || p.Meta.Irreversible {
-			if p.Name != "load" && !offered[r.std.ModuleOf(p.Name)] {
+			if !reviewed[p.Name] || (p.Name != "load" && !offered[r.std.ModuleOf(p.Name)]) {
 				t.Errorf("Brote now offers %s, which touches the system: review the gate", p.Name)
 			}
 			continue
