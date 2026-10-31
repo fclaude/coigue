@@ -3,12 +3,16 @@ package ext
 import (
 	"bytes"
 	"context"
+	"crypto"
+	"crypto/ecdsa"
 	"crypto/ed25519"
+	"crypto/elliptic"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math/big"
 	"os"
 	"path/filepath"
 	"strings"
@@ -559,12 +563,34 @@ func TestDigestSignsVerifies(t *testing.T) {
 	msg := "the editor trusts its extensions"
 	sig := hex.EncodeToString(ed25519.Sign(priv, []byte(msg)))
 	mac := hmacSHA256("the key", msg)
+	// P-256 under a fixed scalar: the signature is the deterministic one of
+	// RFC 6979, so what Go computes is what the module must produce.
+	scalar, err := hex.DecodeString("112233445566778899aabbccddeeff00112233445566778899aabbccddeeff00")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ecX, ecY := elliptic.P256().ScalarBaseMult(scalar)
+	ec := &ecdsa.PrivateKey{
+		PublicKey: ecdsa.PublicKey{Curve: elliptic.P256(), X: ecX, Y: ecY},
+		D:         new(big.Int).SetBytes(scalar),
+	}
+	ecPub := hex.EncodeToString(elliptic.MarshalCompressed(elliptic.P256(), ecX, ecY))
+	sum := sha256.Sum256([]byte(msg))
+	ecSig, err := ec.Sign(nil, sum[:], crypto.SHA256)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ecSigHex := hex.EncodeToString(ecSig)
 	prog := fmt.Sprintf(`
 (define-command "mac" (lambda () (insert-text (hmac-sha256 "the key" %q))))
 (define-command "sign" (lambda () (insert-text (ed25519-sign %q %q))))
 (define-command "verify" (lambda () (insert-text (if (ed25519-verify %q %q %q) "yes" "no"))))
 (define-command "tamper" (lambda () (insert-text (if (ed25519-verify %q "a different message" %q) "yes" "no"))))
-`, msg, hex.EncodeToString(priv), msg, pub, msg, sig, pub, sig)
+(define-command "ecsign" (lambda () (insert-text (ecdsa-sign %q %q))))
+(define-command "ecverify" (lambda () (insert-text (if (ecdsa-verify %q %q %q) "yes" "no"))))
+(define-command "ectamper" (lambda () (insert-text (if (ecdsa-verify %q "a different message" %q) "yes" "no"))))
+`, msg, hex.EncodeToString(priv), msg, pub, msg, sig, pub, sig,
+		hex.EncodeToString(scalar), msg, ecPub, msg, ecSigHex, ecPub, ecSigHex)
 	r := loaded(t, Options{}, prog)
 	if s := run(t, r, "mac"); s.Buffer.Text() != mac {
 		t.Fatalf("hmac-sha256: %q, want %q", s.Buffer.Text(), mac)
@@ -577,6 +603,15 @@ func TestDigestSignsVerifies(t *testing.T) {
 	}
 	if s := run(t, r, "tamper"); s.Buffer.Text() != "no" {
 		t.Fatalf("ed25519-verify of a tampered message: %q", s.Buffer.Text())
+	}
+	if s := run(t, r, "ecsign"); s.Buffer.Text() != ecSigHex {
+		t.Fatalf("ecdsa-sign: %q, want %q", s.Buffer.Text(), ecSigHex)
+	}
+	if s := run(t, r, "ecverify"); s.Buffer.Text() != "yes" {
+		t.Fatalf("ecdsa-verify of a good signature: %q", s.Buffer.Text())
+	}
+	if s := run(t, r, "ectamper"); s.Buffer.Text() != "no" {
+		t.Fatalf("ecdsa-verify of a tampered message: %q", s.Buffer.Text())
 	}
 }
 
