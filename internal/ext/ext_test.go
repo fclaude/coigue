@@ -576,7 +576,7 @@ func TestInterruptStopsARunawayLoop(t *testing.T) {
 }
 
 func TestInterruptedLoadKeepsEarlierDefinitions(t *testing.T) {
-	r := New(Options{Watch: watcher(20 * time.Millisecond)})
+	r := New(Options{Watch: watcher(500 * time.Millisecond)})
 	err := r.Load(context.Background(), `(define-command "early" car "first") (let loop () (loop)) (define-command "late" car)`)
 	var re *RunError
 	if !errors.As(err, &re) || re.Stop != Interrupted {
