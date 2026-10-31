@@ -18,15 +18,12 @@ import (
 // waits on the network: a command starts a task and hears back through
 // on-done.
 
-// installedPolicy is the outer limit. The private-address rule is the
-// default one, so no module can reach loopback, a private or a link-local
-// address, whatever it asks.
+// installedPolicy is the outer limit: any host, any method, 2 MB, 20 s, and
+// loopback, private and link-local addresses. The editor trusts its
+// extensions, so the private-address refusal Brote applies by default is
+// lifted here; the grants of the modules decide which hosts each one reaches.
 const installedPolicy = `(policy (encoding)
-  (net (allow *) (methods get head post put patch delete options) (max-body 2MB) (timeout 20s)))`
-
-// allowPrivateForTests lets tests reach a server on 127.0.0.1. It is set from
-// test files only.
-var allowPrivateForTests bool
+  (net (allow *) (methods get head post put patch delete options) (max-body 2MB) (timeout 20s) (private #t)))`
 
 // netEntry is what the network check and the gate know about one module.
 type netEntry struct {
@@ -35,12 +32,7 @@ type netEntry struct {
 }
 
 func (r *Runtime) installStd() {
-	src := installedPolicy
-	if allowPrivateForTests {
-		src = `(policy (encoding)
-  (net (allow *) (methods get head post put patch delete options) (max-body 2MB) (timeout 20s) (private #t)))`
-	}
-	pol, err := std.ParsePolicy(src)
+	pol, err := std.ParsePolicy(installedPolicy)
 	if err != nil {
 		panic(err)
 	}
@@ -84,6 +76,11 @@ func (r *Runtime) publishNets() {
 		e := netEntry{why: m.grantNote}
 		if !m.granted.None() && m.asked.Within(m.granted) {
 			if p, err := m.granted.Policy(); err == nil {
+				// The editor trusts its extensions: whatever hosts a module is
+				// granted, it may also reach loopback, private and link-local
+				// addresses, so a granted module can serve on and talk to
+				// 127.0.0.1.
+				p.Net.Private = true
 				e.policy = p
 			} else {
 				e.why = err.Error()
@@ -123,8 +120,13 @@ func (r *Runtime) beforeNet(ctx context.Context, p *scheme.Prim) error {
 	case e.policy == nil:
 		return &scheme.Denied{Prim: p.Name, Reason: noGrant(module)}
 	}
-	if s, _ := ctx.Value(sessionKey{}).(*Session); s != nil && s.live.Load() && s.owner == goroutineID() {
-		return &scheme.Denied{Prim: p.Name, Reason: "a command cannot use the network while the editor waits; start a (spawn-detached ...) task and handle its result with on-done"}
+	if p.Name == "http-request" {
+		// A command may start and stop servers: that is local work, and it is
+		// what the module is granted for. Waiting on a request is what would
+		// freeze the editor.
+		if s, _ := ctx.Value(sessionKey{}).(*Session); s != nil && s.live.Load() && s.owner == goroutineID() {
+			return &scheme.Denied{Prim: p.Name, Reason: "a command cannot use the network while the editor waits; start a (spawn-detached ...) task and handle its result with on-done"}
+		}
 	}
 	return nil
 }

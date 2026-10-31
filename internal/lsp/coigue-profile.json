@@ -366,6 +366,47 @@
       "variadic": false
     },
     {
+      "doc": "Parse INI text into a list of (section entries...) pairs in order of first appearance: [section] headers, key=value lines, ; or # comment lines, and a valueless key whose value is \"\". Keys before any header are in the \"\" section. Whitespace around names and values is stripped and a duplicate key keeps its last value.",
+      "name": "ini-parse",
+      "parameters": [
+        "text"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "Start an HTTP server on addr (\"host:port\"; port 0 picks a free one), serving routes, an alist of path to handler procedure. The handler is called with an alist ((method . \"GET\") (path . \"/\") (body . \"…\")) and returns a string (sent with status 200) or a list (status body). Returns a server; see server-address and server-stop!. Loopback addresses are allowed whenever net is granted; any other host must be in the net allow list. Each handler call runs under the context of the evaluation that called serve, so a gate and a per-caller policy see that caller.",
+      "name": "serve",
+      "parameters": [
+        "addr",
+        "routes"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "The address a server is bound to, as \"host:port\" (with the free port serve picked when it was given 0).",
+      "name": "server-address",
+      "parameters": [
+        "server"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "Stop a server: it closes its listener and answers no more requests. Stopping a stopped server does nothing.",
+      "name": "server-stop!",
+      "parameters": [
+        "server"
+      ],
+      "variadic": false
+    },
+    {
+      "doc": "True for servers.",
+      "name": "server?",
+      "parameters": [
+        "x"
+      ],
+      "variadic": false
+    },
+    {
       "doc": "Undo url-encode. An error for a bad % escape.",
       "name": "url-decode",
       "parameters": [

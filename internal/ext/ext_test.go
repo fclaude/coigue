@@ -473,11 +473,19 @@ func TestGateRefusesLoadAndEverythingThatTouchesTheSystem(t *testing.T) {
 	for _, p := range New(Options{}).hostOperations() {
 		allowed[p.Name] = true
 	}
-	for _, p := range New(Options{}).interp.Prims() {
+	// System-touching prims must be load (which the gate refuses) or belong to
+	// a module the installed policy grants: the gate admits those, deciding
+	// net per module (net_test.go) and admitting exec, fs and digest outright
+	// under the trust posture, and refuses the rest. Anything else is new:
+	// review it before it slips through.
+	r = New(Options{})
+	offered := map[string]bool{}
+	for _, m := range r.std.Granted() {
+		offered[m] = true
+	}
+	for _, p := range r.interp.Prims() {
 		if p.Meta.Host || p.Meta.Egress || p.Meta.Irreversible {
-			// http-request is the network a module may be granted; the gate
-			// decides it per module (see net_test.go).
-			if p.Name != "load" && p.Name != "http-request" {
+			if p.Name != "load" && !offered[r.std.ModuleOf(p.Name)] {
 				t.Errorf("Brote now offers %s, which touches the system: review the gate", p.Name)
 			}
 			continue

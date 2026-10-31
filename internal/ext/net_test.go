@@ -3,6 +3,7 @@ package ext
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -12,19 +13,6 @@ import (
 
 	"github.com/fclaude/coigue/internal/grant"
 )
-
-// privateOK lets the tests reach httptest servers on 127.0.0.1, which the
-// editor never allows. Grants add it too, since a header cannot.
-func privateOK(t *testing.T) {
-	t.Helper()
-	allowPrivateForTests = true
-	t.Cleanup(func() { allowPrivateForTests = false })
-}
-
-func withPrivate(_ string, asked grant.Grant) (grant.Grant, string) {
-	asked.Private = true
-	return asked, ""
-}
 
 // words answers /words with a fixed list, /post with the method it saw, and
 // /hop with a redirect to another server.
@@ -101,9 +89,8 @@ func refused(t *testing.T, r *Runtime, command string, args ...string) string {
 }
 
 func TestAModuleWithAGrantFetchesInATask(t *testing.T) {
-	privateOK(t)
 	_, host := words(t, "")
-	r := netRuntime(t, Options{Grants: withPrivate}, map[string]string{
+	r := netRuntime(t, Options{}, map[string]string{
 		"lex.scm": `(define-module lex (requires (net (allow "` + host + `"))))` + netHelpers,
 	}, `(require lex)`)
 	if got := fetched(t, r, "lex/fetch", "http://"+host+"/words"); got != "ok:tree,free,sea" {
@@ -112,9 +99,8 @@ func TestAModuleWithAGrantFetchesInATask(t *testing.T) {
 }
 
 func TestACommandCannotWaitOnTheNetwork(t *testing.T) {
-	privateOK(t)
 	_, host := words(t, "")
-	r := netRuntime(t, Options{Grants: withPrivate}, map[string]string{
+	r := netRuntime(t, Options{}, map[string]string{
 		"lex.scm": `(define-module lex (requires (net (allow "` + host + `"))))` + netHelpers,
 	}, `(require lex)`)
 	err := r.Run(context.Background(), "lex/now", []string{"http://" + host + "/words"}, session("", 0, 0, nil, false))
@@ -125,9 +111,8 @@ func TestACommandCannotWaitOnTheNetwork(t *testing.T) {
 }
 
 func TestAModuleWithoutAGrantIsToldWhatToAdd(t *testing.T) {
-	privateOK(t)
 	_, host := words(t, "")
-	r := netRuntime(t, Options{Grants: withPrivate}, map[string]string{
+	r := netRuntime(t, Options{}, map[string]string{
 		"plain.scm": `(define-module plain)` + netHelpers,
 	}, `(require plain)`)
 	got := refused(t, r, "plain/fetch", "http://"+host+"/words")
@@ -137,9 +122,8 @@ func TestAModuleWithoutAGrantIsToldWhatToAdd(t *testing.T) {
 }
 
 func TestInitScmHasNoNetworkAndIsToldWhere(t *testing.T) {
-	privateOK(t)
 	_, host := words(t, "")
-	r := loaded(t, Options{Grants: withPrivate}, netHelpers)
+	r := loaded(t, Options{}, netHelpers)
 	got := refused(t, r, "fetch", "http://"+host+"/words")
 	if !strings.Contains(got, "init.scm cannot use the network") {
 		t.Fatalf("got %q", got)
@@ -147,10 +131,9 @@ func TestInitScmHasNoNetworkAndIsToldWhere(t *testing.T) {
 }
 
 func TestEachModuleKeepsItsOwnGrantOnOneInterpreter(t *testing.T) {
-	privateOK(t)
 	_, a := words(t, "")
 	_, b := words(t, "")
-	r := netRuntime(t, Options{Grants: withPrivate}, map[string]string{
+	r := netRuntime(t, Options{}, map[string]string{
 		"one.scm": `(define-module one (requires (net (allow "` + a + `"))))` + netHelpers,
 		"two.scm": `(define-module two (requires (net (allow "` + b + `"))))` + netHelpers,
 	}, `(require one) (require two)`)
@@ -167,11 +150,10 @@ func TestEachModuleKeepsItsOwnGrantOnOneInterpreter(t *testing.T) {
 }
 
 func TestARedirectToAHostOutsideTheGrantIsRefused(t *testing.T) {
-	privateOK(t)
 	other, otherHost := words(t, "")
 	_ = other
 	_, host := words(t, "http://"+otherHost+"/words")
-	r := netRuntime(t, Options{Grants: withPrivate}, map[string]string{
+	r := netRuntime(t, Options{}, map[string]string{
 		"lex.scm":  `(define-module lex (requires (net (allow "` + host + `"))))` + netHelpers,
 		"wide.scm": `(define-module wide (requires (net (allow "` + host + `" "` + otherHost + `"))))` + netHelpers,
 	}, `(require lex) (require wide)`)
@@ -186,9 +168,8 @@ func TestARedirectToAHostOutsideTheGrantIsRefused(t *testing.T) {
 }
 
 func TestOnlyTheGrantedMethodsAreSent(t *testing.T) {
-	privateOK(t)
 	_, host := words(t, "")
-	r := netRuntime(t, Options{Grants: withPrivate}, map[string]string{
+	r := netRuntime(t, Options{}, map[string]string{
 		"reader.scm": `(define-module reader (requires (net (allow "` + host + `"))))` + netHelpers,
 		"writer.scm": `(define-module writer (requires (net (allow "` + host + `") (methods get post))))` + netHelpers,
 	}, `(require reader) (require writer)`)
@@ -201,9 +182,8 @@ func TestOnlyTheGrantedMethodsAreSent(t *testing.T) {
 }
 
 func TestATaskStartedByAHandlerKeepsTheModule(t *testing.T) {
-	privateOK(t)
 	_, host := words(t, "")
-	r := netRuntime(t, Options{Grants: withPrivate}, map[string]string{
+	r := netRuntime(t, Options{}, map[string]string{
 		"lex.scm": `(define-module lex (requires (net (allow "` + host + `"))))
 (define (try thunk)
   (guard (e (#t (string-append "err:" (assoc-ref e 'message))))
@@ -223,21 +203,25 @@ func TestATaskStartedByAHandlerKeepsTheModule(t *testing.T) {
 	}
 }
 
-func TestTheEditorsOwnLimitHoldsWhateverTheGrantSays(t *testing.T) {
-	// Without the test switch the installed policy refuses loopback, so a
-	// module that names it still cannot reach it.
-	_, host := words(t, "")
-	r := netRuntime(t, Options{Grants: withPrivate}, map[string]string{
-		"lex.scm": `(define-module lex (requires (net (allow "` + host + `"))))` + netHelpers,
+func TestTheEditorsWidePolicyDoesNotWidenAModulesGrant(t *testing.T) {
+	// The installed policy allows any host and private addresses, and the
+	// module's grant honours its own header: it reaches the host it names —
+	// a loopback one, which the editor's trust posture now allows — and is
+	// still refused the host it does not name.
+	_, a := words(t, "")
+	_, b := words(t, "")
+	r := netRuntime(t, Options{}, map[string]string{
+		"lex.scm": `(define-module lex (requires (net (allow "` + a + `"))))` + netHelpers,
 	}, `(require lex)`)
-	got := fetched(t, r, "lex/fetch", "http://"+host+"/words")
-	if !strings.HasPrefix(got, "err:") {
-		t.Fatalf("a module reached a loopback address: %q", got)
+	if got := fetched(t, r, "lex/fetch", "http://"+a+"/words"); got != "ok:tree,free,sea" {
+		t.Fatalf("the granted loopback host is unreachable: %q", got)
+	}
+	if got := refused(t, r, "lex/fetch", "http://"+b+"/words"); !strings.Contains(got, "is not a host this module may reach") {
+		t.Fatalf("the editor's wide policy widened the module's grant: %q", got)
 	}
 }
 
 func TestAGrantTheEditorRefusesLeavesTheModuleWithoutNetworkAndSaysWhy(t *testing.T) {
-	privateOK(t)
 	_, host := words(t, "")
 	deny := func(string, grant.Grant) (grant.Grant, string) {
 		return grant.Grant{}, "modules.lock approved nothing for it; run :module-update to review"
@@ -256,16 +240,15 @@ func TestAGrantTheEditorRefusesLeavesTheModuleWithoutNetworkAndSaysWhy(t *testin
 }
 
 func TestWithoutAGrantsFunctionAModuleGetsWhatItAsks(t *testing.T) {
-	privateOK(t)
 	_, host := words(t, "")
-	// Private addresses are not in a header, so with no Grants function the
-	// installed policy's rule still stops this; the grant itself was honoured.
+	// With no Grants function the module gets what its header asks, and the
+	// editor's trust posture lets it reach the loopback address the server
+	// runs on.
 	r := netRuntime(t, Options{}, map[string]string{
 		"lex.scm": `(define-module lex (requires (net (allow "` + host + `"))))` + netHelpers,
 	}, `(require lex)`)
-	got := refused(t, r, "lex/fetch", "http://"+host+"/words")
-	if strings.Contains(got, "not granted") || strings.Contains(got, "no network access") || !strings.Contains(got, "private or local address") {
-		t.Fatalf("the module's own request was not honoured, or the private rule did not apply: %q", got)
+	if got := fetched(t, r, "lex/fetch", "http://"+host+"/words"); got != "ok:tree,free,sea" {
+		t.Fatalf("the module's own request was not honoured: %q", got)
 	}
 }
 
@@ -300,12 +283,49 @@ func TestTheUrlHelperIsThereWithoutAGrant(t *testing.T) {
 	}
 }
 
+// The module serves on the loopback port it names in its header, from a
+// command; a task in the module fetches it; server-stop! ends it.
+func TestAServeBindsServesAndStops(t *testing.T) {
+	// Pick a free port and let the header name it, as a real one would.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, port, _ := net.SplitHostPort(ln.Addr().String())
+	ln.Close()
+	addr := "127.0.0.1:" + port
+	r := netRuntime(t, Options{}, map[string]string{
+		"web.scm": `(define-module web (requires (net (allow "` + addr + `"))))
+
+(define server #f)
+(define (hello req) (string-append "served:" (cdr (assoc "path" req))))
+(define-command "up" (lambda () (set! server (serve "127.0.0.1:` + port + `" (list (cons "/" hello))))))
+(define-command "addr" (lambda () (insert-text (server-address server))))
+(define-command "down" (lambda () (server-stop! server)))
+` + netHelpers,
+	}, `(require web)`)
+	// Starting a server is local work, so it may run in a command; waiting on
+	// a request is what a command must not do.
+	run(t, r, "web/up")
+	if got := run(t, r, "web/addr").Buffer.Text(); got != addr {
+		t.Fatalf("server-address: got %q, want %q", got, addr)
+	}
+	if got := fetched(t, r, "web/fetch", "http://"+addr+"/"); got != "ok:served:/" {
+		t.Fatalf("got %q", got)
+	}
+	// The server answers on the caller's context, so the module's grant holds
+	// inside a handler too: its own host is fine.
+	run(t, r, "web/down")
+	if got := fetched(t, r, "web/fetch", "http://"+addr+"/"); !strings.HasPrefix(got, "err:") {
+		t.Fatalf("a stopped server still answers: %q", got)
+	}
+}
+
 // The example in *The network* with the server's address in place of
 // api.datamuse.com, run for real.
 func TestTheDocumentedRhymeExampleRuns(t *testing.T) {
-	privateOK(t)
 	_, host := words(t, "")
-	r := netRuntime(t, Options{Grants: withPrivate}, map[string]string{
+	r := netRuntime(t, Options{}, map[string]string{
 		"wordsmith.scm": `(define-module wordsmith
   (doc "Rhymes for the word under the cursor.")
   (export rhymes)

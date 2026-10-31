@@ -285,8 +285,10 @@ The command returns at once; the request runs in the task; when it ends, the han
 * **`(requires (net (allow HOST ...) [(methods M ...)]))`** is the only thing a module can ask for. A host is
   `name` or `name:port` (a name alone means HTTPS on 443, or HTTP on 80), lower case, written out in full:
   there are no wildcards, and at most 16 hosts. Methods are `get`, `head`, `post`, `put`, `patch`, `delete`
-  and `options`; without `methods`, only `get` and `head`. A request can also not ask for private addresses,
-  a body size or a timeout. The editor sets those: bodies up to 2 MB, 20 seconds.
+  and `options`; without `methods`, only `get` and `head`. A request can also not ask for a body size or a
+  timeout. The editor sets those: bodies up to 2 MB, 20 seconds. The editor's policy allows private
+  addresses, so a granted module may reach loopback, private and link-local addresses, not only named
+  public hosts.
 * **The procedures** are Brote's: `http-request`, `http-get`, `http-post`, `http-get-json` and
   `http-post-json`, plus `url-encode`, `url-decode`, `base64-encode`, `base64-decode`, `hex-encode`,
   `hex-decode`, `csv-parse` and `csv-emit`. The last group needs no grant. See Brote's *extended library* for
@@ -294,12 +296,23 @@ The command returns at once; the request runs in the task; when it ends, the han
 * **Every step is judged against the grant of the module whose code started it**: the request, each
   redirect (with the method the hop is sent with, so a POST that becomes a GET is judged as a GET), and each
   connection, against the address the name resolved to. A redirect to a host the module did not name is
-  refused, and so is a name that resolves to a loopback, private or link-local address, whatever the module
-  named. Each request has connections of its own, so one module's connection never carries another's request.
-* **A command cannot wait on the network.** While the editor runs a command, or a handler, it waits for it, and
+  refused, but a name that resolves to a loopback, private or link-local address is allowed, as are all
+  private addresses: the editor's policy permits them, and it is the module's own host list that decides.
+  Each request has connections of its own, so one module's connection never carries another's request.
+* **A command cannot wait on a request.** While the editor runs a command, or a handler, it waits for it, and
   a slow server would freeze it. So `http-get` in a command fails with `a command cannot use the network
   while the editor waits; start a (spawn-detached ...) task and handle its result with on-done`. Start the
   task in the command and use the result in the handler. A task started by a handler belongs to the same module.
+  Starting and stopping a server is local work, so it may run in a command.
+* **A granted module can serve.** `serve "host:port" ROUTES` starts an HTTP server: `ROUTES` is a list of
+  pairs, each a path to a handler procedure, and port `0` lets Brote pick a free one. The handler is called
+  with an alist `((method . "GET") (path . "/") (body . "…"))` and returns a string (sent with status 200) or
+  a pair `(STATUS BODY)`. `server-address` gives the bound address, `server-stop!` ends the server and
+  `server?` recognises one. Binding is judged against the module's grant, the way a request's host is, so a
+  module that names `127.0.0.1:PORT` serves on that port and none other. Each handler runs under the grant
+  of the module that started the server, so a handler that fetches is held to that module's hosts. A server
+  runs until `server-stop!` or the editor quits, answering from its own goroutine, and a stopped server
+  answers no more.
 * **The error says what to add.** A module with no grant gets `this module has no network access; add
   (requires (net (allow "host"))) to its header`, and `init.scm`, which has no grant, is told to put the code
   in a module. A refusal cannot be caught with `guard`, so a module cannot hide it; the task fails and the
@@ -315,7 +328,9 @@ The command returns at once; the request runs in the task; when it ends, the han
 reach a host can send the text to that host. The defences are that hosts are named, one by one, that the
 review page says so in words before you install, that an update which asks for more is marked, and that
 the grant in `modules.lock` is the limit. A host you allow can see everything the module sends it, and the
-allow list is by name: a name whose DNS someone else controls is theirs.
+allow list is by name: a name whose DNS someone else controls is theirs. Because private addresses are
+permitted, a granted module may also talk to, or serve on, services on your own machine — including the
+loopback port it names in its header.
 
 The editor's only other network use is `:module-add` and its relatives, which talk to GitHub.
 
@@ -985,13 +1000,14 @@ moves the cursor is applied too, but records no undo step.
   Each file must be a regular file of at most 1 MiB.
 * The program you write is as trusted as your shell's start-up files, but it is limited to the
   host interface above. In particular, Brote's `load` builtin, which reads any file the process can
-  read, is declared a host operation and **a gate refuses every primitive declared `Host`** (and
-  every `Egress` or `Irreversible` one). `(load "x.scm")` fails with `load: denied: ...` and the
-  file is not read. The set of primitives is frozen after registration, so `register-tool` cannot
-  add one. No operation gives access to processes, the file system, environment variables,
-  credentials or the clipboard. The network is the one exception: Brote's `http-request` and its helpers
-  are `Host` and `Egress` primitives, and the gate lets them through only for a module that was granted
-  hosts, only from a background task, and only to those hosts (see *The network*).
+  read, is declared a host operation and **a gate refuses `load`, and every `Host`, `Egress` or
+  `Irreversible` primitive the installed policy has not granted to a module**. `(load "x.scm")` fails with
+  `load: denied: ...` and the file is not read. The set of primitives is frozen after registration, so
+  `register-tool` cannot add one. No operation gives access to processes, the file system, environment
+  variables, credentials or the clipboard. The network is the one exception: Brote's `http-request` and its
+  helpers are `Host` and `Egress` primitives, and the gate lets them through only for a module that was
+  granted hosts, and only to those hosts — `http-request` and its helpers only from a background task, and
+  `serve` and its companions also from a command (see *The network*).
 * The command line is unchanged: `coigue [FILE]`, `--help`, `--version`. No flag was added, so
   there is nothing that would let a command line (and so a project script) pick a different file.
 
@@ -1008,7 +1024,7 @@ decision about trust and threading first.
 
 ## Building
 
-Coigüe depends on `github.com/fclaude/brote`, at `v0.8.0` (`go.sum` records its hashes). It is a public module, so a
+Coigüe depends on `github.com/fclaude/brote`, at `v0.9.0` (`go.sum` records its hashes). It is a public module, so a
 plain `go build ./cmd/coigue` downloads it. Brote is MIT licensed; its notice is in
 `THIRD_PARTY_NOTICES.md`, which `scripts/licenses.py` generates.
 The `:module` commands use only the Go standard library for HTTPS, so they add no dependency.
@@ -1027,7 +1043,7 @@ Names are Go tests unless a file is given. `ext` is `internal/ext/ext_test.go`, 
 | One undo group, one redo; a no-op leaves no step | `TestWrapIsOneUndoStep`, `TestSeveralEditsOfOneCommandAreOneUndoStep`, `TestUnchangedResultLeavesNoUndoStep` (editor); `TestCloneIsIndependentAndAdoptIsOneUndoStep` (buffer) |
 | Every failure leaves text, cursor, revision and history alone | `TestFailuresChangeNothing`, `TestFailuresLeaveNoUndoStep` (editor) |
 | Accidental callbacks are refused | `TestOperationsRefuseOutsideInvocation`, `TestOperationsRefuseOtherGoroutinesEvenDuringTheInvocation` (ext) |
-| The gate refuses `load` and every `Host` primitive; registration is frozen | `TestGateRefusesLoadAndEverythingThatTouchesTheSystem` (ext), `TestLoadInit/load_is_refused_in_the_init_file` (editor) |
+| The gate refuses `load` and every `Host`, `Egress` or `Irreversible` primitive the installed policy has not granted, and admits what it has; registration is frozen | `TestGateRefusesLoadAndEverythingThatTouchesTheSystem` (ext), `TestLoadInit/load_is_refused_in_the_init_file` (editor) |
 | Deadline, Ctrl-C, parent cancellation and the memory limit; the interpreter survives each | `TestDeadlineStopsARunawayLoopAndTheRuntimeSurvives`, `TestInterruptStopsARunawayLoop`, `TestInterruptedLoadKeepsEarlierDefinitions`, `TestParentCancellationStopsARun`, `TestMemoryLimitStopsAStringThatDoublesForever` (ext); `TestDeadlineAndInterruptLeaveTheEditorUsable` (editor) |
 | The terminal loop keeps type-ahead while watching for Ctrl-C | `TestWatcherInterruptsOnCtrlCAndKeepsTheOtherEventsInOrder` (`internal/app`) |
 | One interpreter, one user at a time; a panic is an error | `TestRunRefusesReentry`, `TestAPanicBecomesAnErrorAndTheRuntimeSurvives`, `TestDeepRecursionIsAnErrorNotACrash` (ext); `go test -race ./...` |
@@ -1075,9 +1091,10 @@ Names are Go tests unless a file is given. `ext` is `internal/ext/ext_test.go`, 
 | A handler runs as its own undo step, only when the editor is idle, leaves a quiet status line alone, reports a failure and stays registered; `:reload` drops handlers and timers | `TestATimerHandlerRunsAsACommandAfterTheDelay`, `TestAHandlerWaitsUntilTheEditorIsIdle`, `TestAHandlerThatFailsSaysSoAndStaysRegistered`, `TestAHandlerWithNothingToSayLeavesTheStatusLineAlone`, `TestReloadDropsHandlersAndTimers`, `TestAFailedCommandLeavesNoTimerBehind` (editor) |
 | The examples in *Events and timers* run | `TestDocumentedExamplesRun` (editor) |
 | A header's `requires` is read closely: only `net`, named hosts, no wildcards, no limits of its own; a grant is within or wider than another | `TestARequestIsReadFromTheHeader`, `TestRequestsThatAreNotOffered`, `TestWithinAndWidening`, `TestThePolicyJudgesRequests` (`internal/grant`) |
-| A module with a grant reaches its hosts from a task; a command cannot wait on the network; no grant, no network, and the error says what to add; `init.scm` has none | `TestAModuleWithAGrantFetchesInATask`, `TestACommandCannotWaitOnTheNetwork`, `TestAModuleWithoutAGrantIsToldWhatToAdd`, `TestInitScmHasNoNetworkAndIsToldWhere` (ext) |
+| A module with a grant reaches its hosts from a task; a command cannot wait on a request; no grant, no network, and the error says what to add; `init.scm` has none | `TestAModuleWithAGrantFetchesInATask`, `TestACommandCannotWaitOnTheNetwork`, `TestAModuleWithoutAGrantIsToldWhatToAdd`, `TestInitScmHasNoNetworkAndIsToldWhere` (ext) |
+| A granted module serves on the loopback port it names, from a command, answers a task's fetch, and `server-stop!` ends it | `TestAServeBindsServesAndStops` (ext) |
 | Each module is held to its own grant on one interpreter, at every redirect hop, for every method, and a handler's task keeps its module | `TestEachModuleKeepsItsOwnGrantOnOneInterpreter`, `TestARedirectToAHostOutsideTheGrantIsRefused`, `TestOnlyTheGrantedMethodsAreSent`, `TestATaskStartedByAHandlerKeepsTheModule` (ext) |
-| The editor's own limit holds whatever the grant says; a refused grant leaves a note and a reason; Brote's introspection is refused; the example in *The network* runs | `TestTheEditorsOwnLimitHoldsWhateverTheGrantSays`, `TestAGrantTheEditorRefusesLeavesTheModuleWithoutNetworkAndSaysWhy`, `TestBroteIntrospectionIsRefusedWithAnExplanation`, `TestTheDocumentedRhymeExampleRuns` (ext) |
+| The editor's wide policy does not widen a module's grant, which still bounds it; a refused grant leaves a note and a reason; Brote's introspection is refused; the example in *The network* runs | `TestTheEditorsWidePolicyDoesNotWidenAModulesGrant`, `TestAGrantTheEditorRefusesLeavesTheModuleWithoutNetworkAndSaysWhy`, `TestBroteIntrospectionIsRefusedWithAnExplanation`, `TestTheDocumentedRhymeExampleRuns` (ext) |
 | The lock records the approved network, the review page says it in words and marks growth, and at load a module gets at most what was approved | `TestInstallingRecordsTheGrantThePersonApproved`, `TestAnUpdateThatAsksForMoreIsMarked`, `TestGrantsFollowWhatWasApproved`, `TestAModuleThatWasInstalledWithoutAGrantCannotGrowOneOnDisk`, `TestAnUnreadableLockfileGrantsNothing` (modsrc); `TestTheReviewShowsTheNetworkAModuleAsksForAndTheLockLimitsIt` (editor) |
 | A window answers on its channel (a list sends a string or the value of a pair, a prompt the text), a cancelled one sends nothing, a text window takes a string or a list, arguments are checked, a failed command opens none, and at most 8 wait | `TestAListWindowAnswersOnItsChannel`, `TestAListSendsAStringItemAsItIs`, `TestACancelledWindowClosesItsChannelWithNothingSent`, `TestAPromptStartsWithTheGivenTextAndSendsWhatWasTyped`, `TestATextWindowTakesLinesAsAStringOrAList`, `TestWindowArgumentsAreChecked`, `TestAFailedCommandOpensNoWindow`, `TestWindowsWaitingAreCapped` (ext) |
 | A window filters, chooses and cancels; a prompt edits its line; a text window is dismissed by Enter, q or Esc; windows come one at a time; every key is the window's; window text cannot hide or repaint; selection stays in range; `:reload` forgets queued windows | `TestAListWindowFiltersAndChoosesAndTheHandlerRuns`, `TestEscCancelsAWindowWithoutRunningItsHandler`, `TestAPromptEditsItsLineAndSendsIt`, `TestATextWindowIsDismissedByEnterQOrEsc`, `TestWindowsAreShownOneAtATimeInOrder`, `TestAWindowGetsEveryKeyAndTheBufferIsUntouched`, `TestWindowTextCannotHideOrRepaint`, `TestWindowKeysStayInRange`, `TestReloadForgetsQueuedWindows` (editor) |
