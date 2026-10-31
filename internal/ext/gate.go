@@ -27,6 +27,11 @@ func (g gate) Before(ctx context.Context, p *scheme.Prim, _ []scheme.Value) erro
 			// Offered to every module and to init.scm; the policy grants them
 			// the whole file system and every command.
 			return nil
+		case "digest":
+			// Offered to every module and to init.scm with every key allowed.
+			// Its prims carry no flags, so without this case the offer would
+			// rest on their absence.
+			return nil
 		case "":
 			if introspection[p.Name] {
 				return &scheme.Denied{Prim: p.Name, Reason: "this describes the editor's own policy; a module's network access is the (requires (net ...)) in its header"}
