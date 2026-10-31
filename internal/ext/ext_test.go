@@ -12,7 +12,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"math/big"
 	"os"
 	"path/filepath"
 	"strings"
@@ -579,12 +578,17 @@ func TestDigestSignsVerifies(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ecX, ecY := elliptic.P256().ScalarBaseMult(scalar)
-	ec := &ecdsa.PrivateKey{
-		PublicKey: ecdsa.PublicKey{Curve: elliptic.P256(), X: ecX, Y: ecY},
-		D:         new(big.Int).SetBytes(scalar),
+	ec, err := ecdsa.ParseRawPrivateKey(elliptic.P256(), scalar)
+	if err != nil {
+		t.Fatal(err)
 	}
-	ecPub := hex.EncodeToString(elliptic.MarshalCompressed(elliptic.P256(), ecX, ecY))
+	// The module takes the compressed point: the parity of y, then x.
+	point, err := ec.PublicKey.Bytes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	compressed := append([]byte{2 + point[len(point)-1]&1}, point[1:33]...)
+	ecPub := hex.EncodeToString(compressed)
 	sum := sha256.Sum256([]byte(msg))
 	ecSig, err := ec.Sign(nil, sum[:], crypto.SHA256)
 	if err != nil {
