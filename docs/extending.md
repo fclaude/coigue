@@ -842,9 +842,14 @@ asks for none. The review page says it in words under the module, before you ans
 
 ```
   add           wordsmith (1832 bytes, sha256 ...)
+                DISK AND PROCESSES: like every extension, it can read and write any file you can and run any command you can; there is nothing to approve.
                 NETWORK: can reach api.datamuse.com (GET, HEAD)
                 It can read your text while its commands run, so it could send text to these hosts.
 ```
+
+The first line is under every module, with or without a network: the file system and the processes are
+offered to every extension and are not part of any grant, so the page says so rather than leaving you
+to infer it from the absence of a line.
 
 An update that asks for more than the last one you approved adds `NETWORK ACCESS GROWS (new hosts: ...)`
 to that page, and `y` approves it. At load a module gets what its header asks for **only up to the
@@ -1137,6 +1142,8 @@ Names are Go tests unless a file is given. `ext` is `internal/ext/ext_test.go`, 
 | Each module is held to its own grant on one interpreter, at every redirect hop, for every method, and a handler's task keeps its module | `TestEachModuleKeepsItsOwnGrantOnOneInterpreter`, `TestARedirectToAHostOutsideTheGrantIsRefused`, `TestOnlyTheGrantedMethodsAreSent`, `TestATaskStartedByAHandlerKeepsTheModule` (ext) |
 | The editor's wide policy does not widen a module's grant, which still bounds it; a refused grant leaves a note and a reason; Brote's introspection is refused; the example in *The network* runs | `TestTheEditorsWidePolicyDoesNotWidenAModulesGrant`, `TestAGrantTheEditorRefusesLeavesTheModuleWithoutNetworkAndSaysWhy`, `TestBroteIntrospectionIsRefusedWithAnExplanation`, `TestTheDocumentedRhymeExampleRuns` (ext) |
 | The lock records the approved network, the review page says it in words and marks growth, and at load a module gets at most what was approved | `TestInstallingRecordsTheGrantThePersonApproved`, `TestAnUpdateThatAsksForMoreIsMarked`, `TestGrantsFollowWhatWasApproved`, `TestAModuleThatWasInstalledWithoutAGrantCannotGrowOneOnDisk`, `TestAnUnreadableLockfileGrantsNothing` (modsrc); `TestTheReviewShowsTheNetworkAModuleAsksForAndTheLockLimitsIt` (editor) |
+| The review page says under every module that it has the file system and the processes, with a network or without | `TestTheReviewSaysEveryModuleHasTheDiskAndProcesses` (modsrc) |
+| A server a command started is closed when the runtime shuts down, and its handler keeps the grant of the module that called `serve` | `TestShutdownStopsTheServersOfTheRuntime`, `TestAHandlerKeepsTheGrantOfItsModule` (ext) |
 | A window answers on its channel (a list sends a string or the value of a pair, a prompt the text), a cancelled one sends nothing, a text window takes a string or a list, arguments are checked, a failed command opens none, and at most 8 wait | `TestAListWindowAnswersOnItsChannel`, `TestAListSendsAStringItemAsItIs`, `TestACancelledWindowClosesItsChannelWithNothingSent`, `TestAPromptStartsWithTheGivenTextAndSendsWhatWasTyped`, `TestATextWindowTakesLinesAsAStringOrAList`, `TestWindowArgumentsAreChecked`, `TestAFailedCommandOpensNoWindow`, `TestWindowsWaitingAreCapped` (ext) |
 | A window filters, chooses and cancels; a prompt edits its line; a text window is dismissed by Enter, q or Esc; windows come one at a time; every key is the window's; window text cannot hide or repaint; selection stays in range; `:reload` forgets queued windows | `TestAListWindowFiltersAndChoosesAndTheHandlerRuns`, `TestEscCancelsAWindowWithoutRunningItsHandler`, `TestAPromptEditsItsLineAndSendsIt`, `TestATextWindowIsDismissedByEnterQOrEsc`, `TestWindowsAreShownOneAtATimeInOrder`, `TestAWindowGetsEveryKeyAndTheBufferIsUntouched`, `TestWindowTextCannotHideOrRepaint`, `TestWindowKeysStayInRange`, `TestReloadForgetsQueuedWindows` (editor) |
 | A list, a prompt and a confirmation are drawn with their selection, filter, count and keys | `TestListWindowShowsTheSelectionTheFilterAndTheCount`, `TestPromptWindowShowsWhatIsTypedOnTheLastRow`, `TestConfirmWindowNamesWhatYAndNDo` (render) |

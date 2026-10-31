@@ -47,6 +47,21 @@ func TestInstallingRecordsTheGrantThePersonApproved(t *testing.T) {
 	}
 }
 
+// The file system and the processes are offered to every module, so the page
+// says so under each one, with a network or without: a page with no line about
+// them would read as a limit.
+func TestTheReviewSaysEveryModuleHasTheDiskAndProcesses(t *testing.T) {
+	s := newStore(t)
+	p := mustPlanAdd(t, s, repo(commitA, netMod("words", asksDatamuse), mod("plain", "1")), "o/r")
+	review := strings.Join(Review([]*Plan{p}), "\n")
+	if n := strings.Count(review, "DISK AND PROCESSES:"); n != 2 {
+		t.Errorf("want the line under both modules, got %d:\n%s", n, review)
+	}
+	if !strings.Contains(review, "there is nothing to approve") {
+		t.Errorf("the line does not say there is nothing to approve:\n%s", review)
+	}
+}
+
 func TestAnUpdateThatAsksForMoreIsMarked(t *testing.T) {
 	s := newStore(t)
 	if err := s.Apply(mustPlanAdd(t, s, repo(commitA, netMod("words", asksDatamuse)), "o/r@v1")); err != nil {

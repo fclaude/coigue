@@ -196,15 +196,22 @@ func Review(plans []*Plan) []string {
 	return out
 }
 
-// grantLines say what a change does to a module's network access, in words,
-// since a person may weigh that more than the code.
+// systemLine is shown under every module: the file system and the processes
+// are offered to every extension, so there is nothing to approve and no grant
+// that could be missing from the page, and a person reading only the network
+// lines would otherwise take their absence for a limit.
+const systemLine = "                DISK AND PROCESSES: like every extension, it can read and write any file you can and run any command you can; there is nothing to approve."
+
+// grantLines say what a change does to a module's access, in words, since a
+// person may weigh that more than the code: the network, which is approved per
+// module, after the line that says what every module can do on this computer.
 func grantLines(c Change) []string {
-	var out []string
+	out := []string{systemLine}
 	switch {
 	case c.Grant.None() && c.Was.None():
-		return nil
+		return out
 	case c.Grant.None():
-		return []string{"                NETWORK: it no longer asks for network access"}
+		return append(out, "                NETWORK: it no longer asks for network access")
 	}
 	out = append(out, "                NETWORK: "+c.Grant.Describe())
 	out = append(out, "                It can read your text while its commands run, so it could send text to these hosts.")
