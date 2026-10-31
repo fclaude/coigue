@@ -348,7 +348,9 @@ for:
   directly, never through a shell. It waits for the command and returns an association list with
   `"exit-code"` (an integer; a nonzero one is a result, not an error), `"stdout"` and `"stderr"`.
   Any command the process can start is allowed, and the program sees the process's environment
-  variables.
+  variables. It runs under the command's 5 second deadline: a process that runs longer stops the
+  command with `stopped after 5s` and is stopped itself, so run long work in a `(spawn-detached ...)`
+  task, which has no deadline of its own (see *Background work*).
 * **Watching a directory.** `fs-watch DIR [SECONDS]` polls the directory (every second by default)
   and returns a watch; `fs-watch-changes WATCH` drains the names that appeared, changed or were
   removed since the last call; `fs-watch-stop!` ends it. A watch runs until stopped or the editor
