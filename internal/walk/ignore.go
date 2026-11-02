@@ -2,6 +2,7 @@ package walk
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/fclaude/coigue/internal/fsx"
@@ -102,7 +103,7 @@ func (w *Walker) matchedDirEntry(ig *ignore, path string, isDir bool) match {
 }
 
 func (w *Walker) matched(ig *ignore, path string, isDir bool) match {
-	path = strings.TrimPrefix(path, "./")
+	path = strings.TrimPrefix(filepath.ToSlash(path), "./")
 	if !w.opts.GitIgnore && !w.opts.GitExclude {
 		return matchNone
 	}
@@ -132,8 +133,8 @@ func (w *Walker) matchedIgnore(ig *ignore, path string, isDir bool) match {
 		// the ancestors' ignore files see it relative to their own directory.
 		relative := path
 		if topmost != nil && topmost.dir != "." {
-			withoutDotSlash := stripIfPrefix("./", topmost.dir)
-			relativeBase := stripIfPrefix(withoutDotSlash, path)
+			withoutDotSlash := stripIfPrefix("./", filepath.ToSlash(topmost.dir))
+			relativeBase := stripIfPrefix(withoutDotSlash, filepath.ToSlash(path))
 			relative = stripIfPrefix("/", relativeBase)
 		}
 		absolute := fsx.Join(w.absoluteBase, relative)
@@ -159,6 +160,7 @@ func stripIfPrefix(prefix, path string) string {
 // isHiddenPath is the crate's is_hidden_path_only: the file name starts with
 // '.', where paths ending in '.' or '..' have no file name at all.
 func isHiddenPath(path string) bool {
+	path = filepath.ToSlash(path)
 	switch {
 	case path == "", path == ".", strings.HasSuffix(path, "."):
 		return false

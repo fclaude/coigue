@@ -23,6 +23,7 @@ func TestEveryRequiredModuleHasANotice(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	noticeText := strings.ReplaceAll(string(notices), "\r\n", "\n")
 	inRequire := false
 	found := 0
 	for _, line := range strings.Split(string(mod), "\n") {
@@ -47,7 +48,7 @@ func TestEveryRequiredModuleHasANotice(t *testing.T) {
 			continue
 		}
 		found++
-		if !strings.Contains(string(notices), "### Go library: "+path+" "+version+"\n") {
+		if !strings.Contains(noticeText, "### Go library: "+path+" "+version+"\n") {
 			t.Errorf("%s %s is required by go.mod but has no licence in THIRD_PARTY_NOTICES.md: run python3 scripts/licenses.py", path, version)
 		}
 	}

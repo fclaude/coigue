@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -13,7 +14,11 @@ import (
 // cargo provides CARGO_BIN_EXE_coigue to the Rust integration tests.
 func build(t *testing.T, ldflags string) string {
 	t.Helper()
-	binary := filepath.Join(t.TempDir(), "coigue")
+	name := "coigue"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	binary := filepath.Join(t.TempDir(), name)
 	args := []string{"build", "-o", binary}
 	if ldflags != "" {
 		args = append(args, "-ldflags", ldflags)
@@ -123,7 +128,7 @@ func TestUnreadableFileFailsBeforeTheTerminalIsEntered(t *testing.T) {
 		t.Errorf("invalid UTF-8: exit %d stdout %q stderr %q", code, stdout, stderr)
 	}
 	stdout, stderr, code = run(t, binary, dir)
-	if code != 1 || stdout != "" || stderr != "coigue: Is a directory (os error 21)\n" {
+	if code != 1 || stdout != "" || !strings.HasPrefix(stderr, "coigue: ") || (runtime.GOOS != "windows" && stderr != "coigue: Is a directory (os error 21)\n") {
 		t.Errorf("directory: exit %d stdout %q stderr %q", code, stdout, stderr)
 	}
 }

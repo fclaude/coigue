@@ -230,6 +230,9 @@ func TestGoldenListings(t *testing.T) {
 	}
 	runs := 0
 	for i, tree := range trees {
+		if !tree.spec.platformCompatible() {
+			continue
+		}
 		dir := filepath.Join(base, fmt.Sprintf("g%d", i))
 		tree.spec.build(t, dir)
 		for _, run := range tree.runs {

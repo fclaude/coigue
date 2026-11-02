@@ -36,7 +36,7 @@ func gitVisible(t testing.TB, repo, root string) (map[string]bool, bool) {
 		if d.Name() == ".git" {
 			return filepath.SkipDir
 		}
-		paths = append(paths, rel)
+		paths = append(paths, filepath.ToSlash(rel))
 		return nil
 	})
 	if err != nil {
@@ -70,7 +70,7 @@ func gitVisible(t testing.TB, repo, root string) (map[string]bool, bool) {
 	visible := map[string]bool{}
 	for _, p := range paths {
 		ok := true
-		for q := p; q != "." && q != ""; q = filepath.Dir(q) {
+		for q := p; q != "." && q != ""; q = filepath.ToSlash(filepath.Dir(q)) {
 			if ignored[q] || filepath.Base(q) == ".coigue-trash" {
 				ok = false
 				break
@@ -117,7 +117,7 @@ func crateVisible(t testing.TB, repo, root string) map[string]bool {
 			continue
 		}
 		rel, _ := filepath.Rel(repo, item.Entry.Path)
-		visible[rel] = true
+		visible[filepath.ToSlash(rel)] = true
 	}
 }
 
@@ -164,6 +164,10 @@ func TestAgainstGitCheckIgnore(t *testing.T) {
 	for i := 0; i < trees; i++ {
 		r := rand.New(rand.NewSource(int64(7_000_000 + i)))
 		spec, exclude := gitFriendly(genTreeFor(r, !full))
+		if !spec.platformCompatible() {
+			skipped++
+			continue
+		}
 		dir := filepath.Join(base, fmt.Sprintf("g%d", i))
 		spec.build(t, dir)
 		repo := filepath.Join(dir, "proj")

@@ -339,6 +339,7 @@ func checkClientCorpus(t *testing.T, path string) (checked, mismatches int) {
 }
 
 func TestClientScriptsAgreeWithRustGolden(t *testing.T) {
+	skipUnixGolden(t, "fixture contains names forbidden on Windows")
 	if checked, _ := checkClientCorpus(t, "testdata/client_golden.jsonl.gz"); checked < 100 {
 		t.Fatalf("only %d golden scripts", checked)
 	}

@@ -6,7 +6,9 @@ package lsp
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -350,7 +352,7 @@ func TestSmokeMissingCrashedAndHungServers(t *testing.T) {
 		s.sync(path, 0, 0, 0, "text")
 		s.wait("the failure", 4*time.Second, func() bool { _, failed := s.client.Failure(); return failed })
 		message, _ := s.client.Failure()
-		want := "rust-analyzer: unavailable (No such file or directory (os error 2)); " + retry
+		want := "rust-analyzer: unavailable (" + ioErrorText(syscall.ENOENT) + "); " + retry
 		if message != want {
 			t.Errorf("message = %q, want %q", message, want)
 		}
@@ -364,6 +366,10 @@ func TestSmokeRetryAfterInstallingAMissingServer(t *testing.T) {
 	s := newSmoke(t, "normal")
 	hidden := filepath.Join(s.bin, "gopls-hidden")
 	server := filepath.Join(s.bin, "gopls")
+	if runtime.GOOS == "windows" {
+		server += ".exe"
+		hidden += ".exe"
+	}
 	if err := os.Rename(server, hidden); err != nil {
 		t.Fatal(err)
 	}

@@ -316,7 +316,7 @@ func TestRecordLayoutMatchesTheRustEditor(t *testing.T) {
 	}
 	info, err := os.Lstat(fsx.Join(root, Trash))
 	ok(t, err)
-	if info.Mode().Perm() != 0o700 {
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o700 {
 		t.Errorf("recovery directory mode is %v, want 0700", info.Mode().Perm())
 	}
 	// A record written by the Rust editor restores here.

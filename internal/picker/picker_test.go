@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"sort"
 	"strings"
@@ -304,6 +305,9 @@ func labelsOf(p *Picker) []string {
 }
 
 func TestNonUTF8NamesGetLossyLabelsButKeepTheirPaths(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows file names are UTF-16, not arbitrary bytes")
+	}
 	dir := t.TempDir()
 	name := "f\xff\xe2\x82"
 	if err := os.WriteFile(filepath.Join(dir, name), nil, 0o644); errors.Is(err, syscall.EILSEQ) {

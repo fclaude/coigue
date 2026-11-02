@@ -15,6 +15,9 @@ package lsp
 // of its decisions look at the text produced so far.
 
 import (
+	"net/url"
+	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -28,6 +31,9 @@ import (
 func fileURI(path string) (string, bool) {
 	if !fsx.IsAbsolute(path) {
 		return "", false
+	}
+	if runtime.GOOS == "windows" {
+		return windowsFileURI(path)
 	}
 	var out []byte
 	out = append(out, "file://"...)
@@ -66,6 +72,9 @@ func uriToPath(uri string) (string, bool) {
 	if !ok {
 		return "", false
 	}
+	if runtime.GOOS == "windows" {
+		return windowsURIToPath(uri, parsed)
+	}
 	// path_segments(): the path must start with '/'.
 	if !strings.HasPrefix(parsed.path, "/") {
 		return "", false
@@ -89,6 +98,70 @@ func uriToPath(uri string) (string, bool) {
 		bytes = append(bytes, '/')
 	}
 	return string(bytes), true
+}
+
+// windowsFileURI handles drive paths and UNC shares without treating the
+// Windows root component as a URL path segment.
+func windowsFileURI(path string) (string, bool) {
+	volume := filepath.VolumeName(path)
+	if volume == "" {
+		return "", false
+	}
+	slash := filepath.ToSlash(path)
+	var out []byte
+	if strings.HasPrefix(slash, "//") {
+		parts := strings.SplitN(strings.TrimPrefix(slash, "//"), "/", 2)
+		if len(parts) != 2 || parts[0] == "" {
+			return "", false
+		}
+		out = append(out, "file://"...)
+		out = append(out, parts[0]...)
+		slash = "/" + parts[1]
+	} else {
+		out = append(out, "file:///"...)
+	}
+	parts := strings.Split(slash, "/")
+	for i, part := range parts {
+		if i > 0 {
+			out = append(out, '/')
+		}
+		out = percentEncode(out, part, inSpecialPathSegmentSet)
+	}
+	return string(out), true
+}
+
+func windowsURIToPath(uri string, parsed parsedURL) (string, bool) {
+	if !strings.HasPrefix(parsed.path, "/") {
+		return "", false
+	}
+	path := string(percentDecode(parsed.path))
+	drivePath := len(path) >= 3 && isASCIIAlpha(rune(path[1])) && path[2] == ':'
+	// The URL parser normalizes localhost to an empty host. Preserve it when
+	// it names a UNC share rather than a drive path.
+	parsedURI, err := url.Parse(uri)
+	if err != nil {
+		return "", false
+	}
+	host := parsedURI.Hostname()
+	uncHost := (parsed.host.kind == hostDomain && parsed.host.domain != "localhost") ||
+		parsed.host.kind == hostIPv4 || (!drivePath && strings.EqualFold(host, "localhost"))
+	if uncHost {
+		if !strings.EqualFold(parsedURI.Scheme, "file") || host == "" {
+			return "", false
+		}
+		return `\\` + host + strings.ReplaceAll(path, "/", `\`), true
+	}
+	if parsed.host.kind != hostNone && parsed.host.kind != hostDomain {
+		return "", false
+	}
+	if !drivePath {
+		return "", false
+	}
+	path = strings.ReplaceAll(path[1:], "/", `\`)
+	if len(path) == 2 {
+		path += `\`
+	}
+	return path, true
 }
 
 // Percent-encode sets (parser.rs). Bytes at or above 0x80 are always encoded.

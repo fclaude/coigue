@@ -104,6 +104,11 @@ func (l language) command() (string, []string) {
 // root is the nearest ancestor directory holding a project marker, or the
 // file's own directory.
 func (l language) root(path string) string {
+	return l.rootWithin(path, "")
+}
+
+// rootWithin optionally limits ancestor discovery to a fixture boundary.
+func (l language) rootWithin(path, boundary string) string {
 	parent, ok := fsx.Parent(path)
 	if !ok {
 		parent = "/"
@@ -128,6 +133,9 @@ func (l language) root(path string) string {
 			if fsx.Exists(fsx.Join(dir, name)) {
 				return dir
 			}
+		}
+		if boundary != "" && dir == boundary {
+			return parent
 		}
 		next, ok := fsx.Parent(dir)
 		if !ok {

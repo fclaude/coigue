@@ -138,6 +138,10 @@ func (f *File) saveWith(text string, write func(*os.File, []byte) error) (err er
 	if err := temp.Sync(); err != nil {
 		return err
 	}
+	// Windows cannot rename the temporary file while its handle is open.
+	if err := temp.Close(); err != nil {
+		return err
+	}
 	data, exists, err = read(f.Path)
 	if err != nil {
 		return err

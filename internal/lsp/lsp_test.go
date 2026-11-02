@@ -681,8 +681,9 @@ func fake(t *testing.T, mode string, timeout time.Duration) *fakeRun {
 	done := make(chan error, 1)
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
+	python := testPython(t)
 	go func() {
-		done <- serve(ctx, "python3", args, dir, "0.1.0", in, events, timeout)
+		done <- serve(ctx, python, args, dir, "0.1.0", in, events, timeout)
 	}()
 	return &fakeRun{dir: dir, commands: commands, events: events, done: done}
 }

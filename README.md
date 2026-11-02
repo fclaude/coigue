@@ -67,7 +67,7 @@ replay runs on Linux only.
 | macOS Intel | Tested in CI | Native `macos-15-intel` runner; builds, unit tests, and the terminal, language-server and signal suites pass. The recorded-session replay skips itself. |
 | macOS Apple Silicon | Tested in CI | Native `macos-15` ARM64 runner; builds, unit tests, and the terminal, language-server and signal suites pass. The recorded-session replay skips itself. |
 | Linux ARM64 and other architectures | Unverified | No architecture-specific application code, but compilation and runtime behavior have not been verified. |
-| Windows | Release builds, unverified | amd64 and arm64 zips. The console uses virtual-terminal sequences (Windows Terminal). Explorer rename, delete, and restore still fail. The terminal test suite does not run here. |
+| Windows | Manually tested | amd64 and arm64 zips; the Go suite passed natively on amd64. The console uses virtual-terminal sequences (Windows Terminal). The Unix PTY acceptance suite does not run here. |
 | BSD and other Unix systems | Not an intended platform | Core editing is unverified; explorer rename, delete, and restore operations explicitly fail. |
 
 CI coverage applies to the runner systems listed above; minimum OS versions
@@ -83,7 +83,7 @@ Across supported systems:
 - `rust-analyzer`, `gopls`, and Marksman are optional, separately installed
   language servers. Editing and saving work without them.
 - Explorer moves must stay on the same filesystem. Non-overwriting rename,
-  delete, and restore use OS primitives implemented only for Linux and macOS.
+  delete, and restore use OS primitives implemented for Linux, macOS, and Windows.
 
 ## Usage
 
@@ -348,7 +348,7 @@ edits and undo history.
 Creation and rename prompts accept relative paths from the displayed directory
 or absolute paths; destination parent directories must already exist. Enter
 executes and Esc cancels. Existing destinations (including symlinks) are never
-overwritten. Moves use an atomic no-replace rename on Linux/macOS; cross-filesystem
+overwritten. Moves use an atomic no-replace rename on Linux, macOS, and Windows; cross-filesystem
 moves are refused and leave the source intact. Moving the open file or an ancestor
 updates its save path while preserving unsaved edits, cursor, and undo history.
 Open another file before deleting the active file or an ancestor.

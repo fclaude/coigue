@@ -272,6 +272,7 @@ func checkScriptCorpus(t *testing.T, path string) (checked, mismatches int) {
 }
 
 func TestProtocolScriptsAgreeWithRustGolden(t *testing.T) {
+	skipUnixGolden(t, "protocol corpus contains Unix file URLs")
 	if checked, _ := checkScriptCorpus(t, "testdata/script_golden.jsonl.gz"); checked < 100 {
 		t.Fatalf("only %d golden scripts", checked)
 	}

@@ -10,6 +10,10 @@ func processAlive(pid int) bool {
 	if err != nil {
 		return false
 	}
-	windows.CloseHandle(handle)
-	return true
+	defer windows.CloseHandle(handle)
+	var code uint32
+	if err := windows.GetExitCodeProcess(handle, &code); err != nil {
+		return false
+	}
+	return code == 259 // STILL_ACTIVE
 }

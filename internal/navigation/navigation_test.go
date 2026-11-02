@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/fclaude/coigue/internal/fsx"
 	"github.com/fclaude/coigue/internal/key"
 )
 
@@ -66,7 +67,7 @@ func TestRenameRewritesEveryRememberedPathBelowTheSource(t *testing.T) {
 			t.Fatalf("stale path %s", l.Path)
 		}
 	}
-	if d, _ := h.Destination(Back); d.Path != "/new/a" {
+	if d, _ := h.Destination(Back); d.Path != fsx.Join("/new", "a") {
 		t.Fatalf("back = %s", d.Path)
 	}
 }

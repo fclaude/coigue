@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"unicode/utf8"
 
@@ -132,7 +133,7 @@ func run(ctx context.Context, out chan<- batch, root, query string, active *Acti
 			if rest, ok := fsx.StripPrefix(path, root); ok {
 				relative = rest
 			}
-			label := fmt.Sprintf("%s:%d:%d  %s", walk.Lossy(relative), row+1, location.Col+1, preview(line))
+			label := fmt.Sprintf("%s:%d:%d  %s", walk.Lossy(filepath.ToSlash(relative)), row+1, location.Col+1, preview(line))
 			hits = append(hits, navigation.Target{Location: location, Label: label})
 			count++
 			if len(hits) == hitBatch {

@@ -6,9 +6,11 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/fclaude/coigue/internal/fsx"
 	"github.com/fclaude/coigue/internal/walk"
@@ -31,6 +33,30 @@ type specEntry struct {
 }
 
 type treeSpec []specEntry
+
+// Windows cannot represent some names and permission fixtures recorded on Unix.
+func (s treeSpec) platformCompatible() bool {
+	if runtime.GOOS != "windows" {
+		return true
+	}
+	seen := make(map[string]string)
+	for _, e := range s {
+		if e.Kind == 'p' || e.Mode != 0 || !utf8.ValidString(e.Path) || strings.ContainsAny(e.Path, `\:*?"<>|`) {
+			return false
+		}
+		for _, part := range strings.Split(e.Path, "/") {
+			if strings.HasSuffix(part, ".") || strings.HasSuffix(part, " ") {
+				return false
+			}
+		}
+		key := strings.ToLower(e.Path)
+		if old, ok := seen[key]; ok && old != e.Path {
+			return false
+		}
+		seen[key] = e.Path
+	}
+	return true
+}
 
 // build creates the tree below dir, directories first.
 func (s treeSpec) build(t testing.TB, dir string) {
@@ -522,6 +548,7 @@ func listing(mode walkMode, root string) []string {
 		if r, ok := fsx.StripPrefix(e.Path, root); ok {
 			rel = r
 		}
+		rel = filepath.ToSlash(rel)
 		kind := map[walk.Kind]byte{walk.KindFile: 'f', walk.KindDir: 'd', walk.KindSymlink: 'l', walk.KindOther: 'o'}[e.Kind]
 		flag := byte('-')
 		if e.Err != nil {

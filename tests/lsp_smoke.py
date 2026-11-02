@@ -1,23 +1,26 @@
 """Deterministic Unix PTY LSP integration checks; no installed servers required."""
-import fcntl
 import json
 import os
 import pathlib
-import pty
 import re
 import select
 import struct
 import subprocess
 import sys
 import tempfile
-import termios
 import time
+
+if os.name != "nt":
+    import fcntl
+    import pty
+    import termios
 
 EDITORS = []
 
 def fake_server():
-    log = pathlib.Path(os.environ['COIGUE_LSP_LOG']) / (pathlib.Path(sys.argv[0]).name + '.jsonl')
+    log = pathlib.Path(os.environ['COIGUE_LSP_LOG']) / (pathlib.Path(sys.argv[0]).name.removesuffix('.py') + '.jsonl')
     mode = os.environ.get('COIGUE_LSP_MODE', 'normal')
+    server_name = pathlib.Path(sys.argv[0]).name.removesuffix('.py')
     documents = {}
     def record(value):
         with log.open('a') as f:
@@ -49,9 +52,9 @@ def fake_server():
             if mode.startswith('navigation'):
                 capabilities.update(definitionProvider=True, referencesProvider=True,
                                     documentSymbolProvider=True, workspaceSymbolProvider=True)
-            if mode.startswith('semantic') and pathlib.Path(sys.argv[0]).name != 'marksman':
+            if mode.startswith('semantic') and server_name != 'marksman':
                 assert msg['params']['capabilities']['textDocument']['semanticTokens']['requests']['full'] is True
-                if pathlib.Path(sys.argv[0]).name == 'gopls':
+                if server_name == 'gopls':
                     assert msg['params']['initializationOptions']['semanticTokens'] is True
                 capabilities['semanticTokensProvider'] = {'full': {'delta': True}, 'legend': {
                     'tokenTypes': ['variable', 'function'], 'tokenModifiers': ['readonly']}}
@@ -66,7 +69,7 @@ def fake_server():
             time.sleep(.08)
             diagnostics = [] if 'FIXED' in text else [{
                 'range': {'start': {'line': 0, 'character': 1}, 'end': {'line': 0, 'character': 3}},
-                'severity': 2, 'message': 'LSP warning from ' + pathlib.Path(sys.argv[0]).name,
+                'severity': 2, 'message': 'LSP warning from ' + server_name,
             }]
             send({'jsonrpc': '2.0', 'method': 'textDocument/publishDiagnostics', 'params': {
                 'uri': doc['uri'], 'version': doc['version'], 'diagnostics': diagnostics,
@@ -184,7 +187,8 @@ def main():
             script = bin_dir / name
             script.write_text('#!' + sys.executable + '\n' + source)
             script.chmod(0o755)
-        env = dict(os.environ, PATH=str(bin_dir), COIGUE_LSP_LOG=str(log))
+        env = dict(os.environ, PATH=str(bin_dir), COIGUE_LSP_LOG=str(log),
+                   HOME=str(root), XDG_CONFIG_HOME=str(root / 'config'))
         env.pop('NO_COLOR', None)
         for name in ['Cargo.toml', 'go.mod', '.marksman.toml']:
             (root / name).write_text('')
@@ -415,7 +419,7 @@ def main():
 
 
 if __name__ == '__main__':
-    if pathlib.Path(sys.argv[0]).name in ('rust-analyzer', 'gopls', 'marksman'):
+    if pathlib.Path(sys.argv[0]).name.removesuffix('.py') in ('rust-analyzer', 'gopls', 'marksman'):
         fake_server()
     else:
         try:

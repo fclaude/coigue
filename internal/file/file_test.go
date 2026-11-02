@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -134,7 +135,7 @@ func TestPermissionsAndSymlinks(t *testing.T) {
 	if got, _ := os.ReadFile(path); string(got) != "new" {
 		t.Fatalf("target = %q", got)
 	}
-	if info, _ := os.Stat(path); info.Mode().Perm() != 0o640 {
+	if info, _ := os.Stat(path); runtime.GOOS != "windows" && info.Mode().Perm() != 0o640 {
 		t.Fatalf("mode = %v", info.Mode().Perm())
 	}
 	os.Chmod(path, 0o440)
@@ -179,6 +180,9 @@ func TestUnattachedRefusesToSaveAndEmptyDirtyMeansMissing(t *testing.T) {
 }
 
 func TestSavedFileKeepsSpecialModeBits(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not expose Unix setgid mode bits")
+	}
 	path := filepath.Join(t.TempDir(), "file")
 	os.WriteFile(path, []byte("a"), 0o644)
 	os.Chmod(path, 0o755|os.ModeSetgid)

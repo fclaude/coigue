@@ -3,6 +3,7 @@ package editor
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -583,7 +584,7 @@ func TestLoadInit(t *testing.T) {
 		e := newE(t)
 		other := filepath.Join(t.TempDir(), "other.scm")
 		write(t, other, `(define-command "smuggled" car)`)
-		loadInit(t, e, `(load "`+other+`")`+`(define-command "after" car)`)
+		loadInit(t, e, `(load `+strconv.Quote(other)+`)`+`(define-command "after" car)`)
 		if !strings.HasPrefix(e.Message, "init.scm: failed: load: denied") {
 			t.Fatalf("message %q", e.Message)
 		}

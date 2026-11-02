@@ -61,6 +61,7 @@ func run(t *testing.T, root string, opts walk.Options) result {
 			continue
 		}
 		rel, _ := fsx.StripPrefix(item.Entry.Path, root)
+		rel = filepath.ToSlash(rel)
 		if item.Entry.Depth > 0 {
 			r.paths = append(r.paths, rel)
 			r.kinds[rel] = item.Entry.Kind
@@ -316,6 +317,9 @@ func TestUnreadableDirectoryIsAnErrorNotTheEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
+	if _, err := os.ReadDir(locked); err == nil {
+		t.Skip("permissions do not make the directory unreadable on this filesystem")
+	}
 	got := run(t, root, walk.Options{})
 	if want := []string{"a", "a/x", "locked", "z"}; !slices.Equal(got.paths, want) {
 		t.Errorf("got %q, want %q", got.paths, want)

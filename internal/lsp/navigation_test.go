@@ -23,8 +23,12 @@ func navRange(line, character int) any {
 }
 
 func navDoc() *document {
+	uri := "file:///tmp/coigue-navigation.rs"
+	if filepath.Separator == '\\' {
+		uri = "file:///C:/tmp/coigue-navigation.rs"
+	}
 	return &document{
-		uri:        "file:///tmp/coigue-navigation.rs",
+		uri:        uri,
 		generation: 7,
 		version:    2,
 		language:   languageRust,

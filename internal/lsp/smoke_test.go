@@ -18,11 +18,25 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
 	"time"
 )
+
+func testPython(t *testing.T) string {
+	t.Helper()
+	name := "python3"
+	if runtime.GOOS == "windows" {
+		name = "python"
+	}
+	path, err := exec.LookPath(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
 
 type smoke struct {
 	t      *testing.T
@@ -41,6 +55,9 @@ type smoke struct {
 func newSmoke(t *testing.T, mode string) *smoke {
 	t.Helper()
 	python, err := exec.LookPath("python3")
+	if runtime.GOOS == "windows" {
+		python, err = exec.LookPath("python")
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,14 +78,30 @@ func newSmoke(t *testing.T, mode string) *smoke {
 	}
 	for _, name := range []string{"rust-analyzer", "gopls", "marksman"} {
 		script := "#!" + python + "\n" + string(source)
-		if err := os.WriteFile(filepath.Join(s.bin, name), []byte(script), 0o755); err != nil {
+		scriptPath := filepath.Join(s.bin, name)
+		if runtime.GOOS == "windows" {
+			scriptPath += ".py"
+		}
+		if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
 			t.Fatal(err)
+		}
+		if runtime.GOOS == "windows" {
+			executable, err := os.Executable()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Link(executable, filepath.Join(s.bin, name+".exe")); err != nil {
+				t.Fatal(err)
+			}
 		}
 	}
 	for _, name := range []string{"Cargo.toml", "go.mod", ".marksman.toml"} {
 		s.write(name, "")
 	}
 	t.Setenv("PATH", s.bin)
+	if runtime.GOOS == "windows" {
+		t.Setenv("COIGUE_LSP_FAKE_PYTHON", python)
+	}
 	t.Setenv("COIGUE_LSP_LOG", s.log)
 	t.Setenv("COIGUE_LSP_MODE", mode)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -78,6 +111,11 @@ func newSmoke(t *testing.T, mode string) *smoke {
 	t.Cleanup(func() {
 		s.client.Close()
 		cancel()
+		if t.Failed() && runtime.GOOS == "windows" {
+			if b, err := os.ReadFile(filepath.Join(s.log, "fake-errors.txt")); err == nil && len(b) > 0 {
+				t.Logf("fake server stderr: %s", b)
+			}
+		}
 	})
 	return s
 }
@@ -181,6 +219,10 @@ func (s *smoke) assertReaped() {
 			if !ok {
 				continue
 			}
+			deadline := time.Now().Add(time.Second)
+			for processAlive(int(pid)) && time.Now().Before(deadline) {
+				time.Sleep(10 * time.Millisecond)
+			}
 			if processAlive(int(pid)) {
 				s.t.Errorf("language server not reaped: %d", pid)
 			}
@@ -193,6 +235,11 @@ func (s *smoke) assertReaped() {
 func normalized(v any, root string) any {
 	switch x := v.(type) {
 	case string:
+		if runtime.GOOS == "windows" {
+			if uri, ok := fileURI(root); ok {
+				x = strings.ReplaceAll(x, uri, "file://<ROOT>")
+			}
+		}
 		return strings.ReplaceAll(x, root, "<ROOT>")
 	case []any:
 		out := make([]any, len(x))

@@ -2,6 +2,7 @@ package walk
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"unicode/utf8"
 
@@ -51,7 +52,7 @@ type gitignoreBuilder struct {
 }
 
 func newGitignoreBuilder(root string) *gitignoreBuilder {
-	return &gitignoreBuilder{root: strings.TrimPrefix(root, "./")}
+	return &gitignoreBuilder{root: strings.TrimPrefix(filepath.ToSlash(root), "./")}
 }
 
 func (b *gitignoreBuilder) build() *gitignore {
@@ -184,7 +185,7 @@ func (g *gitignore) matched(path string, isDir bool) match {
 	if g == nil || len(g.globs) == 0 {
 		return matchNone
 	}
-	path = g.strip(path)
+	path = g.strip(filepath.ToSlash(path))
 	for i := len(g.globs) - 1; i >= 0; i-- {
 		gl := &g.globs[i]
 		if (!gl.onlyDir || isDir) && gl.matcher.match(path) {
@@ -204,7 +205,7 @@ func (g *gitignore) strip(path string) string {
 	// A bare file name has nothing to strip; a root of "." must not eat the
 	// leading dot of a hidden name.
 	if g.root != "." && !isFileName(path) {
-		if rest, ok := strings.CutPrefix(path, g.root); ok {
+		if rest, ok := strings.CutPrefix(path, filepath.ToSlash(g.root)); ok {
 			path = strings.TrimPrefix(rest, "/")
 		}
 	}

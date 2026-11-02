@@ -8,6 +8,7 @@ package fsx
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"unicode/utf8"
 )
@@ -18,6 +19,9 @@ const sep = "/"
 // root component, "." survives only at the start, repeated separators collapse,
 // and ".." is kept as a component.
 func Components(p string) []string {
+	if runtime.GOOS == "windows" {
+		return windowsComponents(p)
+	}
 	var out []string
 	rooted := strings.HasPrefix(p, sep)
 	if rooted {
@@ -37,12 +41,18 @@ func Components(p string) []string {
 	return out
 }
 
-func isNormal(c string) bool { return c != sep && c != "." && c != ".." }
+func isNormal(c string) bool {
+	return c != sep && (runtime.GOOS != "windows" || c != `\`) && c != "." && c != ".."
+}
 
 // Join mirrors Path::join: an absolute operand replaces the base, an empty
 // base yields the operand, and nothing is cleaned.
 func Join(base string, parts ...string) string {
 	for _, part := range parts {
+		if runtime.GOOS == "windows" {
+			base = windowsJoin(base, part)
+			continue
+		}
 		switch {
 		case strings.HasPrefix(part, sep):
 			base = part
@@ -57,13 +67,21 @@ func Join(base string, parts ...string) string {
 	return base
 }
 
-// IsAbsolute reports whether the path starts at the filesystem root.
-func IsAbsolute(p string) bool { return strings.HasPrefix(p, sep) }
+// IsAbsolute reports whether the path has an absolute root on this platform.
+func IsAbsolute(p string) bool {
+	if runtime.GOOS == "windows" {
+		return filepath.IsAbs(p)
+	}
+	return strings.HasPrefix(p, sep)
+}
 
 // componentEnds returns, for every component of p (see Components), the byte
 // offset in p just after it. Rust's Path::parent hands back a prefix of the
 // original spelling, so the offsets are needed rather than the component text.
 func componentEnds(p string) (ends []int, rooted bool) {
+	if runtime.GOOS == "windows" {
+		return windowsComponentEnds(p)
+	}
 	n := len(p)
 	i := 0
 	if n > 0 && p[0] == '/' {
@@ -92,10 +110,14 @@ func componentEnds(p string) (ends []int, rooted bool) {
 // empty path have no parent; a single relative component has the empty path.
 func Parent(p string) (string, bool) {
 	ends, rooted := componentEnds(p)
-	if len(ends) == 0 || (rooted && len(ends) == 1) {
+	if len(ends) == 0 || (rooted && len(ends) == 1) ||
+		(runtime.GOOS == "windows" && len(ends) == 2 && rooted && filepath.VolumeName(p) != "") {
 		return "", false
 	}
 	if len(ends) == 1 {
+		if runtime.GOOS == "windows" && filepath.VolumeName(p) != "" {
+			return "", false
+		}
 		return "", true
 	}
 	return p[:ends[len(ends)-2]], true
@@ -108,7 +130,7 @@ func FileName(p string) (string, bool) {
 		return "", false
 	}
 	last := comps[len(comps)-1]
-	if !isNormal(last) {
+	if !isNormal(last) || (runtime.GOOS == "windows" && len(comps) == 1 && filepath.VolumeName(p) != "") {
 		return "", false
 	}
 	return last, true
@@ -140,7 +162,7 @@ func StripPrefix(p, prefix string) (string, bool) {
 			return "", false
 		}
 	}
-	return strings.Join(pc[len(fc):], sep), true
+	return strings.Join(pc[len(fc):], string(filepath.Separator)), true
 }
 
 // StartsWith mirrors Path::starts_with.
@@ -174,13 +196,17 @@ func HasComponent(p, name string) bool {
 	return false
 }
 
-// Absolute mirrors std::path::absolute on Unix: a relative path is joined to
+// Absolute mirrors std::path::absolute. On Windows it uses the system path
+// resolution rules. On Unix a relative path is joined to
 // the current directory, "." components and repeated separators disappear, ".."
 // is preserved, a trailing separator and a leading "//" (but not "///") are
 // kept. Symlinks are not resolved and the path need not exist.
 func Absolute(p string) (string, error) {
 	if p == "" {
 		return "", &os.PathError{Op: "absolute", Path: p, Err: os.ErrInvalid}
+	}
+	if runtime.GOOS == "windows" {
+		return filepath.Abs(p)
 	}
 	if !IsAbsolute(p) {
 		cwd, err := os.Getwd()

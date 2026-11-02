@@ -5,6 +5,7 @@ package picker
 
 import (
 	"context"
+	"path/filepath"
 	"sort"
 	"sync"
 
@@ -159,7 +160,7 @@ poll:
 				if rest, ok := fsx.StripPrefix(path, p.Root); ok {
 					label = rest
 				}
-				p.labels = append(p.labels, walk.Lossy(label))
+				p.labels = append(p.labels, walk.Lossy(filepath.ToSlash(label)))
 				p.files = append(p.files, path)
 				changed = true
 			}

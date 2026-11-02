@@ -13,7 +13,10 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -444,10 +447,10 @@ func TestGateRefusesLoadAndEverythingThatTouchesTheSystem(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, program := range []string{
-		`(load "` + marker + `")`,
-		`(guard (e (#t 'caught)) (load "` + marker + `"))`,
-		`(guard (e ((string? e) 1) (else 'caught)) (apply load (list "` + marker + `")))`,
-		`(map load (list "` + marker + `"))`,
+		`(load ` + strconv.Quote(marker) + `)`,
+		`(guard (e (#t 'caught)) (load ` + strconv.Quote(marker) + `))`,
+		`(guard (e ((string? e) 1) (else 'caught)) (apply load (list ` + strconv.Quote(marker) + `)))`,
+		`(map load (list ` + strconv.Quote(marker) + `))`,
 	} {
 		r := New(Options{})
 		err := r.Load(context.Background(), program)
@@ -463,7 +466,7 @@ func TestGateRefusesLoadAndEverythingThatTouchesTheSystem(t *testing.T) {
 		}
 	}
 	// Also from inside a command, where the program was written earlier.
-	r := loaded(t, Options{}, `(define (go) (load "`+marker+`")) (define-command "go" go)`)
+	r := loaded(t, Options{}, `(define (go) (load `+strconv.Quote(marker)+`)) (define-command "go" go)`)
 	err := r.Run(context.Background(), "go", nil, session("x", 0, 0, nil, false))
 	if err == nil || !strings.Contains(err.Error(), "load: denied") {
 		t.Fatalf("load inside a command: %v", err)
@@ -519,14 +522,18 @@ func TestGateRefusesLoadAndEverythingThatTouchesTheSystem(t *testing.T) {
 // module and to init.scm: the editor trusts its extensions, and the policy
 // grants the whole file system and every command.
 func TestExecAndFSAreOffered(t *testing.T) {
+	goPath, err := exec.LookPath("go")
+	if err != nil {
+		t.Fatal(err)
+	}
 	dir := t.TempDir()
 	file := filepath.Join(dir, "note.txt")
 	prog := fmt.Sprintf(`
 (define-command "write" (lambda () (fs-write-text %q "from the extension")))
 (define-command "read" (lambda () (insert-text (fs-read-text %q))))
 (define-command "list" (lambda () (insert-text (string-join (fs-list %q) ","))))
-(define-command "run" (lambda () (insert-text (cdr (assoc "stdout" (proc-run (list "echo" "hi")))))))
-`, file, file, dir)
+(define-command "run" (lambda () (insert-text (cdr (assoc "stdout" (proc-run (list %q "version")))))))
+`, file, file, dir, goPath)
 	r := loaded(t, Options{}, prog)
 	run(t, r, "write")
 	if got, err := os.ReadFile(file); err != nil || string(got) != "from the extension" {
@@ -538,7 +545,7 @@ func TestExecAndFSAreOffered(t *testing.T) {
 	if s := run(t, r, "list"); s.Buffer.Text() != "note.txt" {
 		t.Fatalf("fs-list: %q", s.Buffer.Text())
 	}
-	if s := run(t, r, "run"); s.Buffer.Text() != "hi\n" {
+	if s := run(t, r, "run"); !strings.HasPrefix(s.Buffer.Text(), "go version go") {
 		t.Fatalf("proc-run: %q", s.Buffer.Text())
 	}
 	// The same from a module, qualified.
@@ -547,8 +554,8 @@ func TestExecAndFSAreOffered(t *testing.T) {
 	r2 := loaded(t, Options{ConfigDir: writeModules(t, map[string]string{
 		"disk.scm": `(define-module disk)` + fmt.Sprintf(`
 (define-command "read" (lambda () (insert-text (fs-read-text %q))))
-(define-command "run" (lambda () (insert-text (cdr (assoc "stdout" (proc-run (list "echo" "from the module")))))))
-`, file2),
+(define-command "run" (lambda () (insert-text (cdr (assoc "stdout" (proc-run (list %q "version")))))))
+`, file2, goPath),
 	})}, `(require disk)`)
 	if err := os.WriteFile(file2, []byte("from a test"), 0o644); err != nil {
 		t.Fatal(err)
@@ -556,7 +563,7 @@ func TestExecAndFSAreOffered(t *testing.T) {
 	if s := run(t, r2, "disk/read"); s.Buffer.Text() != "from a test" {
 		t.Fatalf("disk/read: %q", s.Buffer.Text())
 	}
-	if s := run(t, r2, "disk/run"); s.Buffer.Text() != "from the module\n" {
+	if s := run(t, r2, "disk/run"); !strings.HasPrefix(s.Buffer.Text(), "go version go") {
 		t.Fatalf("disk/run: %q", s.Buffer.Text())
 	}
 }
@@ -856,7 +863,13 @@ func TestHostOperationsAreDocumented(t *testing.T) {
 }
 
 func TestInitPath(t *testing.T) {
-	home := func() (string, error) { return "/home/u", nil }
+	rooted := func(s string) string {
+		if runtime.GOOS == "windows" && strings.HasPrefix(s, "/") {
+			return filepath.VolumeName(t.TempDir()) + filepath.FromSlash(s)
+		}
+		return s
+	}
+	home := func() (string, error) { return rooted("/home/u"), nil }
 	noHome := func() (string, error) { return "", errors.New("no home") }
 	env := func(m map[string]string) func(string) string { return func(k string) string { return m[k] } }
 	for _, c := range []struct {
@@ -873,7 +886,11 @@ func TestInitPath(t *testing.T) {
 		{"xdg without a home", map[string]string{"XDG_CONFIG_HOME": "/x"}, noHome, "/x/coigue/init.scm", true},
 		{"no home", nil, noHome, "", false},
 	} {
+		if c.env != nil {
+			c.env["XDG_CONFIG_HOME"] = rooted(c.env["XDG_CONFIG_HOME"])
+		}
 		got, ok := InitPath(env(c.env), c.home)
+		c.want = rooted(c.want)
 		if got != c.want || ok != c.ok {
 			t.Errorf("%s: %q, %v", c.name, got, ok)
 		}
@@ -904,7 +921,12 @@ func TestReadInit(t *testing.T) {
 	if _, found, err := ReadInit(dir); !found || err == nil || !strings.Contains(err.Error(), "not a regular file") {
 		t.Fatalf("directory: found %v, err %v", found, err)
 	}
-	if _, found, err := ReadInit(filepath.Join(dir, "ok.scm", "inside")); !found || err == nil {
+	if _, found, err := ReadInit(filepath.Join(dir, "ok.scm", "inside")); runtime.GOOS == "windows" {
+		// Windows reports the child of a regular file as not found.
+		if found || err != nil {
+			t.Fatalf("a file where a directory should be: found %v, err %v", found, err)
+		}
+	} else if !found || err == nil {
 		t.Fatalf("a file where a directory should be: found %v, err %v", found, err)
 	}
 }

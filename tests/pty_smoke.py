@@ -76,6 +76,8 @@ def session(path, steps, command=None, cwd=None, width=80, env_overrides=None):
         os.close(slave)
 
 with tempfile.TemporaryDirectory() as directory:
+    os.environ['HOME'] = directory
+    os.environ['XDG_CONFIG_HOME'] = str(pathlib.Path(directory) / 'config')
     # All clipboard commands resolve to fixtures: never touch the user's clipboard.
     helpers = pathlib.Path(directory) / 'clipboard-helpers'
     helpers.mkdir()
@@ -98,7 +100,7 @@ else: sys.stdout.buffer.write(store.read_bytes())
     path = pathlib.Path(directory) / 'clipboard.md'
     path.write_text('aé界z\nlast')
     session(path, [b'v2lY', b':clipboard-copy\r', b'$', b':clipboard-paste\r', b'u', b'\x12', b':wq\r'], env_overrides=fixture_env)
-    assert path.read_text() == 'aé界zaé界\nlast'
+    assert path.read_text() == 'aé界zaé界\nlast', repr(path.read_text())
     assert store.read_bytes() == 'aé界'.encode()
     path.write_text('one\ntwo\nlast')
     session(path, [b'VjY', b'G', b':clipboard-paste\r', b':wq\r'], env_overrides=fixture_env)

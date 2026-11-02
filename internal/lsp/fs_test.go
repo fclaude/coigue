@@ -114,7 +114,12 @@ func checkFSCorpus(t *testing.T, path string) (checked, mismatches int) {
 			json.Unmarshal(entry.In["t"], &template)
 			json.Unmarshal(entry.In["language"], &name)
 			l := map[string]language{"rust": languageRust, "go": languageGo, "markdown": languageMarkdown}[name]
-			got = unrootHex(l.root(substitute(template)))
+			target := substitute(template)
+			boundary := ""
+			if target == root || strings.HasPrefix(target, root+string(filepath.Separator)) {
+				boundary = root
+			}
+			got = unrootHex(l.rootWithin(target, boundary))
 		case "targets":
 			var uri, text string
 			json.Unmarshal(entry.In["uri"], &uri)
@@ -152,6 +157,7 @@ func checkFSCorpus(t *testing.T, path string) (checked, mismatches int) {
 }
 
 func TestPathsRootsAndNavigationTargetsAgreeWithRustGolden(t *testing.T) {
+	skipUnixGolden(t, "fixture contains names forbidden on Windows")
 	if checked, _ := checkFSCorpus(t, "testdata/fs_golden.jsonl"); checked < 150 {
 		t.Fatalf("only %d golden cases", checked)
 	}
@@ -164,4 +170,23 @@ func TestPathsRootsAndNavigationTargetsAgreeWithRustCorpus(t *testing.T) {
 	}
 	checked, mismatches := checkFSCorpus(t, path)
 	t.Logf("%d cases, %d mismatches", checked, mismatches)
+}
+
+func TestRootFixtureBoundaryDoesNotChangeProductionDiscovery(t *testing.T) {
+	ancestor := t.TempDir()
+	if err := os.Mkdir(filepath.Join(ancestor, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	fixture := filepath.Join(ancestor, "fixture")
+	dir := filepath.Join(fixture, "nested")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(dir, "doc.md")
+	if got := languageMarkdown.root(file); got != ancestor {
+		t.Fatalf("root = %q, want ancestor %q", got, ancestor)
+	}
+	if got := languageMarkdown.rootWithin(file, fixture); got != dir {
+		t.Fatalf("bounded root = %q, want %q", got, dir)
+	}
 }
