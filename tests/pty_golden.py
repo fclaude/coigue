@@ -147,7 +147,11 @@ scenario('undo-redo', TXT, ['a.txt'], [b'x', b'x', b'u', b'\x12', b'\x12', b'u',
 scenario('reflow', {'p.md': 'one two three four five six seven eight nine ten\n\nsecond paragraph here\n'}, ['p.md'], [b':textwidth 12\r', b'gq', b'u', b':justify 20\r', b':justify x\r'])
 scenario('word-keys-in-prompt', TXT, ['a.txt'], [b'\x0f', b'wbecw', ESC, ESC, b':dwcw', ESC])
 scenario('clipboard-missing', TXT, ['a.txt'], [b'vlY', b':clipboard-copy\r', b':clipboard-paste\r'], env={'PATH': '/nonexistent', 'WAYLAND_DISPLAY': '', 'DISPLAY': ''})
-scenario('alt-keys', TXT, ['a.txt'], [b'\x1bx', b'i', b'\x1bx', ESC, b'\x1b[200~paste~\x1b[201~', b'\x1b[3~', b'\x1b[2~', b'\x1b[1;5C'])
+# The Rust editor ignored a bracketed paste in Normal mode, and its recording
+# had a step that sent one and changed nothing. Since 0.7.0 a paste there is put
+# before the cursor like P (internal/editor/paste_test.go), so that step and its
+# empty recording were removed; every other recorded byte is the Rust editor's.
+scenario('alt-keys', TXT, ['a.txt'], [b'\x1bx', b'i', b'\x1bx', ESC, b'\x1b[3~', b'\x1b[2~', b'\x1b[1;5C'])
 scenario('unknown-keys', TXT, ['a.txt'], [b'5', b'\x1b[H', b'\x1b[F', b'q', b'Z', b'\t', b'\x7f', b'\r', b'12', b'~', b'\x1b[15;5~'])
 scenario('no-color-markdown', MD, ['doc.md'], [b'vjj', b'y', b':theme latte\r', b'\x1bOP', ESC], env={'NO_COLOR': '1'})
 scenario('no-color-rust', RS, ['main.rs'], [b'Vj', b'2G', b':theme terminal\r', b'/fn\r'], env={'NO_COLOR': '1'})
@@ -212,6 +216,18 @@ def run(binary, sc):
     return out, files
 
 
+# The Go editor asks for bracketed paste on start and turns it off on exit; the
+# Rust editor never did. Those two mode switches draw nothing, so they are left
+# out before the byte comparison, which must otherwise be exact.
+BRACKETED_PASTE = (b'\x1b[?2004h', b'\x1b[?2004l')
+
+
+def without_bracketed_paste(out):
+    for switch in BRACKETED_PASTE:
+        out = [step.replace(switch, b'') for step in out]
+    return out
+
+
 def encode(out, files):
     return {'steps': [base64.b64encode(s).decode() for s in out],
             'files': {k: base64.b64encode(v).decode() for k, v in sorted(files.items())}}
@@ -243,6 +259,7 @@ def main():
     for sc in SCENARIOS:
         want = golden[sc['name']]
         out, files = run(binary, sc)
+        out = without_bracketed_paste(out)
         got = encode(out, files)
         if got == want:
             identical += 1
