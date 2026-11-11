@@ -125,6 +125,7 @@ type Editor struct {
 	selectionAnchor *[2]int
 	clipboardExport *clipboardExport
 	pendingQuery    *time.Time
+	lspSync         lspSync
 	searchJob       *search.Search
 	history         navigation.History
 	pendingJump     *pendingJump
@@ -317,7 +318,7 @@ func (e *Editor) Key(k key.Key, pageRows int) bool {
 		e.Buffer.FinishEdit()
 	}
 	e.syncMarks()
-	e.syncLSP()
+	e.syncLSPSoon()
 	return quit
 }
 
@@ -443,9 +444,55 @@ func (e *Editor) openHelp() {
 	e.Help = e.newHelp(topic)
 }
 
+// lspQuiet is how long typing must pause before the language server is sent
+// the edited text, and lspMaxWait how long it may wait during continuous
+// typing. Sending copies the whole text, so doing it once per pause instead of
+// once per key keeps keys fast in long files. The session worker coalesces
+// changes for changeInterval after that, so the server sees little difference.
+const (
+	lspQuiet   = 50 * time.Millisecond
+	lspMaxWait = 300 * time.Millisecond
+)
+
+// lspSync is what the language server was last told, and since when an edit
+// it has not been told about is waiting.
+type lspSync struct {
+	path                        string
+	generation, saved, revision uint64
+	waitingSince, lastEdit      time.Time
+	waiting                     bool
+}
+
 func (e *Editor) syncLSP() {
 	e.LSP.Sync(e.File.Path, e.Generation, e.Buffer.Revision(), e.File.Revision(), e.Buffer.Text)
+	e.lspSync = lspSync{path: e.File.Path, generation: e.Generation, saved: e.File.Revision(), revision: e.Buffer.Revision()}
 }
+
+// syncLSPSoon tells the language server about the key just handled: at once
+// when it opened another document or saved, and once typing pauses when it
+// only edited the text.
+func (e *Editor) syncLSPSoon() {
+	s := &e.lspSync
+	if s.path != e.File.Path || s.generation != e.Generation || s.saved != e.File.Revision() {
+		e.syncLSP()
+		return
+	}
+	if s.revision == e.Buffer.Revision() && !s.waiting {
+		return
+	}
+	now := time.Now()
+	if !s.waiting {
+		s.waiting = true
+		s.waitingSince = now
+	}
+	s.lastEdit = now
+}
+
+// LSPWaiting reports whether an edit has not been sent to the language
+// server yet. Until it is, what the server said is about older text: the
+// renderer shows no diagnostics or semantic colours, as when Sync clears
+// them after an edit.
+func (e *Editor) LSPWaiting() bool { return e.lspSync.waiting }
 
 // Tick runs the periodic work between keys: language-server sync and
 // results, scans for the picker and explorer, and delayed searches.
@@ -464,8 +511,10 @@ func (e *Editor) Tick(pageRows int) {
 }
 
 func (e *Editor) pollLSP() {
-	e.syncLSP()
-	e.LSP.Poll(e.Buffer.Lines())
+	if s := e.lspSync; !s.waiting || time.Since(s.lastEdit) >= lspQuiet || time.Since(s.waitingSince) >= lspMaxWait {
+		e.syncLSP()
+	}
+	e.LSP.PollWith(e.Buffer.Lines)
 	e.pollLocations()
 }
 
@@ -476,6 +525,13 @@ func (e *Editor) saveCurrent() error {
 	// Synchronize the old document before save-and-open replaces it.
 	e.syncLSP()
 	return nil
+}
+
+// Dirty reports whether the buffer differs from the file as last read or
+// saved. Comparing sizes settles it after almost every edit; only text of the
+// same size is compared byte by byte, and without building a copy.
+func (e *Editor) Dirty() bool {
+	return !e.Buffer.EqualBytes(e.File.Saved())
 }
 
 func (e *Editor) resetPending() {
@@ -539,11 +595,10 @@ func (e *Editor) Selection(row int) (start, end int, ok bool) {
 	if row < first[0] || row > last[0] {
 		return 0, 0, false
 	}
-	lines := e.Buffer.Lines()
-	if row >= len(lines) {
+	if row >= e.Buffer.LineCount() {
 		return 0, 0, false
 	}
-	length := len(lines[row])
+	length := len(e.Buffer.Line(row))
 	if mode == ModeVisualLine {
 		return 0, length + 1, true
 	}

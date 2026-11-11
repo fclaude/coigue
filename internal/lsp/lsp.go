@@ -718,6 +718,21 @@ func (c *Client) clientVersion() string {
 // Poll collects what the session worker has reported since the last call.
 // lines is the current buffer, for converting server positions.
 func (c *Client) Poll(lines [][]rune) {
+	c.PollWith(func() [][]rune { return lines })
+}
+
+// PollWith is Poll for a caller that would have to build the lines: it calls
+// lines at most once, and only when a report has positions to convert, which
+// most polls do not.
+func (c *Client) PollWith(lines func() [][]rune) {
+	var current [][]rune
+	have := false
+	text := func() [][]rune {
+		if !have {
+			current, have = lines(), true
+		}
+		return current
+	}
 	if c.navigationPending != nil && time.Since(c.navigationPending.started) >= navigationTimeout+time.Second {
 		kind := c.navigationPending.request.kind
 		c.CancelNavigation()
@@ -764,7 +779,7 @@ func (c *Client) Poll(lines [][]rune) {
 				c.uri == event.document.uri && c.version == event.document.version {
 				c.SemanticTokens = nil
 				if event.hasData {
-					if tokens, ok := semantic.Decode(event.data, event.legend, lines); ok {
+					if tokens, ok := semantic.Decode(event.data, event.legend, text()); ok {
 						c.SemanticTokens = tokens
 					}
 				}
@@ -786,6 +801,7 @@ func (c *Client) Poll(lines [][]rune) {
 				continue
 			}
 			c.Diagnostics = nil
+			lines := text()
 			for _, d := range event.publication.diagnostics {
 				start, ok := scalarPosition(lines, d.rng.start)
 				if !ok {

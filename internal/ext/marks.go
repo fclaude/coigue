@@ -73,10 +73,11 @@ func (r *Runtime) HasMarks() bool {
 	return len(r.tracker.live) > 0 || len(r.tracker.pending) > 0
 }
 
-// SyncMarks moves every mark to the live text, which is lines at revision
-// rev of the file generation gen. The editor calls it after anything that can
-// change the text, and it costs nothing when the revision has not moved.
-func (r *Runtime) SyncMarks(lines [][]rune, rev, gen uint64) {
+// SyncMarks moves every mark to the live text, which text returns, at
+// revision rev of the file generation gen. The editor calls it after anything
+// that can change the text; it costs nothing, and does not call text, when
+// the revision has not moved.
+func (r *Runtime) SyncMarks(text func() [][]rune, rev, gen uint64) {
 	t := &r.tracker
 	if t.snap == nil && len(t.pending) == 0 {
 		return
@@ -91,6 +92,7 @@ func (r *Runtime) SyncMarks(lines [][]rune, rev, gen uint64) {
 		}
 		t.live, t.snap = nil, nil
 	}
+	lines := text()
 	snap := &textSnap{lines: buffer.CloneLines(lines)}
 	if t.snap != nil && t.rev != rev {
 		mapper := marks.NewMapper(t.snap.lines, lines)

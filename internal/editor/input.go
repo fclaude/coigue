@@ -2,12 +2,22 @@ package editor
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/fclaude/coigue/internal/buffer"
 	"github.com/fclaude/coigue/internal/clipboard"
 	"github.com/fclaude/coigue/internal/key"
 	"github.com/fclaude/coigue/internal/reflow"
 )
+
+// lineCopies copies rows [start, end) of b, for a register.
+func lineCopies(b *buffer.Buffer, start, end int) [][]rune {
+	lines := make([][]rune, 0, end-start)
+	for row := start; row < end; row++ {
+		lines = append(lines, append([]rune(nil), b.Line(row)...))
+	}
+	return lines
+}
 
 func popRune(s string) string {
 	runes := []rune(s)
@@ -188,7 +198,7 @@ func (e *Editor) keyInner(k key.Key, pageRows int) bool {
 	case key.Home:
 		b.Col = 0
 	case key.End:
-		b.Col = len(b.Lines()[b.Row])
+		b.Col = len(b.Line(b.Row))
 	case key.PageUp:
 		b.Row = max(b.Row-max(pageRows, 1), 0)
 	case key.PageDown:
@@ -259,11 +269,10 @@ func (e *Editor) visualKey(code key.Code, pageRows int) {
 		anchor := *e.selectionAnchor
 		e.selectionAnchor = nil
 		yanked := true
-		lines := b.Lines()
 		if e.Mode == ModeVisualLine {
 			start := min(anchor[0], b.Row)
 			end := max(anchor[0], b.Row) + 1
-			e.register = lineRegister(buffer.CloneLines(lines[start:end]), end < len(lines))
+			e.register = lineRegister(lineCopies(b, start, end), end < b.LineCount())
 			b.Row = start
 			b.Col = 0
 			if op == 'd' {
@@ -332,7 +341,7 @@ func (e *Editor) normalKey(code key.Code, pageRows int) {
 			return
 		}
 		start := b.Col
-		line := b.Lines()[b.Row]
+		line := b.Line(b.Row)
 		for col := start; col < min(saturatingAdd(start, count), len(line)); col++ {
 			b.Col = col
 			b.Replace(ch)
@@ -378,10 +387,9 @@ func (e *Editor) normalKey(code key.Code, pageRows int) {
 			e.Mode = ModeInsert
 		}
 	case (pending == 'd' || pending == 'y') && ch == pending:
-		lines := b.Lines()
 		start := b.Row
-		end := min(saturatingAdd(start, count), len(lines))
-		e.register = lineRegister(buffer.CloneLines(lines[start:end]), end < len(lines))
+		end := min(saturatingAdd(start, count), b.LineCount())
+		e.register = lineRegister(lineCopies(b, start, end), end < b.LineCount())
 		if pending == 'd' {
 			// Remove at the original row, never clamp backwards and delete earlier lines.
 			for i := start; i < end; i++ {
@@ -433,7 +441,7 @@ func (e *Editor) normalKey(code key.Code, pageRows int) {
 	case code == key.Home || ch == '0':
 		b.Col = 0
 	case code == key.End || ch == '$':
-		b.Col = max(len(b.Lines()[b.Row])-1, 0)
+		b.Col = max(len(b.Line(b.Row))-1, 0)
 	case ch == 'w' || ch == 'b' || ch == 'e':
 		for i := 0; i < count; i++ {
 			beforeRow, beforeCol := b.Row, b.Col
@@ -451,7 +459,7 @@ func (e *Editor) normalKey(code key.Code, pageRows int) {
 		}
 		e.Message = "Visual: motions select | y yank | Y clipboard | d delete | Esc cancel"
 	case ch == 'x':
-		line := b.Lines()[b.Row]
+		line := b.Line(b.Row)
 		end := min(saturatingAdd(b.Col, count), len(line))
 		chars := append([]rune(nil), line[b.Col:end]...)
 		if len(chars) > 0 {
@@ -496,12 +504,12 @@ func (e *Editor) normalKey(code key.Code, pageRows int) {
 			e.find(ch == 'n')
 		}
 	case ch == 'A':
-		b.Col = len(b.Lines()[b.Row])
+		b.Col = len(b.Line(b.Row))
 		e.Mode = ModeInsert
 	case ch == 'i':
 		e.Mode = ModeInsert
 	case ch == 'a':
-		b.Col = min(b.Col+1, len(b.Lines()[b.Row]))
+		b.Col = min(b.Col+1, len(b.Line(b.Row)))
 		e.Mode = ModeInsert
 	case ch == 'o':
 		b.OpenLine()
@@ -588,6 +596,57 @@ func (e *Editor) copyClipboardUsing(copyFn func(string) error) {
 	}
 	e.clipboardExport = &clipboardExport{text: text, reg: reg}
 	e.Message = "Yank copied to system clipboard"
+}
+
+// AcceptsPaste reports whether Paste would insert text now: in Insert mode,
+// or in Normal mode with no count or operator half typed, while a file is
+// being edited with no prompt, list or menu in front of it. Anywhere else the
+// caller should deliver the paste as the key presses it is made of, which is
+// what a terminal without bracketed paste sends, so those places behave as
+// they always have.
+func (e *Editor) AcceptsPaste() bool {
+	if e.Window != nil || e.Help != nil || e.Menu != nil || e.SwitchPrompt != "" ||
+		e.FilesystemPrompt != nil || e.Locations != nil || e.Explorer != nil ||
+		e.Picker != nil || e.IsWelcome() {
+		return false
+	}
+	switch e.Mode {
+	case ModeInsert:
+		return true
+	case ModeNormal:
+		return e.pending == 0 && e.count == 0 && e.operatorCount == 0 && e.commandVisual == 0
+	}
+	return false
+}
+
+// Paste inserts text that the terminal delivered as one bracketed paste,
+// with CR LF and lone CR line breaks turned into newlines. In Insert mode it
+// goes in at the cursor as if typed, in the same undo step as the typing
+// around it, and the cursor ends after it. In Normal mode it goes in before
+// the cursor like P, as one undo step, with the cursor on its last character;
+// the register is left alone. The caller checks AcceptsPaste first.
+func (e *Editor) Paste(text string) {
+	text = strings.ReplaceAll(text, "\r\n", "\n")
+	text = strings.ReplaceAll(text, "\r", "\n")
+	chars := []rune(text)
+	if len(chars) == 0 {
+		return
+	}
+	b := e.Buffer
+	b.BeginEdit()
+	b.InsertText(chars)
+	if e.Mode == ModeNormal {
+		if b.Col > 0 {
+			b.Col--
+		} else if b.Row > 0 {
+			b.Row--
+			b.Col = len(b.Line(b.Row))
+		}
+		b.Clamp(false)
+		b.FinishEdit()
+	}
+	e.syncMarks()
+	e.syncLSPSoon()
 }
 
 func (e *Editor) pasteClipboardResult(text string, err error, after bool) {

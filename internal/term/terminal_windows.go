@@ -26,7 +26,8 @@ type Terminal struct {
 	closed bool
 }
 
-// Enter switches the console to raw VT input and then to the alternate screen.
+// Enter switches the console to raw VT input, then to the alternate screen
+// with bracketed paste (EnterSequence).
 // Input comes from stdin when it is a console, else from CONIN$. If entering
 // the alternate screen fails, the console is restored before the error is
 // returned.
@@ -55,7 +56,7 @@ func Enter(out *os.File) (*Terminal, error) {
 		return nil, err
 	}
 	t := &Terminal{in: in, ownsIn: owns, out: out, inState: inState, outMode: outMode}
-	if _, err := io.WriteString(out, EnterAlternateScreen); err != nil {
+	if _, err := io.WriteString(out, EnterSequence); err != nil {
 		t.Close()
 		return nil, err
 	}

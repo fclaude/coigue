@@ -115,24 +115,28 @@ func (r *Runtime) hostOperations() []*scheme.Prim {
 						return scheme.Value{}, err
 					}
 				}
-				lines := s.Buffer.Lines()
+				count := s.Buffer.LineCount()
 				for _, n := range []int64{first, last} {
-					if n < 1 || n > int64(len(lines)) {
-						return scheme.Value{}, fmt.Errorf("line %d is outside 1..%d", n, len(lines))
+					if n < 1 || n > int64(count) {
+						return scheme.Value{}, fmt.Errorf("line %d is outside 1..%d", n, count)
 					}
 				}
 				if last < first {
 					return scheme.Value{}, fmt.Errorf("lines %d..%d: the end is before the start", first, last)
 				}
 				size := int(last - first)
-				for _, line := range lines[first-1 : last] {
+				lines := make([][]rune, 0, last-first+1)
+				for row := first - 1; row < last; row++ {
+					lines = append(lines, s.Buffer.Line(int(row)))
+				}
+				for _, line := range lines {
 					size += len(line)
 					if size > MaxRegion {
 						return scheme.Value{}, fmt.Errorf("lines %d..%d are longer than %d characters", first, last, MaxRegion)
 					}
 				}
 				var sb strings.Builder
-				for i, line := range lines[first-1 : last] {
+				for i, line := range lines {
 					if i > 0 {
 						sb.WriteByte('\n')
 					}

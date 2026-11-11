@@ -281,8 +281,8 @@ and following insert session undo together. Characterwise word registers retain
 exact whitespace and LF/CRLF bytes, including across lines; `p`/`P` paste them
 after/before the cursor. At EOF operators stop; an empty cut keeps the register.
 These bindings apply only to normal editing, not explorer, filters, or prompts.
-Word operations scan a scalar-value copy of the buffer; very large files may
-notice a delay. Combining marks remain separate scalar values, as in other edits.
+Word operations walk the lines around the cursor, so their cost does not grow
+with the file. Combining marks remain separate scalar values, as in other edits.
 
 The register persists across file switches and supports repeated pastes; it is
 internal to this session; ordinary `y`, `d`, `p` and `P` never access the system
@@ -295,8 +295,9 @@ history. A new edit after undo clears redo; unchanged operations do not. Saving
 keeps history, and undo/redo restores the cursor and updates the unsaved indicator
 against the most recently saved contents. Opening another file starts fresh
 history; canceling the picker keeps it. History retains up to 100 edit groups in
-memory using whole-buffer snapshots, so large files require more memory. History
-is not persisted across sessions. Undo/redo are normal-mode commands.
+memory. The buffer is a persistent tree of lines, so each kept version shares
+every line it did not change with the others, and an undo step costs about what
+the edit touched, not a copy of the file. History is not persisted across sessions. Undo/redo are normal-mode commands.
 
 Press **Ctrl-P** (normal or insert mode) or run **`:open`** to pick another file.
 The picker recursively searches the process's working directory, rather than the
@@ -392,7 +393,13 @@ terminal for faithful rendering; `terminal` retains the previous ANSI behavior.
 
 Lines scroll vertically and horizontally; terminal resize triggers a redraw.
 Screen updates are buffered and repaint only changed rows, with synchronized updates
-on terminals that support them. LF and existing trailing newlines are preserved exactly; opening a file does not add a newline. CRLF bytes round-trip unchanged, but CR is displayed as a replacement glyph and newly inserted line breaks use LF.
+on terminals that support them. Coigüe turns on bracketed paste, so text pasted into
+the terminal arrives as one piece: in Insert mode it is inserted as typed, and in
+Normal mode with nothing pending it is put before the cursor like `P`, as one undo
+step, without touching the register. In a prompt, a list, Visual mode or a
+half-typed command, a paste is the keys it is made of, as in a terminal without
+bracketed paste. While a burst of keys is waiting (a paste in such a terminal),
+the screen is redrawn about 30 times a second instead of once per key. LF and existing trailing newlines are preserved exactly; opening a file does not add a newline. CRLF bytes round-trip unchanged, but CR is displayed as a replacement glyph and newly inserted line breaks use LF.
 
 Saving compares the file's bytes with the last loaded/saved snapshot, writes and syncs a same-directory temporary file, then atomically replaces the destination. Failed writes leave existing contents intact. New files are created without clobbering an existing destination. Existing symlinks are resolved at opening, so later changes to the original link do not redirect the session. Saves refuse read-only destinations or a resolved target replaced by a symlink. Unix permission bits are preserved; new files use private temporary-file permissions (0600 on Unix). Atomic replacement changes inode identity (including hard-link relationships); ownership, ACLs and extended attributes are not preserved. If another program writes after the final byte comparison but before the atomic rename, its update can still be overwritten without detection; this is not a locking editor. Use one writer per file. No force-write command bypasses conflicts.
 
@@ -522,8 +529,10 @@ and inline/indented/fenced code. Headings and strong emphasis are bold; emphasis
 italic. Top-level Rust and Go fences reuse their respective lexers; other code blocks
 use a uniform code color. Markdown highlighting is a lightweight source lexer, not
 a full Markdown parser. Other extensions remain plain.
-Lexers run over the buffer after edits and cache the result while navigating;
-this favors simplicity over performance on very large files.
+After an edit, Go, Rust and Scheme are relexed from the first changed line, and
+only as far as the screen shows, so typing costs the same in a long file as in a
+short one. Opening a file, or jumping far into it, lexes from the top once. Markdown
+is relexed whole after each edit, because a fence's colour depends on where it ends.
 
 When `rust-analyzer` or `gopls` advertises full semantic tokens, Coigüe overlays
 them on lexical highlighting to distinguish functions, types, variables, fields,
@@ -620,7 +629,9 @@ idle as well as during editing. Marksman provides Markdown link/reference
 diagnostics; it is not a general Markdown style checker.
 
 The active document is synchronized on open, edits (including undo/redo),
-successful saves, file switches, and renames. The client honors the server's
+successful saves, file switches, and renames. Edits are sent once typing pauses
+for 50 ms (or after 300 ms of continuous typing), since each update carries the
+whole text; until then the old diagnostics and semantic colours are hidden. The client honors the server's
 full/incremental synchronization and save capabilities; incremental updates
 currently replace the previous document's entire range. UTF-16 protocol positions
 are converted to the buffer's Unicode character positions. Editing clears old

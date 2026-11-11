@@ -152,7 +152,7 @@ func clipboardPaste(e *Editor, name string, _ []string) bool {
 }
 
 func quitCommand(e *Editor, name string, _ []string) bool {
-	if name == "q" && e.File.Dirty(e.Buffer.Text()) {
+	if name == "q" && e.Dirty() {
 		e.Message = "Unsaved changes; use :w or :q!"
 		return false
 	}

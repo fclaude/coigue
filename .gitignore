@@ -3,3 +3,4 @@
 site/content/
 site/public/
 site/audit/node_modules/
+/bench-results/

@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/fclaude/coigue/internal/actions"
+	"github.com/fclaude/coigue/internal/buffer"
 	"github.com/fclaude/coigue/internal/editor"
 	"github.com/fclaude/coigue/internal/fsx"
 	"github.com/fclaude/coigue/internal/semantic"
@@ -29,13 +30,78 @@ type View struct {
 	noColor          paint
 	cursor           *[2]int
 	revision         *[2]uint64
-	styles           [][]syntax.Style
-	semanticRevision uint64
 	dirty            bool
 	generation       uint64
 	viewportRevision uint64
-	syntaxPath       *string
 	theme            *theme.Theme
+	syntax           highlighting
+}
+
+// highlighting is the renderer's syntax cache: lexer styles that are relexed
+// from the first changed line and only as far as the screen shows, and the
+// language server's semantic tokens grouped by row, laid over them when a row
+// is drawn.
+type highlighting struct {
+	lexer      *syntax.Incremental // nil: the file has no lexer
+	buffer     *buffer.Buffer
+	path       string
+	generation uint64
+	revision   uint64 // buffer revision the lexer styles reflect
+	ready      bool
+
+	semanticRevision uint64
+	semanticRows     map[int][]semantic.Token
+	scratch          []syntax.Style
+}
+
+// styles returns lexer styles for the buffer down to row through, relexing
+// only what changed since the last frame; nil when the file has no lexer.
+func (h *highlighting) styles(e *editor.Editor, through int) [][]syntax.Style {
+	b := e.Buffer
+	if !h.ready || h.buffer != b || h.path != e.File.Path || h.generation != e.Generation {
+		h.lexer, _ = syntax.NewIncremental(e.File.Path)
+		h.buffer, h.path, h.generation = b, e.File.Path, e.Generation
+		h.revision = b.Revision()
+		h.ready = true
+	} else if b.Revision() != h.revision {
+		row, ok := b.FirstChangedRow(h.revision)
+		if !ok {
+			row = 0
+		}
+		if h.lexer != nil {
+			h.lexer.Invalidate(row)
+		}
+		h.revision = b.Revision()
+	}
+	if h.lexer == nil {
+		return nil
+	}
+	return h.lexer.Lines(b, through)
+}
+
+// row is the styles row is drawn with: the lexer's, with the semantic tokens
+// for that row laid over them (unless an edit is waiting to reach the server,
+// when the tokens describe older text). The result is valid until the next
+// call.
+func (h *highlighting) row(e *editor.Editor, styles [][]syntax.Style, row int) []syntax.Style {
+	base := styles[row]
+	if e.LSPWaiting() {
+		return base
+	}
+	if h.semanticRows == nil || h.semanticRevision != e.LSP.SemanticRevision {
+		h.semanticRows = map[int][]semantic.Token{}
+		for _, token := range e.LSP.SemanticTokens {
+			h.semanticRows[token.Row] = append(h.semanticRows[token.Row], token)
+		}
+		h.semanticRevision = e.LSP.SemanticRevision
+	}
+	tokens := h.semanticRows[row]
+	if len(tokens) == 0 {
+		return base
+	}
+	h.scratch = append(h.scratch[:0], base...)
+	applySemanticRow(h.scratch, tokens)
+	return h.scratch
 }
 
 // charWidth is c.width().unwrap_or(0).
@@ -242,9 +308,15 @@ func (v *View) PageRows() int {
 	return max(v.rows-2, 1)
 }
 
+// Screen reports the size of the terminal being drawn on. *term.Terminal is
+// one; benchmarks and tests use a fixed size.
+type Screen interface {
+	Size() (cols, rows int, err error)
+}
+
 // Draw renders the editor to out at the terminal's current size, and records
 // the viewport so a later jump back to this file restores it.
-func (v *View) Draw(e *editor.Editor, t *term.Terminal, out io.Writer) error {
+func (v *View) Draw(e *editor.Editor, t Screen, out io.Writer) error {
 	w, h, err := t.Size()
 	if err != nil {
 		return err
@@ -669,9 +741,9 @@ func (v *View) drawBuffer(e *editor.Editor, w, h int, out io.Writer) error {
 	palette := e.Palette()
 	rows := max(h-2, 0)
 	b := e.Buffer
-	lines := b.Lines()
+	lineCount := b.LineCount()
 	// Keep at least one text cell on narrow terminals; omit the gutter if necessary.
-	numberWidth := len(strconv.Itoa(len(lines))) + 1
+	numberWidth := len(strconv.Itoa(lineCount)) + 1
 	gutter := 0
 	if w > numberWidth {
 		gutter = numberWidth
@@ -682,38 +754,31 @@ func (v *View) drawBuffer(e *editor.Editor, w, h int, out io.Writer) error {
 	} else if b.Row >= v.top+max(rows, 1) {
 		v.top = b.Row + 1 - max(rows, 1)
 	}
-	col := lineCells(lines[b.Row][:min(b.Col, len(lines[b.Row]))])
+	cursorLine := b.Line(b.Row)
+	col := lineCells(cursorLine[:min(b.Col, len(cursorLine))])
 	if col < v.left {
 		v.left = col
 	} else if col >= v.left+textWidth {
 		v.left = col + 1 - textWidth
 	}
 	revision := [2]uint64{b.Revision(), e.File.Revision()}
-	pathChanged := v.syntaxPath == nil || *v.syntaxPath != e.File.Path
-	semanticChanged := v.semanticRevision != e.LSP.SemanticRevision
-	if v.revision == nil || *v.revision != revision || pathChanged || semanticChanged {
-		if v.revision == nil || v.revision[0] != revision[0] || pathChanged || semanticChanged {
-			path := e.File.Path
-			v.syntaxPath = &path
-			v.styles = syntax.ForPath(path, lines)
-			if v.styles != nil {
-				applySemantic(v.styles, e.LSP.SemanticTokens)
-			}
-			v.semanticRevision = e.LSP.SemanticRevision
-		}
-		v.dirty = e.File.Dirty(b.Text())
+	if v.revision == nil || *v.revision != revision {
+		v.dirty = e.Dirty()
 		v.revision = &revision
 	}
+	styles := v.syntax.styles(e, v.top+rows-1)
+	lspCurrent := !e.LSPWaiting()
 	frame := make([][]byte, h)
 	for y := 0; y < rows; y++ {
 		lineOut := &frame[y]
-		if v.top+y >= len(lines) {
+		if v.top+y >= lineCount {
 			*lineOut = append(*lineOut, '~')
 			continue
 		}
-		line := lines[v.top+y]
+		line := b.Line(v.top + y)
 		if gutter > 0 {
 			severity, hasSeverity := e.LSP.LineSeverity(v.top + y)
+			hasSeverity = hasSeverity && lspCurrent
 			number := strconv.Itoa(v.top + y + 1)
 			if pad := gutter - 1 - len(number); pad > 0 {
 				number = strings.Repeat(" ", pad) + number
@@ -740,8 +805,8 @@ func (v *View) drawBuffer(e *editor.Editor, w, h int, out io.Writer) error {
 		}
 		selection := selectionOf(e, v.top+y)
 		switch {
-		case v.styles != nil:
-			styledLine(lineOut, line, v.styles[v.top+y], v.left, textWidth, palette, selection, v.noColor)
+		case styles != nil:
+			styledLine(lineOut, line, v.syntax.row(e, styles, v.top+y), v.left, textWidth, palette, selection, v.noColor)
 		case selection != nil:
 			styledLine(lineOut, line, make([]syntax.Style, len(line)), v.left, textWidth, palette, selection, v.noColor)
 		default:
@@ -760,7 +825,10 @@ func (v *View) drawBuffer(e *editor.Editor, w, h int, out io.Writer) error {
 	status := strip + " | " + e.Mode.String() + " " + fsx.Display(e.File.Path) + dirtyMark +
 		"  " + strconv.Itoa(b.Row+1) + ":" + strconv.Itoa(b.Col+1)
 	if e.LSP.Status != "" {
-		errors, warnings := e.LSP.Counts()
+		errors, warnings := 0, 0
+		if lspCurrent {
+			errors, warnings = e.LSP.Counts()
+		}
 		status += " | " + e.LSP.Status + " E:" + strconv.Itoa(errors) + " W:" + strconv.Itoa(warnings)
 	}
 	statusRunes := []rune(status)
@@ -776,7 +844,7 @@ func (v *View) drawBuffer(e *editor.Editor, w, h int, out io.Writer) error {
 	case e.PendingInput() != "":
 		message = e.PendingInput()
 	case e.Message == "":
-		if text, ok := e.LSP.AtCursor(b.Row, b.Col); ok {
+		if text, ok := e.LSP.AtCursor(b.Row, b.Col); ok && lspCurrent {
 			message = text
 		} else if text, ok := e.LSP.Failure(); ok {
 			message = text
@@ -818,10 +886,10 @@ func (v *View) drawBuffer(e *editor.Editor, w, h int, out io.Writer) error {
 		var cells int
 		switch {
 		case row < rows:
-			if v.top+row >= len(lines) {
+			if v.top+row >= lineCount {
 				cells = 1
 			} else {
-				text := lines[v.top+row]
+				text := b.Line(v.top + row)
 				endCell := lineCells(text)
 				selectedEnd := 0
 				if sel := selectionOf(e, v.top+row); sel != nil && sel.contains(len(text)) &&
@@ -860,12 +928,10 @@ func selectionOf(e *editor.Editor, row int) *selectionRange {
 }
 
 // applySemantic overlays server-provided token styles on the lexical ones.
-func applySemantic(styles [][]syntax.Style, tokens []semantic.Token) {
+// applySemanticRow lays tokens, all on one row, over that row's styles,
+// skipping tokens that do not fit in it.
+func applySemanticRow(line []syntax.Style, tokens []semantic.Token) {
 	for _, token := range tokens {
-		if token.Row >= len(styles) {
-			continue
-		}
-		line := styles[token.Row]
 		if token.Start > token.End || token.End > len(line) {
 			continue
 		}

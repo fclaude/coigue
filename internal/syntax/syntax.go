@@ -60,96 +60,102 @@ func get(line []rune, i int) rune {
 
 // Go styles Go source: line comments, block comments and raw strings that
 // span lines, interpreted strings and runes, numbers, and keywords.
-func Go(lines [][]rune) [][]Style {
-	blockComment := false
-	rawString := false
-	result := make([][]Style, 0, len(lines))
-	for _, line := range lines {
-		styles := make([]Style, len(line))
-		i := 0
-		for i < len(line) {
-			start := i
-			c := line[i]
-			next := get(line, i+1)
-			var style Style
-			switch {
-			case blockComment:
-				style = Comment
-				if c == '*' && next == '/' {
-					blockComment = false
-					i += 2
-				} else {
-					i++
-				}
-			case rawString:
-				style = String
-				if c == '`' {
-					rawString = false
-				}
-				i++
-			case c == '/' && next == '/':
-				style = Comment
-				i = len(line)
-			case c == '/' && next == '*':
-				style = Comment
-				blockComment = true
+func Go(lines [][]rune) [][]Style { return lexAll(lines, goLine) }
+
+// goLine styles one line of Go given the state the previous line ended in.
+func goLine(line []rune, st State) ([]Style, State) {
+	blockComment := st.flags&goBlockComment != 0
+	rawString := st.flags&goRawString != 0
+	styles := make([]Style, len(line))
+	i := 0
+	for i < len(line) {
+		start := i
+		c := line[i]
+		next := get(line, i+1)
+		var style Style
+		switch {
+		case blockComment:
+			style = Comment
+			if c == '*' && next == '/' {
+				blockComment = false
 				i += 2
-			case c == '`':
-				style = String
-				rawString = true
-				i++
-			case c == '"' || c == '\'':
-				style = String
-				i++
-				for i < len(line) {
-					ch := line[i]
-					i++
-					if ch == '\\' {
-						i = min(i+1, len(line))
-					} else if ch == c {
-						break
-					}
-				}
-			case ucd.IsASCIIDigit(c) || (c == '.' && next >= 0 && ucd.IsASCIIDigit(next)):
-				style = Number
-				i++
-				// Rust oddity preserved: a sign continues the number after any
-				// e, E, p or P, so the hex literal 0xe+1 is one number, and
-				// every '.' continues it, so 1.2.3 is one number.
-				for i < len(line) {
-					ch := line[i]
-					if ucd.IsASCIIAlphanumeric(ch) ||
-						ch == '_' ||
-						ch == '.' ||
-						((ch == '+' || ch == '-') && isOneOf(line[i-1], 'e', 'E', 'p', 'P')) {
-						i++
-					} else {
-						break
-					}
-				}
-			case identStart(c):
-				i++
-				for i < len(line) && ident(line[i]) {
-					i++
-				}
-				if goKeywords[string(line[start:i])] {
-					style = Keyword
-				} else {
-					style = Plain
-				}
-			default:
-				if ucd.IsASCIIPunctuation(c) {
-					style = Punctuation
-				} else {
-					style = Plain
-				}
+			} else {
 				i++
 			}
-			fill(styles[start:i], style)
+		case rawString:
+			style = String
+			if c == '`' {
+				rawString = false
+			}
+			i++
+		case c == '/' && next == '/':
+			style = Comment
+			i = len(line)
+		case c == '/' && next == '*':
+			style = Comment
+			blockComment = true
+			i += 2
+		case c == '`':
+			style = String
+			rawString = true
+			i++
+		case c == '"' || c == '\'':
+			style = String
+			i++
+			for i < len(line) {
+				ch := line[i]
+				i++
+				if ch == '\\' {
+					i = min(i+1, len(line))
+				} else if ch == c {
+					break
+				}
+			}
+		case ucd.IsASCIIDigit(c) || (c == '.' && next >= 0 && ucd.IsASCIIDigit(next)):
+			style = Number
+			i++
+			// Rust oddity preserved: a sign continues the number after any
+			// e, E, p or P, so the hex literal 0xe+1 is one number, and
+			// every '.' continues it, so 1.2.3 is one number.
+			for i < len(line) {
+				ch := line[i]
+				if ucd.IsASCIIAlphanumeric(ch) ||
+					ch == '_' ||
+					ch == '.' ||
+					((ch == '+' || ch == '-') && isOneOf(line[i-1], 'e', 'E', 'p', 'P')) {
+					i++
+				} else {
+					break
+				}
+			}
+		case identStart(c):
+			i++
+			for i < len(line) && ident(line[i]) {
+				i++
+			}
+			if goKeywords[string(line[start:i])] {
+				style = Keyword
+			} else {
+				style = Plain
+			}
+		default:
+			if ucd.IsASCIIPunctuation(c) {
+				style = Punctuation
+			} else {
+				style = Plain
+			}
+			i++
 		}
-		result = append(result, styles)
+		fill(styles[start:i], style)
 	}
-	return result
+	var end State
+	if blockComment {
+		end.flags |= goBlockComment
+	}
+	if rawString {
+		end.flags |= goRawString
+	}
+	return styles, end
 }
 
 // goKeywords is read-only.
@@ -183,133 +189,138 @@ var goKeywords = map[string]bool{
 
 // Rust styles Rust source: nested block comments, raw and byte/C strings that
 // span lines, characters and lifetimes, numbers, macros and keywords.
-func Rust(lines [][]rune) [][]Style {
-	depth := 0
-	quoted := false
+func Rust(lines [][]rune) [][]Style { return lexAll(lines, rustLine) }
+
+// rustLine styles one line of Rust given the state the previous line ended in.
+func rustLine(line []rune, st State) ([]Style, State) {
+	depth := st.depth
+	quoted := st.flags&rustQuoted != 0
+	// A backslash at end of line escapes the newline, not the next character.
 	escaped := false
-	raw := false // Rust's Option<usize>: raw reports Some, rawHashes is its value.
-	rawHashes := 0
-	result := make([][]Style, 0, len(lines))
-	for _, line := range lines {
-		styles := make([]Style, len(line))
-		i := 0
-		for i < len(line) {
-			start := i
-			c := line[i]
-			next := get(line, i+1)
-			var style Style
-			if depth > 0 {
-				style = Comment
-				if c == '/' && next == '*' {
-					depth++
-					i += 2
-				} else if c == '*' && next == '/' {
-					depth--
-					i += 2
-				} else {
-					i++
-				}
-			} else if raw {
-				style = String
-				if c == '"' && rawTerminator(line, i, rawHashes) {
-					i += 1 + rawHashes
-					raw = false
-				} else {
-					i++
-				}
-			} else if quoted {
-				style = String
-				if escaped {
-					escaped = false
-				} else if c == '\\' {
-					escaped = true
-				} else if c == '"' {
-					quoted = false
-				}
-				i++
-			} else if c == '/' && next == '/' {
-				style = Comment
-				i = len(line)
-			} else if c == '/' && next == '*' {
-				style = Comment
-				depth = 1
+	raw := st.flags&rustRaw != 0 // Rust's Option<usize>: raw reports Some, rawHashes is its value.
+	rawHashes := st.hashes
+	styles := make([]Style, len(line))
+	i := 0
+	for i < len(line) {
+		start := i
+		c := line[i]
+		next := get(line, i+1)
+		var style Style
+		if depth > 0 {
+			style = Comment
+			if c == '/' && next == '*' {
+				depth++
 				i += 2
-			} else if end, hashes, ok := rawStart(line, i); ok {
-				style = String
-				raw = true
-				rawHashes = hashes
-				i = end
-			} else if c == '"' || ((c == 'b' || c == 'c') && next == '"') {
-				style = String
-				quoted = true
-				if c == '"' {
-					i++
-				} else {
-					i += 2
-				}
-			} else if end, ok := charEnd(line, i); ok {
-				style = String
-				i = end
-			} else if c == '\'' && next >= 0 && identStart(next) {
-				style = Lifetime
+			} else if c == '*' && next == '/' {
+				depth--
 				i += 2
-				for i < len(line) && ident(line[i]) {
-					i++
-				}
-			} else if ucd.IsASCIIDigit(c) {
-				style = Number
-				i++
-				// Rust oddity preserved: a sign continues the number after any
-				// e or E, so the hex literal 0xE+1 is one number.
-				for i < len(line) {
-					n := line[i]
-					if ucd.IsASCIIAlphanumeric(n) ||
-						n == '_' ||
-						(n == '.' && ucd.IsASCIIDigit(get(line, i+1))) ||
-						((n == '+' || n == '-') && isOneOf(get(line, i-1), 'e', 'E')) {
-						i++
-					} else {
-						break
-					}
-				}
-			} else if identStart(c) {
-				i++
-				for i < len(line) && ident(line[i]) {
-					i++
-				}
-				word := string(line[start:i])
-				// Raw identifiers deliberately bypass keyword styling.
-				if word == "r" && get(line, i) == '#' && identStartAt(line, i+1) {
-					i += 2
-					for i < len(line) && ident(line[i]) {
-						i++
-					}
-					style = Plain
-				} else if get(line, i) == '!' && get(line, i+1) != '=' {
-					// Rust oddity preserved: the bang is tested before the keyword
-					// table, so `if!x` and `self!` are macro invocations.
-					i++
-					style = Macro
-				} else if rustKeywords[word] {
-					style = Keyword
-				} else {
-					style = Plain
-				}
 			} else {
-				if ucd.IsASCIIPunctuation(c) {
-					style = Punctuation
-				} else {
-					style = Plain
-				}
 				i++
 			}
-			fill(styles[start:i], style)
+		} else if raw {
+			style = String
+			if c == '"' && rawTerminator(line, i, rawHashes) {
+				i += 1 + rawHashes
+				raw = false
+			} else {
+				i++
+			}
+		} else if quoted {
+			style = String
+			if escaped {
+				escaped = false
+			} else if c == '\\' {
+				escaped = true
+			} else if c == '"' {
+				quoted = false
+			}
+			i++
+		} else if c == '/' && next == '/' {
+			style = Comment
+			i = len(line)
+		} else if c == '/' && next == '*' {
+			style = Comment
+			depth = 1
+			i += 2
+		} else if end, hashes, ok := rawStart(line, i); ok {
+			style = String
+			raw = true
+			rawHashes = hashes
+			i = end
+		} else if c == '"' || ((c == 'b' || c == 'c') && next == '"') {
+			style = String
+			quoted = true
+			if c == '"' {
+				i++
+			} else {
+				i += 2
+			}
+		} else if end, ok := charEnd(line, i); ok {
+			style = String
+			i = end
+		} else if c == '\'' && next >= 0 && identStart(next) {
+			style = Lifetime
+			i += 2
+			for i < len(line) && ident(line[i]) {
+				i++
+			}
+		} else if ucd.IsASCIIDigit(c) {
+			style = Number
+			i++
+			// Rust oddity preserved: a sign continues the number after any
+			// e or E, so the hex literal 0xE+1 is one number.
+			for i < len(line) {
+				n := line[i]
+				if ucd.IsASCIIAlphanumeric(n) ||
+					n == '_' ||
+					(n == '.' && ucd.IsASCIIDigit(get(line, i+1))) ||
+					((n == '+' || n == '-') && isOneOf(get(line, i-1), 'e', 'E')) {
+					i++
+				} else {
+					break
+				}
+			}
+		} else if identStart(c) {
+			i++
+			for i < len(line) && ident(line[i]) {
+				i++
+			}
+			word := string(line[start:i])
+			// Raw identifiers deliberately bypass keyword styling.
+			if word == "r" && get(line, i) == '#' && identStartAt(line, i+1) {
+				i += 2
+				for i < len(line) && ident(line[i]) {
+					i++
+				}
+				style = Plain
+			} else if get(line, i) == '!' && get(line, i+1) != '=' {
+				// Rust oddity preserved: the bang is tested before the keyword
+				// table, so `if!x` and `self!` are macro invocations.
+				i++
+				style = Macro
+			} else if rustKeywords[word] {
+				style = Keyword
+			} else {
+				style = Plain
+			}
+		} else {
+			if ucd.IsASCIIPunctuation(c) {
+				style = Punctuation
+			} else {
+				style = Plain
+			}
+			i++
 		}
-		// A backslash at end of line escapes the newline, not the next character.
-		escaped = false
-		result = append(result, styles)
+		fill(styles[start:i], style)
 	}
-	return result
+	end := State{depth: depth, hashes: rawHashes}
+	if quoted {
+		end.flags |= rustQuoted
+	}
+	if raw {
+		end.flags |= rustRaw
+	}
+	return styles, end
 }
 
 // rawTerminator is (0..hashes).all(|n| line.get(i + 1 + n) == Some(&'#')).

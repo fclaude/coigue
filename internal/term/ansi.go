@@ -16,6 +16,12 @@ const (
 	ClearUntilNewLine       = "\x1b[K"
 	ClearAll                = "\x1b[2J"
 
+	// EnableBracketedPaste asks the terminal to wrap pasted text in
+	// ESC[200~ ... ESC[201~, so it arrives as one PasteEvent instead of
+	// one key press per character.
+	EnableBracketedPaste  = "\x1b[?2004h"
+	DisableBracketedPaste = "\x1b[?2004l"
+
 	Reverse         = "\x1b[7m"
 	NoReverse       = "\x1b[27m"
 	Bold            = "\x1b[1m"
@@ -49,6 +55,11 @@ func ForegroundAnsi(n uint8) string { return "\x1b[38;5;" + strconv.Itoa(int(n))
 // BackgroundAnsi selects a background from the terminal's 256-colour palette.
 func BackgroundAnsi(n uint8) string { return "\x1b[48;5;" + strconv.Itoa(int(n)) + "m" }
 
-// restoreSequence is what the terminal receives on every exit path: end any
-// synchronized update, show the cursor, reset colours, leave the alternate screen.
-const restoreSequence = EndSynchronizedUpdate + Show + ResetColor + LeaveAlternateScreen
+// EnterSequence is what the terminal receives when the editor starts: the
+// alternate screen, then bracketed paste.
+const EnterSequence = EnterAlternateScreen + EnableBracketedPaste
+
+// restoreSequence is what the terminal receives on every exit path: stop
+// bracketed paste, end any synchronized update, show the cursor, reset colours,
+// leave the alternate screen.
+const restoreSequence = DisableBracketedPaste + EndSynchronizedUpdate + Show + ResetColor + LeaveAlternateScreen

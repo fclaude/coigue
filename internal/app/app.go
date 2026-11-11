@@ -28,6 +28,18 @@ const usage = "Usage: coigue [FILE]\n\nWithout a file, welcome opens in the curr
 // polling background work.
 const pollInterval = 50 * time.Millisecond
 
+// While at least burstEvents events are already waiting (a paste in a
+// terminal without bracketed paste sends one per character) the loop handles
+// them without drawing, but redraws at least every frameBudget. A burst then
+// costs a frame per frameBudget instead of one per key. Fewer waiting events,
+// such as a few keys arriving in one read, still get a frame each, so every
+// prompt and message they pass through is shown; no one types burstEvents
+// keys within one frame.
+const (
+	burstEvents = 16
+	frameBudget = 33 * time.Millisecond
+)
+
 // Main runs the editor with the process arguments (without the program name)
 // and returns the exit status. --help and --version are answered without
 // touching the terminal.
@@ -87,7 +99,7 @@ func run(args []string) error {
 		ed.LoadInit(path)
 		ed.RunStart()
 	}
-	return loop(ed, t, in)
+	return loop(ed, t, os.Stdout, in)
 }
 
 // input is the terminal's event stream. While an extension runs the editor is
@@ -133,15 +145,24 @@ func (in *input) watchForInterrupt(interrupt func()) (stop func()) {
 	}
 }
 
-func loop(ed *editor.Editor, t *term.Terminal, in *input) error {
+// loop draws, waits for input and hands it to the editor until the editor
+// quits or the input closes. While a burst of input is waiting it skips the
+// frame (and the background polling of Tick), up to frameBudget. screen gives the size to draw at and out receives
+// the frames; the real terminal is both, benchmarks use stand-ins.
+func loop(ed *editor.Editor, screen render.Screen, out io.Writer, in *input) error {
 	var view render.View
 	view.SetNoColor(os.Getenv("NO_COLOR") != "")
 	timer := time.NewTimer(pollInterval)
 	defer timer.Stop()
+	var drawn time.Time
 	for {
-		ed.Tick(view.PageRows())
-		if err := view.Draw(ed, t, os.Stdout); err != nil {
-			return err
+		burst := len(in.pending)+len(in.events) >= burstEvents
+		if !burst || time.Since(drawn) >= frameBudget {
+			ed.Tick(view.PageRows())
+			if err := view.Draw(ed, screen, out); err != nil {
+				return err
+			}
+			drawn = time.Now()
 		}
 		if !timer.Stop() {
 			select {
@@ -164,12 +185,23 @@ func loop(ed *editor.Editor, t *term.Terminal, in *input) error {
 				event = next
 			}
 		}
+		if event.Type == term.PasteEvent {
+			if ed.AcceptsPaste() {
+				ed.Paste(event.Paste)
+			} else {
+				// Where text cannot be inserted, a paste is the keys it is
+				// made of, as without bracketed paste; they go first.
+				parser := term.Parser{Raw: true}
+				in.pending = append(parser.Feed([]byte(event.Paste), false), in.pending...)
+			}
+			continue
+		}
 		if event.Type != term.KeyEvent || event.Kind == term.Release {
 			continue
 		}
 		// Resize notifications can arrive after a queued key. Page by
 		// the current terminal height rather than the last drawn frame.
-		_, rows, err := t.Size()
+		_, rows, err := screen.Size()
 		if err != nil {
 			return err
 		}

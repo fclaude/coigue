@@ -133,3 +133,75 @@ func TestLineFeedIsCtrlJInRawModeAndEnterOtherwise(t *testing.T) {
 		t.Fatalf("cooked: %v", got[0].Key)
 	}
 }
+
+// referenceFeed is Feed without the bracketed-paste shortcut: every byte
+// re-parses the whole buffer, as crossterm does.
+func referenceFeed(buf *[]byte, data []byte, more, raw bool) []Event {
+	var events []Event
+	for i, b := range data {
+		*buf = append(*buf, b)
+		event, st := parseEvent(*buf, i+1 < len(data) || more, raw)
+		switch st {
+		case statusDone:
+			if event.Type != internal {
+				events = append(events, event)
+			}
+			*buf = (*buf)[:0]
+		case statusFail:
+			*buf = (*buf)[:0]
+		}
+	}
+	return events
+}
+
+func TestPasteShortcutMatchesFullReparse(t *testing.T) {
+	pieces := []string{"\x1b[200~", "\x1b[201~", "\x1b[20", "0~", "1~", "\x1b", "[", "a", "é", "\r", "\n",
+		"\x1b[A", "\x1b[1;5C", "\xff", "~", "2", "0", "😀", "\x1b[200~x\x1b[201~"}
+	rng := uint64(1)
+	next := func(n int) int {
+		rng = rng*6364136223846793005 + 1442695040888963407
+		return int(rng>>33) % n
+	}
+	for c := range 3000 {
+		var input []byte
+		for range 1 + next(12) {
+			input = append(input, pieces[next(len(pieces))]...)
+		}
+		var chunks [][]byte
+		for rest := input; len(rest) > 0; {
+			k := 1 + next(len(rest))
+			chunks = append(chunks, rest[:k])
+			rest = rest[k:]
+		}
+		p := Parser{Raw: true}
+		var ref []byte
+		var got, want []string
+		for i, chunk := range chunks {
+			more := i+1 < len(chunks) && next(2) == 0
+			for _, e := range p.Feed(chunk, more) {
+				got = append(got, formatEvent(e))
+			}
+			for _, e := range referenceFeed(&ref, chunk, more, true) {
+				want = append(want, formatEvent(e))
+			}
+		}
+		if strings.Join(got, ";") != strings.Join(want, ";") {
+			t.Fatalf("case %d input %q\n  got  %v\n  want %v", c, input, got, want)
+		}
+	}
+}
+
+func TestLongBracketedPasteIsOneEvent(t *testing.T) {
+	text := strings.Repeat("line of pasted text\r", 50_000)
+	p := Parser{Raw: true}
+	var events []Event
+	data := []byte("\x1b[200~" + text + "\x1b[201~")
+	for len(data) > 0 {
+		k := min(len(data), readSize)
+		events = append(events, p.Feed(data[:k], k == readSize)...)
+		data = data[k:]
+	}
+	if len(events) != 1 || events[0].Type != PasteEvent || events[0].Paste != text {
+		t.Fatalf("%d events", len(events))
+	}
+}

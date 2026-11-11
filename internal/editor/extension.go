@@ -449,7 +449,7 @@ func (e *Editor) idleForEvents() bool {
 // nothing while there are none or the text has not changed.
 func (e *Editor) syncMarks() {
 	if e.extensions != nil && e.extensions.HasMarks() {
-		e.extensions.SyncMarks(e.Buffer.Lines(), e.Buffer.Revision(), e.Generation)
+		e.extensions.SyncMarks(e.Buffer.Lines, e.Buffer.Revision(), e.Generation)
 	}
 }
 

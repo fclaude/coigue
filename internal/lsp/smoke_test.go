@@ -25,6 +25,13 @@ import (
 	"time"
 )
 
+// testPython is the Python interpreter binary the fake servers run under.
+// It asks the python3 on PATH for sys.executable rather than using that path
+// itself, because it is often a version manager's shim (pyenv, asdf), which is
+// a shell script. The fake servers name their interpreter in a #! line, and
+// macOS will not run a script as another script's interpreter (exec fails
+// with "exec format error"), while Linux will; naming the real binary works
+// on both.
 func testPython(t *testing.T) string {
 	t.Helper()
 	name := "python3"
@@ -35,7 +42,19 @@ func testPython(t *testing.T) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return path
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, path, "-c", "import sys; print(sys.executable)").Output()
+	if err != nil {
+		t.Fatalf("%s cannot report its interpreter: %v", path, err)
+	}
+	executable := strings.TrimSpace(string(out))
+	if executable == "" {
+		// An embedded or unusual build may not know; the looked-up path is
+		// then the best there is.
+		return path
+	}
+	return executable
 }
 
 type smoke struct {
@@ -54,13 +73,7 @@ type smoke struct {
 // Client that starts them from PATH.
 func newSmoke(t *testing.T, mode string) *smoke {
 	t.Helper()
-	python, err := exec.LookPath("python3")
-	if runtime.GOOS == "windows" {
-		python, err = exec.LookPath("python")
-	}
-	if err != nil {
-		t.Fatal(err)
-	}
+	python := testPython(t)
 	base, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)

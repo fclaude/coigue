@@ -27,7 +27,7 @@ func columnArg(c *scheme.Call, s *Session, i, row int) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	if length := len(s.Buffer.Lines()[row]); n < 1 || n > int64(length)+1 {
+	if length := len(s.Buffer.Line(row)); n < 1 || n > int64(length)+1 {
 		return 0, fmt.Errorf("column %d is outside 1..%d on line %d", n, length+1, row+1)
 	}
 	return int(n), nil
@@ -75,7 +75,7 @@ func readOperations() []*scheme.Prim {
 				}
 				if s.selection.Linewise {
 					from[1] = 0
-					to[1] = max(len(b.Lines()[min(to[0], b.LineCount()-1)])-1, 0)
+					to[1] = max(len(b.Line(min(to[0], b.LineCount()-1)))-1, 0)
 				}
 				return scheme.List(
 					scheme.Int(int64(from[0]+1)), scheme.Int(int64(from[1]+1)),

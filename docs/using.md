@@ -55,6 +55,8 @@ Counts work in front of most commands. `3x` deletes three characters, `2dd` dele
 
 These commands use the register inside the editor and never touch your system clipboard. That's what `Y` in Visual mode and the `:clipboard-copy` and `:clipboard-paste` commands are for.
 
+Pasting into the terminal, with `Cmd-V` or `Ctrl-Shift-V`, works too, however long the text is. In Insert mode the text goes in where you are typing. In Normal mode it goes in before the cursor, like `P`, and `u` takes it out again in one step. The register keeps what you last copied.
+
 ## Searching
 
 `/` followed by some text and Enter jumps to the next match in the file. The search is literal and it cares about capitals. Type `/lazy` and Enter and the cursor lands on the `l` of `lazy`. `n` goes to the next match and `N` to the previous one. This file has only one `lazy`, so `n` says `/lazy (wrapped)` and stays where it is, which tells you the search went all the way round.

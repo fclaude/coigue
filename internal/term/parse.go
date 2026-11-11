@@ -1,6 +1,7 @@
 package term
 
 import (
+	"bytes"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -80,6 +81,13 @@ func (p *Parser) Feed(data []byte, more bool) []Event {
 	var events []Event
 	for i, b := range data {
 		p.buf = append(p.buf, b)
+		// Inside a bracketed paste every byte but the end of ESC[201~ leaves
+		// the event incomplete, so only the tail needs looking at. Parsing
+		// the whole buffer again would make a paste quadratic in its length.
+		if len(p.buf) > len(pasteStart) && bytes.HasPrefix(p.buf, pasteStart) &&
+			!bytes.HasSuffix(p.buf, pasteEnd) {
+			continue
+		}
 		moreAfter := i+1 < len(data) || more
 		event, st := parseEvent(p.buf, moreAfter, p.Raw)
 		switch st {
@@ -564,6 +572,9 @@ func parseCursorPosition(buffer []byte) (Event, status) {
 	}
 	return swallowed()
 }
+
+// pasteStart and pasteEnd bracket a paste when EnableBracketedPaste is on.
+var pasteStart, pasteEnd = []byte("\x1b[200~"), []byte("\x1b[201~")
 
 func parseBracketedPaste(buffer []byte) (Event, status) {
 	if !strings.HasSuffix(string(buffer), "\x1b[201~") {

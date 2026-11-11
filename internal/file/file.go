@@ -72,6 +72,10 @@ func (f *File) Dirty(text string) bool {
 	return string(f.original) != text
 }
 
+// Saved returns the contents Dirty compares against: the file as last read
+// or saved (empty for a missing file). Callers must not modify it.
+func (f *File) Saved() []byte { return f.original }
+
 func (f *File) matchesDisk(data []byte, exists bool) bool {
 	if exists != f.hasOriginal {
 		return false

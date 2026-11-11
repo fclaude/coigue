@@ -383,7 +383,7 @@ func (e *Editor) requestOpen(path string) {
 	location := navigation.NewLocation(path)
 	e.pendingJump = &pendingJump{location: location, travel: navigation.New}
 	e.Message = ""
-	if e.File.Dirty(e.Buffer.Text()) {
+	if e.Dirty() {
 		e.SwitchPrompt = location.Path
 	} else {
 		e.openPath(location.Path)

@@ -23,7 +23,8 @@ type Terminal struct {
 	closed bool
 }
 
-// Enter switches the terminal to raw mode and then to the alternate screen.
+// Enter switches the terminal to raw mode, then to the alternate screen with
+// bracketed paste (EnterSequence).
 // Input comes from stdin when it is a terminal, else from /dev/tty. If entering
 // the alternate screen fails (for example stdout is a full disk) the terminal
 // is restored before the error is returned.
@@ -44,7 +45,7 @@ func Enter(out *os.File) (*Terminal, error) {
 		return nil, err
 	}
 	t := &Terminal{in: in, ownsIn: owns, out: out, state: state}
-	if _, err := io.WriteString(out, EnterAlternateScreen); err != nil {
+	if _, err := io.WriteString(out, EnterSequence); err != nil {
 		t.Close()
 		return nil, err
 	}

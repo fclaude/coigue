@@ -1,13 +1,20 @@
 // Package buffer is the editable text of one file: lines of Unicode scalars, a
 // cursor, and undo history. Every text mutation goes through a method of
 // Buffer, and every mutation first calls change, which is the single place that
-// captures the pre-edit snapshot. BeginEdit and FinishEdit bracket an
+// captures the pre-edit snapshot and records which rows the edit may alter
+// (see track.go). BeginEdit and FinishEdit bracket an
 // edit-transaction: all changes made between them become one undo step.
+//
+// The lines are kept in a rope (see package rope): a persistent tree, so an
+// undo snapshot is the old tree itself rather than a copy of the text, and an
+// edit rebuilds only the path to the lines it changes. Lines are never
+// modified in place, because snapshots share them; every edit makes new ones.
 package buffer
 
 import (
 	"strings"
 
+	"github.com/fclaude/coigue/internal/rope"
 	"github.com/fclaude/coigue/internal/ucd"
 )
 
@@ -15,16 +22,15 @@ import (
 const HistoryLimit = 100
 
 type snapshot struct {
-	lines [][]rune
-	row   int
-	col   int
+	text rope.Rope
+	row  int
+	col  int
 }
 
-// Buffer holds lines as rune slices (Rust's Vec<Vec<char>>). The cursor
-// (Row, Col) may be moved freely by the editor; text only changes through the
-// methods below.
+// Buffer holds lines of rune slices in a rope. The cursor (Row, Col) may be
+// moved freely by the editor; text only changes through the methods below.
 type Buffer struct {
-	lines      [][]rune
+	text       rope.Rope // at least one line
 	Row        int
 	Col        int
 	revision   uint64
@@ -32,6 +38,7 @@ type Buffer struct {
 	redo       []snapshot
 	editOrigin *[2]int
 	beforeEdit *snapshot
+	damage     [damageLog]damage
 }
 
 func splitLines(text string) [][]rune {
@@ -46,15 +53,20 @@ func splitLines(text string) [][]rune {
 // New creates a buffer holding text. A trailing newline yields a final empty line,
 // so that Text returns exactly what was given.
 func New(text string) *Buffer {
-	return &Buffer{lines: splitLines(text)}
+	return &Buffer{text: rope.FromLines(splitLines(text))}
 }
 
-// Lines returns the buffer's lines for reading. Callers must not modify them:
-// all edits go through Buffer methods so history stays consistent.
-func (b *Buffer) Lines() [][]rune { return b.lines }
+// Line returns line i (0 ≤ i < LineCount) for reading. Callers must not
+// modify it: undo history shares it.
+func (b *Buffer) Line(i int) []rune { return b.text.Line(i) }
+
+// Lines returns every line, for reading, in a new slice: it costs one entry
+// per line, so code that runs on every key or frame uses Line and LineCount.
+// Callers must not modify the lines.
+func (b *Buffer) Lines() [][]rune { return b.text.Lines() }
 
 // LineCount returns the number of lines (at least one).
-func (b *Buffer) LineCount() int { return len(b.lines) }
+func (b *Buffer) LineCount() int { return b.text.Len() }
 
 // Revision increases on every change, including undo and redo, so caches keyed
 // on it (highlighting, dirty status) are invalidated even when old text returns.
@@ -70,23 +82,6 @@ func CloneLines(lines [][]rune) [][]rune {
 	return out
 }
 
-func equalLines(a, b [][]rune) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if len(a[i]) != len(b[i]) {
-			return false
-		}
-		for j := range a[i] {
-			if a[i][j] != b[i][j] {
-				return false
-			}
-		}
-	}
-	return true
-}
-
 // BeginEdit starts (or continues) an edit-transaction, remembering where the
 // cursor was so undo returns there.
 func (b *Buffer) BeginEdit() {
@@ -96,12 +91,13 @@ func (b *Buffer) BeginEdit() {
 }
 
 func (b *Buffer) snapshot() snapshot {
-	return snapshot{lines: CloneLines(b.lines), row: b.Row, col: b.Col}
+	return snapshot{text: b.text, row: b.Row, col: b.Col}
 }
 
-// change is called before every mutation. It captures lazily: navigation,
-// copying and search never copy the buffer.
-func (b *Buffer) change() {
+// change is called before every mutation, with the first row the mutation may
+// alter (rows above it keep their text and position). It captures lazily:
+// navigation, copying and search never take a snapshot.
+func (b *Buffer) change(row int) {
 	if b.beforeEdit == nil {
 		s := b.snapshot()
 		if b.editOrigin != nil {
@@ -110,6 +106,7 @@ func (b *Buffer) change() {
 		b.beforeEdit = &s
 	}
 	b.revision++
+	b.noteDamage(row)
 }
 
 // FinishEdit closes the transaction. A transaction whose net effect is no
@@ -118,7 +115,7 @@ func (b *Buffer) FinishEdit() {
 	b.editOrigin = nil
 	s := b.beforeEdit
 	b.beforeEdit = nil
-	if s != nil && !equalLines(s.lines, b.lines) {
+	if s != nil && !rope.Equal(s.text, b.text) {
 		b.undo = append(b.undo, *s)
 		if len(b.undo) > HistoryLimit {
 			b.undo = b.undo[1:]
@@ -135,12 +132,14 @@ func (b *Buffer) Edit(fn func()) {
 }
 
 func (b *Buffer) restore(s snapshot) {
-	b.lines = s.lines
+	row := rope.FirstDifference(b.text, s.text)
+	b.text = s.text
 	b.Row = s.row
 	b.Col = s.col
 	// Revisions must increase even when restoring older contents, so the
 	// renderer invalidates highlighting and its cached dirty status.
 	b.revision++
+	b.noteDamage(row)
 	b.Clamp(false)
 }
 
@@ -179,10 +178,14 @@ type Reflow func(text string, cursor, width int) (start, end int, replacement st
 func (b *Buffer) Justify(width int, fill Reflow) bool {
 	text := b.Text()
 	cursor := 0
-	for _, line := range b.lines[:b.Row] {
+	b.text.Each(0, func(i int, line []rune) bool {
+		if i == b.Row {
+			cursor += runeBytes(line[:b.Col])
+			return false
+		}
 		cursor += runeBytes(line) + 1
-	}
-	cursor += runeBytes(b.lines[b.Row][:b.Col])
+		return true
+	})
 	start, end, replacement, ok := fill(text, cursor, width)
 	if !ok {
 		return false
@@ -190,10 +193,10 @@ func (b *Buffer) Justify(width int, fill Reflow) bool {
 	if text[start:end] == replacement {
 		return false
 	}
-	b.change()
-	updated := text[:start] + replacement + text[end:]
-	b.lines = splitLines(updated)
-	b.Row = strings.Count(text[:start], "\n")
+	row := strings.Count(text[:start], "\n")
+	b.change(row)
+	b.text = rope.FromLines(splitLines(text[:start] + replacement + text[end:]))
+	b.Row = row
 	b.Col = 0
 	return true
 }
@@ -215,64 +218,69 @@ func runeBytes(line []rune) int {
 	return n
 }
 
+// setLine replaces row with line.
+func (b *Buffer) setLine(row int, line []rune) {
+	b.text = b.text.Replace(row, row+1, [][]rune{line})
+}
+
 // OpenLine inserts an empty line below the cursor and moves onto it.
 func (b *Buffer) OpenLine() {
-	b.change()
+	b.change(b.Row + 1)
 	b.Row++
-	b.lines = append(b.lines, nil)
-	copy(b.lines[b.Row+1:], b.lines[b.Row:])
-	b.lines[b.Row] = []rune{}
+	b.text = b.text.Replace(b.Row, b.Row, [][]rune{{}})
 	b.Col = 0
 }
 
 // Text joins the lines with "\n".
 func (b *Buffer) Text() string {
 	var sb strings.Builder
-	for i, line := range b.lines {
+	sb.Grow(b.text.Bytes())
+	b.text.Each(0, func(i int, line []rune) bool {
 		if i > 0 {
 			sb.WriteByte('\n')
 		}
 		sb.WriteString(string(line))
-	}
+		return true
+	})
 	return sb.String()
 }
 
 // Clamp keeps the cursor inside the text: one past the last character is
 // allowed only in insert mode.
 func (b *Buffer) Clamp(insert bool) {
-	b.Row = min(b.Row, len(b.lines)-1)
-	limit := len(b.lines[b.Row])
+	b.Row = min(b.Row, b.text.Len()-1)
+	limit := len(b.Line(b.Row))
 	if !insert && limit > 0 {
 		limit--
 	}
 	b.Col = min(b.Col, limit)
 }
 
+// insertRune returns a new line: line with r inserted at at.
 func insertRune(line []rune, at int, r rune) []rune {
-	line = append(line, 0)
-	copy(line[at+1:], line[at:])
-	line[at] = r
-	return line
+	out := make([]rune, 0, len(line)+1)
+	return append(append(append(out, line[:at]...), r), line[at:]...)
 }
 
+// removeRune returns a new line: line without the character at at.
 func removeRune(line []rune, at int) []rune {
-	return append(line[:at], line[at+1:]...)
+	out := make([]rune, 0, len(line)-1)
+	return append(append(out, line[:at]...), line[at+1:]...)
 }
 
 // Insert types a character at the cursor; '\n' splits the line.
 func (b *Buffer) Insert(ch rune) {
-	b.change()
+	b.change(b.Row)
+	line := b.Line(b.Row)
 	if ch == '\n' {
-		tail := append([]rune(nil), b.lines[b.Row][b.Col:]...)
-		b.lines[b.Row] = b.lines[b.Row][:b.Col]
+		head := line[:b.Col:b.Col]
+		tail := line[b.Col:]
+		b.text = b.text.Replace(b.Row, b.Row+1, [][]rune{head, tail})
 		b.Row++
-		b.lines = append(b.lines, nil)
-		copy(b.lines[b.Row+1:], b.lines[b.Row:])
-		b.lines[b.Row] = tail
 		b.Col = 0
 		return
 	}
-	b.lines[b.Row] = insertRune(b.lines[b.Row], b.Col, ch)
+	b.setLine(b.Row, insertRune(line, b.Col, ch))
 	b.Col++
 }
 
@@ -280,24 +288,25 @@ func (b *Buffer) Insert(ch rune) {
 // start of a line.
 func (b *Buffer) Backspace() {
 	if b.Col > 0 {
-		b.change()
+		b.change(b.Row)
 		b.Col--
-		b.lines[b.Row] = removeRune(b.lines[b.Row], b.Col)
+		b.setLine(b.Row, removeRune(b.Line(b.Row), b.Col))
 	} else if b.Row > 0 {
-		b.change()
-		line := b.lines[b.Row]
-		b.lines = append(b.lines[:b.Row], b.lines[b.Row+1:]...)
+		b.change(b.Row - 1)
+		above, line := b.Line(b.Row-1), b.Line(b.Row)
+		joined := make([]rune, 0, len(above)+len(line))
+		joined = append(append(joined, above...), line...)
+		b.text = b.text.Replace(b.Row-1, b.Row+1, [][]rune{joined})
 		b.Row--
-		b.Col = len(b.lines[b.Row])
-		b.lines[b.Row] = append(b.lines[b.Row], line...)
+		b.Col = len(above)
 	}
 }
 
 // Delete removes the character under the cursor.
 func (b *Buffer) Delete() {
-	if b.Col < len(b.lines[b.Row]) {
-		b.change()
-		b.lines[b.Row] = removeRune(b.lines[b.Row], b.Col)
+	if line := b.Line(b.Row); b.Col < len(line) {
+		b.change(b.Row)
+		b.setLine(b.Row, removeRune(line, b.Col))
 	}
 	b.Clamp(false)
 }
@@ -305,90 +314,83 @@ func (b *Buffer) Delete() {
 // Replace overwrites the character under the cursor; an identical character
 // is not a change.
 func (b *Buffer) Replace(ch rune) {
-	line := b.lines[b.Row]
+	line := b.Line(b.Row)
 	if b.Col < len(line) && line[b.Col] != ch {
-		b.change()
-		b.lines[b.Row][b.Col] = ch
+		b.change(b.Row)
+		replaced := append([]rune(nil), line...)
+		replaced[b.Col] = ch
+		b.setLine(b.Row, replaced)
 	}
 }
 
 // PasteLines inserts whole lines above or below the cursor line.
 func (b *Buffer) PasteLines(lines [][]rune, after, terminated bool) {
-	b.change()
-	if len(b.lines) == 1 && len(b.lines[0]) == 0 {
-		b.lines = CloneLines(lines)
+	empty := b.text.Len() == 1 && len(b.Line(0)) == 0
+	if empty {
+		b.change(0)
+		inserted := CloneLines(lines)
 		// An empty buffer is represented by one placeholder line. Restore
 		// the copied terminator as well when replacing that placeholder.
 		if terminated {
-			b.lines = append(b.lines, []rune{})
+			inserted = append(inserted, []rune{})
 		}
+		if len(inserted) == 0 {
+			inserted = [][]rune{{}}
+		}
+		b.text = rope.FromLines(inserted)
 	} else {
+		row := b.Row
 		if after {
-			b.Row++
+			row++
 		}
-		inserted := CloneLines(lines)
-		tail := append([][]rune(nil), b.lines[b.Row:]...)
-		b.lines = append(append(b.lines[:b.Row], inserted...), tail...)
+		b.change(row)
+		b.Row = row
+		b.text = b.text.Replace(b.Row, b.Row, CloneLines(lines))
 	}
 	b.Col = 0
 }
 
-func (b *Buffer) flatChars() []rune {
-	var out []rune
-	for i, line := range b.lines {
-		if i > 0 {
-			out = append(out, '\n')
-		}
-		out = append(out, line...)
-	}
-	return out
-}
+func (b *Buffer) offset() int { return b.text.Offset(b.Row) + b.Col }
 
-func splitChars(chars []rune) [][]rune {
-	var lines [][]rune
-	start := 0
-	for i, c := range chars {
-		if c == '\n' {
-			lines = append(lines, append([]rune(nil), chars[start:i]...))
-			start = i + 1
-		}
-	}
-	return append(lines, append([]rune(nil), chars[start:]...))
-}
-
-func (b *Buffer) offset() int {
-	n := b.Col
-	for _, line := range b.lines[:b.Row] {
-		n += len(line) + 1
-	}
-	return n
-}
+// rowAt is the row that setOffset(offset) would move the cursor to.
+func (b *Buffer) rowAt(offset int) int { return b.text.RowAt(offset) }
 
 func (b *Buffer) setOffset(offset int) {
-	b.Row = 0
-	for b.Row+1 < len(b.lines) && offset > len(b.lines[b.Row]) {
-		offset -= len(b.lines[b.Row]) + 1
-		b.Row++
-	}
-	b.Col = min(offset, len(b.lines[b.Row]))
+	b.Row = b.text.RowAt(offset)
+	b.Col = min(offset-b.text.Offset(b.Row), len(b.Line(b.Row)))
 }
 
-// PasteChars inserts text characterwise after or before the cursor.
+// PasteChars inserts text characterwise after or before the cursor, leaving
+// the cursor on the last character inserted.
 func (b *Buffer) PasteChars(chars []rune, after bool) {
 	if len(chars) == 0 {
 		return
 	}
-	start := b.offset()
-	if after && b.Col < len(b.lines[b.Row]) {
-		start++
+	row, col := b.Row, min(b.Col, len(b.Line(b.Row)))
+	if after && col < len(b.Line(row)) {
+		col++
 	}
-	b.change()
-	text := b.flatChars()
-	spliced := make([]rune, 0, len(text)+len(chars))
-	spliced = append(append(append(spliced, text[:start]...), chars...), text[start:]...)
-	b.lines = splitChars(spliced)
-	b.setOffset(start + len(chars) - 1)
+	b.change(row)
+	b.Row, b.Col = b.splice(row, col, row, col, chars)
+	// Onto the last inserted character; a line break is at its row's end.
+	if chars[len(chars)-1] == '\n' {
+		b.Row--
+		b.Col = len(b.Line(b.Row))
+	} else {
+		b.Col--
+	}
 	b.Clamp(false)
+}
+
+// InsertText inserts chars at the cursor, '\n' splitting lines, and leaves the
+// cursor just after them, as if they had been typed in Insert mode.
+func (b *Buffer) InsertText(chars []rune) {
+	if len(chars) == 0 {
+		return
+	}
+	row, col := b.Row, min(b.Col, len(b.Line(b.Row)))
+	b.change(row)
+	b.Row, b.Col = b.splice(row, col, row, col, chars)
 }
 
 // Offset is the cursor's character offset in the text, counting each newline.
@@ -399,11 +401,7 @@ func (b *Buffer) Offset() int { return b.offset() }
 // between anchor (row, col) and the cursor, clamped to the text. It moves
 // nothing.
 func (b *Buffer) SelectionSpan(anchor [2]int) (start, end int) {
-	row := min(anchor[0], len(b.lines))
-	a := anchor[1]
-	for _, line := range b.lines[:row] {
-		a += len(line) + 1
-	}
+	a := anchor[1] + b.text.Offset(min(anchor[0], b.text.Len()))
 	c := b.offset()
 	total := b.length()
 	start = min(min(a, c), total)
@@ -415,80 +413,55 @@ func (b *Buffer) SelectionSpan(anchor [2]int) (start, end int) {
 // of two rows to the end of the later one, excluding that row's newline. Rows
 // outside the text are clamped.
 func (b *Buffer) LineSpan(rowA, rowB int) (start, end int) {
-	first := max(min(min(rowA, rowB), len(b.lines)-1), 0)
-	last := max(min(max(rowA, rowB), len(b.lines)-1), 0)
-	for i, line := range b.lines[:last+1] {
-		if i < first {
-			start += len(line) + 1
-		}
-		end += len(line) + 1
-	}
-	return start, end - 1
+	first := max(min(min(rowA, rowB), b.text.Len()-1), 0)
+	last := max(min(max(rowA, rowB), b.text.Len()-1), 0)
+	return b.text.Offset(first), b.text.Offset(last) + len(b.Line(last))
 }
 
 // length is the number of characters Text would have, counting each newline.
-func (b *Buffer) length() int {
-	n := len(b.lines) - 1
-	for _, line := range b.lines {
-		n += len(line)
-	}
-	return n
-}
+func (b *Buffer) length() int { return b.text.Chars() }
 
 // Span returns a copy of the characters in [start, end) (see SelectionSpan),
 // clamped to the text.
 func (b *Buffer) Span(start, end int) []rune {
 	start = max(start, 0)
-	var out []rune
-	at := 0
-	for i, line := range b.lines {
-		if i > 0 {
-			if at >= start && at < end {
-				out = append(out, '\n')
-			}
-			at++
-		}
-		from, to := max(start-at, 0), min(end-at, len(line))
-		if from < to {
-			out = append(out, line[from:to]...)
-		}
-		at += len(line)
-		if at >= end {
-			break
-		}
+	if start >= end {
+		return nil
 	}
-	return out
+	r1, c1 := b.posAt(start)
+	r2, c2 := b.posAt(end)
+	return b.between(r1, c1, r2, c2)
 }
 
 // ReplaceSpan replaces the characters in [start, end) with text and leaves the
 // cursor on the first inserted character (clamped like any Normal-mode
 // cursor). Offsets outside the text are clamped.
 func (b *Buffer) ReplaceSpan(start, end int, text []rune) {
-	b.change()
-	chars := b.flatChars()
-	start = max(min(start, len(chars)), 0)
-	end = max(min(end, len(chars)), start)
-	spliced := make([]rune, 0, len(chars)-(end-start)+len(text))
-	spliced = append(append(append(spliced, chars[:start]...), text...), chars[end:]...)
-	b.lines = splitChars(spliced)
-	b.setOffset(start)
+	start = max(start, 0)
+	end = max(end, start)
+	r1, c1 := b.posAt(start)
+	r2, c2 := b.posAt(end)
+	b.change(r1)
+	b.splice(r1, c1, r2, c2, text)
+	b.Row, b.Col = r1, c1
 	b.Clamp(false)
 }
 
 // Clone returns an independent buffer with the same text and cursor and no
-// history. Edits to the clone never reach b.
+// history. Edits to the clone never reach b. It shares b's lines, which
+// neither buffer modifies, so it costs nothing however long the text is.
 func (b *Buffer) Clone() *Buffer {
-	return &Buffer{lines: CloneLines(b.lines), Row: b.Row, Col: b.Col}
+	return &Buffer{text: b.text, Row: b.Row, Col: b.Col}
 }
 
 // Adopt makes b hold the text and cursor of from as one change, so that the
 // surrounding edit-transaction records it as one undo step. It takes over the
 // lines of from, which must not be used afterwards.
 func (b *Buffer) Adopt(from *Buffer) {
-	b.change()
-	b.lines = from.lines
+	b.change(rope.FirstDifference(b.text, from.text))
+	b.text = from.text
 	b.Row, b.Col = from.Row, from.Col
-	from.lines = nil
+	from.text = rope.Rope{}
 	b.Clamp(false)
 }
 
@@ -497,14 +470,14 @@ func (b *Buffer) Adopt(from *Buffer) {
 // With cut it also removes them.
 func (b *Buffer) SelectionChars(anchor [2]int, cut bool) []rune {
 	start, end := b.SelectionSpan(anchor)
-	chars := b.flatChars()
-	selected := append([]rune(nil), chars[start:end]...)
+	r1, c1 := b.posAt(start)
+	r2, c2 := b.posAt(end)
+	selected := b.between(r1, c1, r2, c2)
 	if cut && start < end {
-		b.change()
-		chars = append(chars[:start], chars[end:]...)
-		b.lines = splitChars(chars)
+		b.change(r1)
+		b.splice(r1, c1, r2, c2, nil)
 	}
-	b.setOffset(start)
+	b.Row, b.Col = r1, c1
 	b.Clamp(false)
 	return selected
 }
@@ -523,7 +496,7 @@ func wordClass(c rune) int {
 // the columns [start, end), 0-based. ok is false when the cursor is on
 // anything but a letter, digit or underscore. It moves nothing.
 func (b *Buffer) WordBounds() (start, end int, ok bool) {
-	line := b.lines[b.Row]
+	line := b.Line(b.Row)
 	if b.Col >= len(line) || wordClass(line[b.Col]) != 1 {
 		return 0, 0, false
 	}
@@ -545,55 +518,45 @@ func (b *Buffer) WordAt() []rune {
 	if !ok {
 		return nil
 	}
-	return append([]rune(nil), b.lines[b.Row][start:end]...)
-}
-
-func nextWord(chars []rune, at int) int {
-	if at < len(chars) {
-		class := wordClass(chars[at])
-		for at < len(chars) && wordClass(chars[at]) == class {
-			at++
-		}
-		for at < len(chars) && wordClass(chars[at]) == 0 {
-			at++
-		}
-	}
-	return at
+	return append([]rune(nil), b.Line(b.Row)[start:end]...)
 }
 
 // WordMotion moves the cursor by one word: 'w' next start, 'b' previous
 // start, 'e' end. Words are runs of alphanumerics, runs of punctuation, and
 // line separators count as whitespace.
 func (b *Buffer) WordMotion(motion rune) {
-	chars := b.flatChars()
-	at := b.offset()
+	w := b.walkerAt(b.Row, b.Col)
 	switch motion {
 	case 'w':
-		at = nextWord(chars, at)
+		w.nextWord()
 	case 'b':
-		if at > 0 {
-			at--
+		if !w.atStart() {
+			w.prev()
 		}
-		for at > 0 && wordClass(chars[at]) == 0 {
-			at--
+		for !w.atStart() && wordClass(w.char()) == 0 {
+			w.prev()
 		}
-		for at > 0 && wordClass(chars[at-1]) == wordClass(chars[at]) {
-			at--
+		for !w.atStart() && wordClass(w.peekPrev()) == wordClass(w.char()) {
+			w.prev()
 		}
 	case 'e':
-		if at < len(chars) {
-			at++
+		if !w.atEnd() {
+			w.next()
 		}
-		for at < len(chars) && wordClass(chars[at]) == 0 {
-			at++
+		for !w.atEnd() && wordClass(w.char()) == 0 {
+			w.next()
 		}
-		for at+1 < len(chars) && wordClass(chars[at+1]) == wordClass(chars[at]) {
-			at++
+		for {
+			next, ok := w.peekNext()
+			if !ok || wordClass(next) != wordClass(w.char()) {
+				break
+			}
+			w.next()
 		}
 	default:
 		return
 	}
-	b.setOffset(at)
+	b.Row, b.Col = w.row, w.col
 	b.Clamp(false)
 }
 
@@ -602,28 +565,26 @@ func (b *Buffer) WordMotion(motion rune) {
 // whitespace when starting on a non-whitespace run. With cut the range is
 // removed.
 func (b *Buffer) WordRange(cut, change bool, count int) []rune {
-	chars := b.flatChars()
-	start := b.offset()
+	start := b.walkerAt(b.Row, b.Col)
 	end := start
-	for i := 0; i < count; i++ {
-		next := nextWord(chars, end)
-		if next == end {
+	for range count {
+		before := end
+		end.nextWord()
+		if end.at(before) {
 			break
 		}
-		end = next
 	}
-	if change && start < len(chars) && wordClass(chars[start]) != 0 {
+	if change && !start.atEnd() && wordClass(start.char()) != 0 {
 		// cw behaves like ce: retain whitespace after the last selected run.
-		for end > start && wordClass(chars[end-1]) == 0 {
-			end--
+		for !end.at(start) && wordClass(end.peekPrev()) == 0 {
+			end.prev()
 		}
 	}
-	copied := append([]rune(nil), chars[start:end]...)
-	if cut && start < end {
-		b.change()
-		chars = append(chars[:start], chars[end:]...)
-		b.lines = splitChars(chars)
-		b.setOffset(start)
+	copied := b.between(start.row, start.col, end.row, end.col)
+	if cut && !end.at(start) {
+		b.change(start.row)
+		b.splice(start.row, start.col, end.row, end.col, nil)
+		b.Row, b.Col = start.row, start.col
 	}
 	return copied
 }
@@ -631,14 +592,14 @@ func (b *Buffer) WordRange(cut, change bool, count int) []rune {
 // Indent shifts the cursor line one level (four spaces) right, or removes one
 // level (a tab, or up to four spaces) left.
 func (b *Buffer) Indent(right bool) {
+	line := b.Line(b.Row)
 	if right {
-		b.change()
-		line := make([]rune, 0, len(b.lines[b.Row])+4)
-		line = append(append(line, ' ', ' ', ' ', ' '), b.lines[b.Row]...)
-		b.lines[b.Row] = line
+		b.change(b.Row)
+		indented := make([]rune, 0, len(line)+4)
+		indented = append(append(indented, ' ', ' ', ' ', ' '), line...)
+		b.setLine(b.Row, indented)
 		b.Col += 4
 	} else {
-		line := b.lines[b.Row]
 		count := 0
 		if len(line) > 0 && line[0] == '\t' {
 			count = 1
@@ -648,8 +609,8 @@ func (b *Buffer) Indent(right bool) {
 			}
 		}
 		if count > 0 {
-			b.change()
-			b.lines[b.Row] = append(line[:0], line[count:]...)
+			b.change(b.Row)
+			b.setLine(b.Row, append([]rune(nil), line[count:]...))
 			b.Col = max(b.Col-count, 0)
 		}
 	}
@@ -664,9 +625,9 @@ func (b *Buffer) Find(query []rune, forward bool) (row, col int, ok bool) {
 		return 0, 0, false
 	}
 	cursor := [2]int{b.Row, b.Col}
-	var before, after *[2]int
+	var before, after, next *[2]int
 	less := func(a, c [2]int) bool { return a[0] < c[0] || (a[0] == c[0] && a[1] < c[1]) }
-	for r, line := range b.lines {
+	b.text.Each(0, func(r int, line []rune) bool {
 		for c := 0; c+len(query) <= len(line); c++ {
 			if !runesEqual(line[c:c+len(query)], query) {
 				continue
@@ -674,7 +635,8 @@ func (b *Buffer) Find(query []rune, forward bool) (row, col int, ok bool) {
 			position := [2]int{r, c}
 			if forward {
 				if less(cursor, position) {
-					return r, c, true
+					next = &position
+					return false
 				}
 				if before == nil {
 					p := position
@@ -689,13 +651,17 @@ func (b *Buffer) Find(query []rune, forward bool) (row, col int, ok bool) {
 				after = &p
 			}
 		}
-	}
+		return true
+	})
 	var found *[2]int
-	if forward {
+	switch {
+	case next != nil:
+		found = next
+	case forward:
 		found = before
-	} else if before != nil {
+	case before != nil:
 		found = before
-	} else {
+	default:
 		found = after
 	}
 	if found == nil {
@@ -715,10 +681,11 @@ func runesEqual(a, b []rune) bool {
 
 // DeleteLine removes the cursor line, leaving one empty line in an empty buffer.
 func (b *Buffer) DeleteLine() {
-	b.change()
-	b.lines = append(b.lines[:b.Row], b.lines[b.Row+1:]...)
-	if len(b.lines) == 0 {
-		b.lines = append(b.lines, []rune{})
+	b.change(b.Row)
+	if b.text.Len() == 1 {
+		b.text = rope.FromLines([][]rune{{}})
+	} else {
+		b.text = b.text.Replace(b.Row, b.Row+1, nil)
 	}
 	b.Clamp(false)
 }

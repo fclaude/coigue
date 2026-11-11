@@ -177,7 +177,7 @@ func (e *Editor) requestLocation(location navigation.Location, travel navigation
 		return
 	}
 	e.pendingJump = &pendingJump{location: location, travel: travel}
-	if e.File.Dirty(e.Buffer.Text()) {
+	if e.Dirty() {
 		e.SwitchPrompt = location.Path
 	} else {
 		e.openPath(location.Path)

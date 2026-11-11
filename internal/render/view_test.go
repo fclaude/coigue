@@ -132,8 +132,8 @@ func TestVisualPlainTextHorizontalScrollAndThemeReset(t *testing.T) {
 	}
 	e.Key(key.Press(key.Esc), 2)
 	draw(t, &v, e, 9, 4)
-	if strings.Contains(row(&v, 0), term.Reverse) || v.styles != nil {
-		t.Fatalf("selection survived Esc: %q styles %v", row(&v, 0), v.styles)
+	if strings.Contains(row(&v, 0), term.Reverse) || v.drawnStyles(e) != nil {
+		t.Fatalf("selection survived Esc: %q styles %v", row(&v, 0), v.drawnStyles(e))
 	}
 }
 
@@ -249,8 +249,8 @@ func TestMarkdownHighlightingRepaintsThemesAndTracksFenceEditsAndHistory(t *test
 		if !strings.Contains(rendered, want) {
 			t.Fatalf("%v: heading not rendered as %q in %q", th, want, rendered)
 		}
-		if v.styles[0][0] != syntax.Heading || v.styles[1][0] != syntax.Emphasis || v.styles[3][0] != syntax.Keyword {
-			t.Fatalf("%v: styles %v", th, v.styles[:4])
+		if v.drawnStyles(e)[0][0] != syntax.Heading || v.drawnStyles(e)[1][0] != syntax.Emphasis || v.drawnStyles(e)[3][0] != syntax.Keyword {
+			t.Fatalf("%v: styles %v", th, v.drawnStyles(e)[:4])
 		}
 		if again := draw(t, &v, e, 80, 8); again != "" {
 			t.Fatalf("%v: unchanged frame wrote %q", th, again)
@@ -259,20 +259,20 @@ func TestMarkdownHighlightingRepaintsThemesAndTracksFenceEditsAndHistory(t *test
 	e.Buffer.Row = 2
 	typeKeys(e, 6, "dd")
 	draw(t, &v, e, 80, 8)
-	for _, s := range v.styles[2] {
+	for _, s := range v.drawnStyles(e)[2] {
 		if s != syntax.Plain {
-			t.Fatalf("row 2 styles %v", v.styles[2])
+			t.Fatalf("row 2 styles %v", v.drawnStyles(e)[2])
 		}
 	}
 	e.Key(key.Char('u'), 6)
 	draw(t, &v, e, 80, 8)
-	if v.styles[3][0] != syntax.Keyword {
-		t.Fatalf("after undo: %v", v.styles[3])
+	if v.drawnStyles(e)[3][0] != syntax.Keyword {
+		t.Fatalf("after undo: %v", v.drawnStyles(e)[3])
 	}
 	e.Key(key.WithCtrl('r'), 6)
 	draw(t, &v, e, 80, 8)
-	if v.styles[2][0] != syntax.Plain {
-		t.Fatalf("after redo: %v", v.styles[2])
+	if v.drawnStyles(e)[2][0] != syntax.Plain {
+		t.Fatalf("after redo: %v", v.drawnStyles(e)[2])
 	}
 }
 
@@ -287,16 +287,16 @@ func TestSemanticHighlightingUsesEveryThemeAndRevertsToLexicalColors(t *testing.
 		e := newEditor(t, filepath.Join(dir, "test."+c.extension), c.text)
 		var v View
 		draw(t, &v, e, 100, 6)
-		if v.styles[0][0] != syntax.Keyword || v.styles[0][c.start] != syntax.Plain {
-			t.Fatalf("%s lexical styles: %v", c.extension, v.styles[0])
+		if v.drawnStyles(e)[0][0] != syntax.Keyword || v.drawnStyles(e)[0][c.start] != syntax.Plain {
+			t.Fatalf("%s lexical styles: %v", c.extension, v.drawnStyles(e)[0])
 		}
 		e.LSP.SemanticTokens = []semantic.Token{{Row: 0, Start: c.start, End: c.end, Style: syntax.Function}}
 		e.LSP.SemanticRevision++
 		for _, th := range allThemes {
 			e.Theme = th
 			rendered := draw(t, &v, e, 100, 6)
-			if v.styles[0][c.start] != syntax.Function || v.styles[0][0] != syntax.Keyword {
-				t.Fatalf("%v: styles %v", th, v.styles[0])
+			if v.drawnStyles(e)[0][c.start] != syntax.Function || v.drawnStyles(e)[0][0] != syntax.Keyword {
+				t.Fatalf("%v: styles %v", th, v.drawnStyles(e)[0])
 			}
 			if want := foreground(th.Palette().Syntax(syntax.Function)) + "main"; !strings.Contains(rendered, want) {
 				t.Fatalf("%v: %q missing in %q", th, want, rendered)
@@ -317,8 +317,8 @@ func TestSemanticHighlightingUsesEveryThemeAndRevertsToLexicalColors(t *testing.
 		e.LSP.SemanticTokens = nil
 		e.LSP.SemanticRevision++
 		draw(t, &v, e, 100, 6)
-		if v.styles[0][c.start] != syntax.Plain || v.styles[0][0] != syntax.Keyword {
-			t.Fatalf("reverted styles: %v", v.styles[0])
+		if v.drawnStyles(e)[0][c.start] != syntax.Plain || v.drawnStyles(e)[0][0] != syntax.Keyword {
+			t.Fatalf("reverted styles: %v", v.drawnStyles(e)[0])
 		}
 		for _, size := range [][2]int{{1, 1}, {2, 3}, {4, 5}, {100, 6}} {
 			draw(t, &v, e, size[0], size[1])
@@ -342,7 +342,7 @@ func TestThemeSwitchRepaintsAllRowsAndTailsWithoutResettingViewportOrSyntax(t *t
 		position := [3]int{v.top, v.left}
 		position[2] = v.cursor[0]*1000 + v.cursor[1]
 		revision := *v.revision
-		styles := v.styles
+		styles := v.drawnStyles(e)
 		for _, th := range []theme.Theme{theme.GruvboxDark, theme.CatppuccinLatte, theme.Monochrome, theme.Terminal, theme.CatppuccinMocha} {
 			e.Theme = th
 			palette := th.Palette()
@@ -367,7 +367,7 @@ func TestThemeSwitchRepaintsAllRowsAndTailsWithoutResettingViewportOrSyntax(t *t
 			if got := [3]int{v.top, v.left, v.cursor[0]*1000 + v.cursor[1]}; got != position {
 				t.Fatalf("%s %v: viewport %v, want %v", extension, th, got, position)
 			}
-			if *v.revision != revision || !equalStyles(v.styles, styles) {
+			if *v.revision != revision || !equalStyles(v.drawnStyles(e), styles) {
 				t.Fatalf("%s %v: highlighting cache was reset", extension, th)
 			}
 			if idle := draw(t, &v, e, 18, 6); idle != "" {
@@ -588,7 +588,7 @@ func TestExplorerRenameUpdatesSyntaxWithoutResettingCursorOrViewport(t *testing.
 	var v View
 	draw(t, &v, e, 20, 4)
 	top := v.top
-	if v.styles != nil {
+	if v.drawnStyles(e) != nil {
 		t.Fatal("a plain file was highlighted")
 	}
 	e.Key(key.WithCtrl('o'), 2)
@@ -602,8 +602,8 @@ func TestExplorerRenameUpdatesSyntaxWithoutResettingCursorOrViewport(t *testing.
 	e.Key(key.Press(key.Enter), 2)
 	e.Key(key.Press(key.Esc), 2)
 	draw(t, &v, e, 20, 4)
-	if e.Buffer.Row != 7 || v.top != top || v.styles == nil || v.styles[0][0] != syntax.Keyword {
-		t.Fatalf("row %d top %d (was %d) styles %v", e.Buffer.Row, v.top, top, v.styles)
+	if e.Buffer.Row != 7 || v.top != top || v.drawnStyles(e) == nil || v.drawnStyles(e)[0][0] != syntax.Keyword {
+		t.Fatalf("row %d top %d (was %d) styles %v", e.Buffer.Row, v.top, top, v.drawnStyles(e))
 	}
 }
 
@@ -667,18 +667,18 @@ func TestUndoRedoInvalidatesMultilineHighlightingAndDirtyStatus(t *testing.T) {
 	}
 	e.Key(key.Char('x'), 2)
 	draw(t, &v, e, 80, 4)
-	if v.styles[1][0] != syntax.Keyword || !v.dirty {
-		t.Fatalf("after x: %v dirty %v", v.styles[1], v.dirty)
+	if v.drawnStyles(e)[1][0] != syntax.Keyword || !v.dirty {
+		t.Fatalf("after x: %v dirty %v", v.drawnStyles(e)[1], v.dirty)
 	}
 	e.Key(key.Char('u'), 2)
 	draw(t, &v, e, 80, 4)
-	if v.styles[1][0] != syntax.Comment || v.dirty {
-		t.Fatalf("after undo: %v dirty %v", v.styles[1], v.dirty)
+	if v.drawnStyles(e)[1][0] != syntax.Comment || v.dirty {
+		t.Fatalf("after undo: %v dirty %v", v.drawnStyles(e)[1], v.dirty)
 	}
 	e.Key(key.WithCtrl('r'), 2)
 	draw(t, &v, e, 80, 4)
-	if v.styles[1][0] != syntax.Keyword || !v.dirty {
-		t.Fatalf("after redo: %v dirty %v", v.styles[1], v.dirty)
+	if v.drawnStyles(e)[1][0] != syntax.Keyword || !v.dirty {
+		t.Fatalf("after redo: %v dirty %v", v.drawnStyles(e)[1], v.dirty)
 	}
 }
 
@@ -723,8 +723,8 @@ func TestPickerCancelAndFileSwitchResetRenderingCorrectly(t *testing.T) {
 	e.Generation++
 	e.Buffer = buffer.New("fn new() {}")
 	out = draw(t, &v, e, 80, 4)
-	if v.top != 0 || v.styles[0][0] != syntax.Keyword || !strings.Contains(out, "new()") {
-		t.Fatalf("after switch: top %d styles %v out %q", v.top, v.styles[0], out)
+	if v.top != 0 || v.drawnStyles(e)[0][0] != syntax.Keyword || !strings.Contains(out, "new()") {
+		t.Fatalf("after switch: top %d styles %v out %q", v.top, v.drawnStyles(e)[0], out)
 	}
 }
 
@@ -773,8 +773,8 @@ func TestHighlightingCacheTracksEditsInMultilineState(t *testing.T) {
 	e := newEditor(t, filepath.Join(t.TempDir(), "new.rs"), "/*\nfn main() {}\n*/")
 	var v View
 	draw(t, &v, e, 80, 4)
-	if v.styles[1][0] != syntax.Comment {
-		t.Fatalf("styles = %v", v.styles[1])
+	if v.drawnStyles(e)[1][0] != syntax.Comment {
+		t.Fatalf("styles = %v", v.drawnStyles(e)[1])
 	}
 	e.Buffer.Row = 1
 	draw(t, &v, e, 80, 4)
@@ -784,8 +784,8 @@ func TestHighlightingCacheTracksEditsInMultilineState(t *testing.T) {
 	e.Buffer.Row = 0
 	e.Buffer.DeleteLine()
 	draw(t, &v, e, 80, 4)
-	if v.styles[0][0] != syntax.Keyword {
-		t.Fatalf("styles = %v", v.styles[0])
+	if v.drawnStyles(e)[0][0] != syntax.Keyword {
+		t.Fatalf("styles = %v", v.drawnStyles(e)[0])
 	}
 }
 
@@ -861,8 +861,8 @@ func TestSchemeConfigColoursRenderWithoutLanguageServer(t *testing.T) {
 	var view View
 	e.Theme = theme.CatppuccinMocha
 	rendered := draw(t, &view, e, 80, 8)
-	if view.styles[0][0] != syntax.Comment || view.styles[1][1] != syntax.Keyword || view.styles[1][14] != syntax.String {
-		t.Fatal("Scheme lexer was not used", view.styles)
+	if view.drawnStyles(e)[0][0] != syntax.Comment || view.drawnStyles(e)[1][1] != syntax.Keyword || view.drawnStyles(e)[1][14] != syntax.String {
+		t.Fatal("Scheme lexer was not used", view.drawnStyles(e))
 	}
 	want := foreground(e.Theme.Palette().Syntax(syntax.String)) + "\"hello 界\""
 	if !strings.Contains(rendered, want) {
@@ -871,12 +871,12 @@ func TestSchemeConfigColoursRenderWithoutLanguageServer(t *testing.T) {
 	e.Buffer.Row = 0
 	typeKeys(e, 6, "dd")
 	draw(t, &view, e, 80, 8)
-	if view.styles[0][1] != syntax.Keyword {
+	if view.drawnStyles(e)[0][1] != syntax.Keyword {
 		t.Fatal("highlighting did not follow edit")
 	}
 	e.Key(key.Char('u'), 6)
 	draw(t, &view, e, 80, 8)
-	if view.styles[0][0] != syntax.Comment {
+	if view.drawnStyles(e)[0][0] != syntax.Comment {
 		t.Fatal("highlighting did not follow undo")
 	}
 }

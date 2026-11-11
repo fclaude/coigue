@@ -45,7 +45,7 @@ var rev uint64
 // live tells the runtime what the live text is now.
 func live(r *Runtime, text string) {
 	rev++
-	r.SyncMarks(buffer.New(text).Lines(), rev, 1)
+	r.SyncMarks(buffer.New(text).Lines, rev, 1)
 }
 
 func TestAMarkFollowsTheTextWhenLinesAreAddedAbove(t *testing.T) {
@@ -146,7 +146,7 @@ func TestMarksAreDeadWhenAnotherFileIsOpen(t *testing.T) {
 	live(r, "a\nb")
 	onText(t, r, "a\nb", "mark", "2", "1")
 	live(r, "a\nb")
-	r.SyncMarks(buffer.New("other file").Lines(), 1, 2) // a new generation
+	r.SyncMarks(buffer.New("other file").Lines, 1, 2) // a new generation
 	_, err := onText(t, r, "other file", "where")
 	if err == nil || !strings.Contains(err.Error(), "no longer open") {
 		t.Fatalf("got %v", err)
@@ -213,7 +213,7 @@ func TestMarksCostNothingUntilOneExists(t *testing.T) {
 	if r.HasMarks() {
 		t.Fatal("marks before any was made")
 	}
-	r.SyncMarks(buffer.New("x").Lines(), 7, 1)
+	r.SyncMarks(buffer.New("x").Lines, 7, 1)
 	if r.tracker.snap != nil {
 		t.Fatal("a snapshot of the text is kept with no marks to serve")
 	}
