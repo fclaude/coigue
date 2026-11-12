@@ -628,11 +628,14 @@ func TestDiagnosticsRejectStaleVersionsGenerationsAndOtherFilesAndClearOnEdits(t
 // fakeServer is the Python server of the Rust unit tests.
 const fakeServer = `
 import json, os, sys, time
-mode, log = sys.argv[1:]
+mode, log, ready, delay = sys.argv[1:]
+time.sleep(float(delay))
 def send(value):
     data = json.dumps(value, ensure_ascii=False).encode()
     sys.stdout.buffer.write(('Content-Length: %d\r\n\r\n' % len(data)).encode() + data)
     sys.stdout.buffer.flush()
+with open(ready + '.tmp', 'w') as f: f.write(str(os.getpid()))
+os.replace(ready + '.tmp', ready)
 while True:
     headers = {}
     while True:
@@ -670,21 +673,47 @@ type fakeRun struct {
 // fake runs serve against the Python server in the given mode.
 func fake(t *testing.T, mode string, timeout time.Duration) *fakeRun {
 	t.Helper()
+	return fakeWithStartup(t, mode, timeout, 0)
+}
+
+func fakeWithStartup(t *testing.T, mode string, timeout, delay time.Duration) *fakeRun {
+	t.Helper()
 	dir := t.TempDir()
 	script := filepath.Join(dir, "fake.py")
 	if err := os.WriteFile(script, []byte(fakeServer), 0o666); err != nil {
 		t.Fatal(err)
 	}
-	args := []string{"-u", script, mode, filepath.Join(dir, "log")}
+	ready := filepath.Join(dir, "ready")
+	args := []string{"-u", script, mode, filepath.Join(dir, "log"), ready, strconv.FormatFloat(delay.Seconds(), 'f', -1, 64)}
 	commands, in := mailbox()
 	events := make(chan output, 64)
 	done := make(chan error, 1)
 	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
 	python := testPython(t)
-	go func() {
-		done <- serve(ctx, python, args, dir, "0.1.0", in, events, timeout)
+	child, err := spawn(ctx, python, args, dir)
+	if err != nil {
+		cancel()
+		t.Fatal(err)
+	}
+	started := false
+	defer func() {
+		if !started {
+			cancel()
+			child.close()
+		}
 	}()
+	// Interpreter startup belongs to fixture setup, not the protocol deadline.
+	waitFixture(t, child, ready)
+	finished := make(chan struct{})
+	go func() {
+		defer close(finished)
+		done <- serveChild(ctx, child, python, dir, "0.1.0", in, events, timeout)
+	}()
+	started = true
+	t.Cleanup(func() {
+		cancel()
+		<-finished
+	})
 	return &fakeRun{dir: dir, commands: commands, events: events, done: done}
 }
 
@@ -701,6 +730,8 @@ func (f *fakeRun) wait(t *testing.T, timeout time.Duration) error {
 
 func receiveDiagnostic(t *testing.T, events chan output, version int32) {
 	t.Helper()
+	timer := time.NewTimer(3 * time.Second)
+	defer timer.Stop()
 	for {
 		select {
 		case event := <-events:
@@ -710,9 +741,17 @@ func receiveDiagnostic(t *testing.T, events chan output, version int32) {
 				}
 				return
 			}
-		case <-time.After(3 * time.Second):
+		case <-timer.C:
 			t.Fatalf("no diagnostic for version %d", version)
 		}
+	}
+}
+
+// A deliberately slow interpreter must not turn a rejection into a timeout.
+func TestFakeServerStartupDoesNotConsumeProtocolDeadline(t *testing.T) {
+	run := fakeWithStartup(t, "reject", 1500*time.Millisecond, 2*time.Second)
+	if err := run.wait(t, 8*time.Second); err == nil || !strings.Contains(err.Error(), "initialize failed") {
+		t.Fatalf("server rejection after fixture startup: %v", err)
 	}
 }
 
@@ -788,9 +827,7 @@ func TestMissingCrashedRejectedMalformedAndStalledServersAreBounded(t *testing.T
 		{"malformed", "invalid LSP header"},
 		{"hang", "timed out"},
 	} {
-		// The fake server is this test binary started again, which on a loaded CI
-		// runner can take well over a few hundred milliseconds to answer. The
-		// window must outlast that for the modes that expect a reply; only "hang"
+		// The fixture is ready before this protocol window starts; only "hang"
 		// is meant to run it out.
 		run := fake(t, tc.mode, 1500*time.Millisecond)
 		run.commands.trySend(inputDocument{*doc("a", 1)})

@@ -65,10 +65,7 @@ func startPidServer(t *testing.T, mode string, startup time.Duration, ctx contex
 	}()
 	// Wait until the child has actually started before starting the protocol
 	// deadline. A slow interpreter must not race the test's timeout.
-	pid = readPid(t, pidFile)
-	if pid != child.cmd.Process.Pid {
-		t.Fatalf("server reported pid %d, spawned %d", pid, child.cmd.Process.Pid)
-	}
+	pid = waitFixture(t, child, pidFile)
 	commands, inbox := mailbox()
 	events := make(chan output, 64)
 	done = make(chan error, 1)
@@ -83,23 +80,6 @@ func startPidServer(t *testing.T, mode string, startup time.Duration, ctx contex
 		<-finished
 	})
 	return pid, commands, done
-}
-
-func readPid(t *testing.T, pidFile string) int {
-	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
-	for time.Now().Before(deadline) {
-		if data, err := os.ReadFile(pidFile); err == nil && len(data) > 0 {
-			pid, err := strconv.Atoi(string(data))
-			if err != nil {
-				t.Fatal(err)
-			}
-			return pid
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	t.Fatal("the server never started")
-	return 0
 }
 
 func TestServeKillsAndReapsTheChildOnEveryExit(t *testing.T) {

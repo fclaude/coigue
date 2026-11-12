@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -73,6 +74,11 @@ type smoke struct {
 // Client that starts them from PATH.
 func newSmoke(t *testing.T, mode string) *smoke {
 	t.Helper()
+	return newSmokeWithStartup(t, mode, 0)
+}
+
+func newSmokeWithStartup(t *testing.T, mode string, delay time.Duration) *smoke {
+	t.Helper()
 	python := testPython(t)
 	base, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
@@ -90,7 +96,11 @@ func newSmoke(t *testing.T, mode string) *smoke {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"rust-analyzer", "gopls", "marksman"} {
-		script := "#!" + python + "\n" + string(source)
+		script := "#!" + python + "\n"
+		if delay > 0 {
+			script += "import time; time.sleep(" + strconv.FormatFloat(delay.Seconds(), 'f', -1, 64) + ")\n"
+		}
+		script += string(source)
 		scriptPath := filepath.Join(s.bin, name)
 		if runtime.GOOS == "windows" {
 			scriptPath += ".py"
@@ -152,6 +162,19 @@ func (s *smoke) sync(path string, generation, revision, saved uint64, text strin
 // wait polls the client, as the editor loop does, until the condition holds.
 func (s *smoke) wait(what string, timeout time.Duration, condition func() bool) {
 	s.t.Helper()
+	if strings.HasSuffix(s.client.Status, ": starting") {
+		// Exercise the real client's bounded startup separately from the
+		// post-initialization diagnostic/navigation assertion. Windows may
+		// start both a race-instrumented wrapper and Python under CI load.
+		s.pollUntil("the server to finish starting", startupTimeout+time.Second, func() bool {
+			return !strings.HasSuffix(s.client.Status, ": starting")
+		})
+	}
+	s.pollUntil(what, timeout, condition)
+}
+
+func (s *smoke) pollUntil(what string, timeout time.Duration, condition func() bool) {
+	s.t.Helper()
 	deadline := time.Now().Add(timeout)
 	for {
 		s.client.Poll(s.lines)
@@ -163,6 +186,17 @@ func (s *smoke) wait(what string, timeout time.Duration, condition func() bool) 
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
+}
+
+func TestSmokeStartupDoesNotConsumeDiagnosticDeadline(t *testing.T) {
+	s := newSmokeWithStartup(t, "normal", 5*time.Second)
+	text := "a😀target\nfn local() {}"
+	path := s.write("navigation-source.rs", text)
+	s.sync(path, 0, 0, 0, text)
+	s.wait("the warning after slow fixture startup", 4*time.Second, s.warning("rust-analyzer"))
+	s.client.Close()
+	s.assertReaped()
+	s.checkWire()
 }
 
 // settle keeps polling for a while, as the editor's key handling does.
