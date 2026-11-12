@@ -13,7 +13,7 @@ jobs:
     env:
       TAR_OPTIONS: --no-same-owner
     steps:
-      - uses: builtin:checkout
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
           go-version: '1.26.x'
@@ -36,6 +36,6 @@ jobs:
       run:
         shell: powershell
     steps:
-      - uses: builtin:checkout
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - name: Native Windows vet, race tests and builds
         run: python .gitea/native-check.py
