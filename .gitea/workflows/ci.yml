@@ -1,0 +1,41 @@
+name: Gitea checks
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  linux:
+    runs-on: linux-alpine
+    timeout-minutes: 30
+    env:
+      TAR_OPTIONS: --no-same-owner
+    steps:
+      - uses: builtin:checkout
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version: '1.26.x'
+          cache: false
+      - run: go install honnef.co/go/tools/cmd/staticcheck@v0.8.2
+      # Staticcheck skips project configuration under os.UserCacheDir.
+      # The runner checkout lives in ~/.cache; use a sibling cache for this
+      # invocation so the repository's existing checks remain in effect.
+      # https://github.com/dominikh/go-tools/issues/1847
+      - run: make check STATICCHECK="env XDG_CACHE_HOME=$RUNNER_TEMP/staticcheck-config $(go env GOPATH)/bin/staticcheck"
+      - run: make build acceptance
+
+  # Packages CI owns acceptance of main. Validate proposed source changes here
+  # without duplicating every published main build.
+  windows:
+    if: github.ref != 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    runs-on: windows-native
+    timeout-minutes: 25
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: builtin:checkout
+      - name: Native Windows vet, race tests and builds
+        run: python .gitea/native-check.py

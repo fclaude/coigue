@@ -121,7 +121,9 @@ func TestPermissionsAndSymlinks(t *testing.T) {
 	link := filepath.Join(dir, "link")
 	os.WriteFile(path, []byte("old"), 0o644)
 	os.Chmod(path, 0o640)
-	os.Symlink(path, link)
+	if err := os.Symlink(path, link); err != nil {
+		t.Fatal(err)
+	}
 	f, _, err := Open(link)
 	if err != nil {
 		t.Fatal(err)
@@ -145,10 +147,19 @@ func TestPermissionsAndSymlinks(t *testing.T) {
 	if got, _ := os.ReadFile(path); string(got) != "new" {
 		t.Fatalf("target = %q", got)
 	}
-	os.Remove(path)
+	// Windows refuses to remove a read-only target. Restore writability before
+	// constructing the swapped-symlink case, and never ignore fixture errors.
+	if err := os.Chmod(path, 0o640); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
 	other := filepath.Join(dir, "other")
 	os.WriteFile(other, []byte("new"), 0o644)
-	os.Symlink(other, path)
+	if err := os.Symlink(other, path); err != nil {
+		t.Fatal(err)
+	}
 	if err := f.Save("forbidden"); err == nil {
 		t.Fatal("save through a swapped-in symlink succeeded")
 	}
@@ -156,7 +167,9 @@ func TestPermissionsAndSymlinks(t *testing.T) {
 		t.Fatalf("other = %q", got)
 	}
 	dangling := filepath.Join(dir, "dangling")
-	os.Symlink(filepath.Join(dir, "absent"), dangling)
+	if err := os.Symlink(filepath.Join(dir, "absent"), dangling); err != nil {
+		t.Fatal(err)
+	}
 	f, _, _ = Open(dangling)
 	if err := f.Save("forbidden"); err == nil {
 		t.Fatal("save onto a dangling symlink succeeded")
